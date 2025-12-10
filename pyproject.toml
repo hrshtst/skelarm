@@ -1,0 +1,188 @@
+[project]
+name = "skelarm"
+version = "0.1.0"
+description = "A simple dynamics simulator for a configurable planar robot arm."
+readme = "README.md"
+license = { text = "GPL-3.0-only" }
+authors = [
+  { name = "Hiroshi Atsuta", email = "atsuta@ieee.org" }
+]
+requires-python = ">=3.12"
+dependencies = [
+  "matplotlib>=3.10.7",
+  "nptyping>=2.5.0",
+  "numpy>=1.26.4",
+  "pyqt6>=6.10.1",
+  "scipy>=1.16.3",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.16,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+  "hypothesis>=6.148.7",
+  "pre-commit>=4.5.0",
+  "pyright>=1.1.407",
+  "pytest>=9.0.2",
+  "pytest-cov>=7.0.0",
+  "pytest-randomly>=4.0.1",
+  "pytest-xdist>=3.8.0",
+  "ruff>=0.14.8",
+]
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+target-version = "py312"
+
+# Exclude a variety of commonly ignored directories.
+exclude = [
+  ".bzr",
+  ".direnv",
+  ".eggs",
+  ".git",
+  ".git-rewrite",
+  ".hg",
+  ".ipynb_checkpoints",
+  ".mypy_cache",
+  ".nox",
+  ".pants.d",
+  ".pyenv",
+  ".pytest_cache",
+  ".pytype",
+  ".ruff_cache",
+  ".svn",
+  ".tox",
+  ".venv",
+  ".vscode",
+  "__pypackages__",
+  "_build",
+  "buck-out",
+  "build",
+  "dist",
+  "node_modules",
+  "site-packages",
+  "venv",
+]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "F841",                       # Local variable {name} is assigned to but never used
+  "T201",                       # `print` found
+  "PTH123",                     # `open()` should be replaced by `Path.open()`
+  "PLC0415",                    # `import` should be at the top-level of a file
+  "PLR0911",                    # Too many return statements ({returns} > {max_returns})
+  "PLR0912",                    # Too many branches ({branches} > {max_branches})
+  "PLR0913",                    # Too many arguments in function definition ({c_args} > {max_args})
+  "PLR0915",                    # Too many statements ({statements} > {max_statements})
+  "S101",                       # Use of `assert` detected
+  "SIM108",                     # Use ternary operator {contents} instead of `if`-`else`-block
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = [
+  "SIM105",                     # Use `contextlib.suppress({exception})` instead of `try`-`except`-`pass`
+]
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.pydocstyle]
+# Use Numpy-style docstrings.
+convention = "numpy"
+
+[tool.ruff.lint.isort]
+# Always add import annotations
+required-imports = ["from __future__ import annotations"]
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
+
+# Enable auto-formatting of code examples in docstrings. Markdown,
+# reStructuredText code/literal blocks and doctests are all supported.
+#
+# This is currently disabled by default, but it is planned for this
+# to be opt-out in the future.
+docstring-code-format = true
+
+# Set the line length limit used when formatting code snippets in
+# docstrings.
+#
+# This only has an effect when the `docstring-code-format` setting is
+# enabled.
+docstring-code-line-length = "dynamic"
+
+[tool.pyright]
+include = ["src", "tests", "examples"]
+exclude = [".venv", "**/__pycache__"]
+pythonVersion = "3.12"
+pythonPlatform = "All"
+typeCheckingMode = "basic"
+
+# Type checking behavior
+strictParameterNoneValue = false
+
+# Report the followings as an error
+reportMissingImports = "error"
+reportIncompatibleMethodOverride = "error"
+reportIncompatibleVariableOverride = "error"
+reportOverlappingOverload = "error"
+reportUnusedCoroutine = "error"
+reportMatchNotExhaustive = "error"
+reportUnusedImport = "error"
+reportDuplicateImport = "error"
+
+# Report the followings as a warning
+reportUnusedClass = "warning"
+reportUnusedFunction = "warning"
+reportUnusedVariable = "warning"
+reportInconsistentConstructor = "warning"
+reportUninitializedInstanceVariable = "warning"
+reportUnnecessaryIsInstance = "warning"
+reportUnnecessaryCast = "warning"
+reportUnnecessaryComparison = "warning"
+reportUnnecessaryTypeIgnoreComment = "warning"
+
+# Do not report the followings
+reportCallIssue = "none"
+reportAttributeAccessIssue = "none"
+reportMissingTypeStubs = "none"
+reportMissingSuperCall = "none"
+reportPrivateUsage = "none"
+reportImplicitStringConcatenation = "none"
+reportInvalidStubStatement = "none"
+reportIncompleteStub = "none"
+reportUnsupportedDunderAll = "none"
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]
+skips = ["B101", "B311", "B404", "B603"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+addopts = [
+  "-ra",
+  "--strict-markers",
+  "--strict-config",
+  "--cov-branch",
+]
+markers = [
+  "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+  "integration: marks tests as integration tests",
+  "serious: marks as serious tests to be investigated on a priority basis",
+]
