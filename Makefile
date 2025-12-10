@@ -1,4 +1,4 @@
-.PHONY: install lint format type-check test test-cov test-fast test-serious clean all
+.PHONY: install lint format type-check test test-cov test-fast test-serious clean all help
 
 # Initialize project: installs dependencies and sets up git hooks
 install:
@@ -48,3 +48,18 @@ clean:
 
 # Run all checks (useful for CI or before big commits)
 all: format type-check test
+
+help:
+	@echo "Usage: make <command>"
+	@echo ""
+	@echo "Commands:"
+	@echo "  install      : Install dependencies and set up git hooks."
+	@echo "  lint         : Check for linting errors."
+	@echo "  format       : Format code and fix auto-fixable lint errors."
+	@echo "  type-check   : Run static type checking."
+	@echo "  test         : Run all tests."
+	@echo "  test-cov     : Run tests with coverage report."
+	@echo "  test-fast    : Run tests skipping slow tests."
+	@echo "  test-serious : Run only serious tests."
+	@echo "  clean        : Clean up cache files."
+	@echo "  all          : Run all checks (format, type-check, test)."
