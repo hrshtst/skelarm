@@ -79,8 +79,9 @@ ignore = [
   "PLR0913",                    # Too many arguments in function definition ({c_args} > {max_args})
   "PLR0915",                    # Too many statements ({statements} > {max_statements})
   "S101",                       # Use of `assert` detected
-  "SIM108",                     # Use ternary operator {contents} instead of `if`-`else`-block
-]
+    "SIM108",                       # Use ternary operator {contents} instead of `if`-`else`-block
+    "TC001",                        # Move application import into a type-checking block
+  ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
