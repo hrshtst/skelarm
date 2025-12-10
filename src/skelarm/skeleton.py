@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
+
+import numpy as np
 
 if TYPE_CHECKING:
-    import numpy as np  # Import numpy only for type checking
     from numpy.typing import NDArray
 
 
@@ -49,6 +50,7 @@ class Link:
         self.q: float = 0.0  # Joint angle
         self.dq: float = 0.0  # Joint angular velocity
         self.ddq: float = 0.0  # Joint angular acceleration
+        self.q_absolute: float = 0.0  # Absolute angle of the link (used in RNE)
 
         # End-effector position and velocity (local to link)
         self.x: float = 0.0
@@ -82,6 +84,22 @@ class Link:
         # End-effector position (global)
         self.xe: float = 0.0
         self.ye: float = 0.0
+
+        # --- Attributes for Inverse Dynamics (RNE) ---
+        self.w: float = 0.0  # Angular velocity of link frame
+        self.dw: float = 0.0  # Angular acceleration of link frame
+
+        # Linear velocity/acceleration of link origin (joint)
+        self.v: NDArray[np.float64] = cast("NDArray[np.float64]", np.zeros(2))
+        self.dv: NDArray[np.float64] = cast("NDArray[np.float64]", np.zeros(2))
+
+        # Linear velocity/acceleration of center of mass
+        self.vc: NDArray[np.float64] = cast("NDArray[np.float64]", np.zeros(2))
+        self.dvc: NDArray[np.float64] = cast("NDArray[np.float64]", np.zeros(2))
+
+        # Forces and moments
+        self.f: NDArray[np.float64] = cast("NDArray[np.float64]", np.zeros(2))  # Force from parent link
+        self.n: float = 0.0  # Moment exerted by parent link on current link
 
 
 class Skeleton:
