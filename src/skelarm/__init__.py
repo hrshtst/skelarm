@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from .kinematics import compute_forward_kinematics
+from .plotting import draw_skeleton, plot_trajectory
 from .skeleton import Link, LinkProp, Skeleton
 
-__all__ = ["Link", "LinkProp", "Skeleton", "compute_forward_kinematics", "hello"]
+__all__ = ["Link", "LinkProp", "Skeleton", "compute_forward_kinematics", "draw_skeleton", "hello", "plot_trajectory"]
 
 
 def hello() -> str:

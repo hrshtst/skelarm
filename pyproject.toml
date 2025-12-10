@@ -80,10 +80,10 @@ ignore = [
   "PLR0915",                    # Too many statements ({statements} > {max_statements})
   "S101",                       # Use of `assert` detected
     "SIM108",                       # Use ternary operator {contents} instead of `if`-`else`-block
-    "TC001",                        # Move application import into a type-checking block
-  ]
-
-# Allow fix for all enabled rules (when `--fix`) is provided.
+      "TC001",                        # Move application import into a type-checking block
+        "TC002",                        # Move third-party import into a type-checking block
+        "TC003",                        # Move standard library import into a type-checking block
+      ]# Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
 unfixable = [
   "SIM105",                     # Use `contextlib.suppress({exception})` instead of `try`-`except`-`pass`

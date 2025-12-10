@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -86,7 +87,7 @@ class Link:
 class Skeleton:
     """Represents the entire robot arm (skeleton)."""
 
-    def __init__(self, link_props: list[LinkProp | dict[str, Any]]) -> None:
+    def __init__(self, link_props: Sequence[LinkProp | dict[str, Any]]) -> None:
         """
         Initialize the Skeleton with a list of link properties.
 
