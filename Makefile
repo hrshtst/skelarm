@@ -7,12 +7,12 @@ install:
 
 # Check for linting errors
 lint:
-	uv run ruff check .
+	uv run ruff check . --config=pyproject.toml
 
 # Format code and fix auto-fixable lint errors
 format:
-	uv run ruff check --fix .
-	uv run ruff format .
+	uv run ruff check --fix . --config=pyproject.toml
+	uv run ruff format . --config=pyproject.toml
 
 # Run static type checking
 type-check:

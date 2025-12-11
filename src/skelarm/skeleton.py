@@ -161,3 +161,19 @@ class Skeleton:
             raise ValueError(error_msg)
         for i, link in enumerate(self.links):
             link.ddq = ddq_values[i]
+
+    @property
+    def tau(self) -> NDArray[np.float64]:
+        """Return current joint torques."""
+        import numpy as np
+
+        return np.array([link.tau for link in self.links], dtype=np.float64)
+
+    @tau.setter
+    def tau(self, tau_values: NDArray[np.float64]) -> None:
+        """Set joint torques."""
+        if len(tau_values) != self.num_links:
+            error_msg = f"Expected {self.num_links} joint torques, but got {len(tau_values)}"
+            raise ValueError(error_msg)
+        for i, link in enumerate(self.links):
+            link.tau = tau_values[i]

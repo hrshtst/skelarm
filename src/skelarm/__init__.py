@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from .dynamics import compute_inverse_dynamics
+from .dynamics import (
+    compute_coriolis_gravity_vector,
+    compute_forward_dynamics,
+    compute_inverse_dynamics,
+    compute_mass_matrix,
+    simulate_robot,
+)
 from .kinematics import compute_forward_kinematics
 from .plotting import draw_skeleton, plot_trajectory
 from .skeleton import Link, LinkProp, Skeleton
@@ -11,11 +17,15 @@ __all__ = [
     "Link",
     "LinkProp",
     "Skeleton",
+    "compute_coriolis_gravity_vector",
+    "compute_forward_dynamics",
     "compute_forward_kinematics",
     "compute_inverse_dynamics",
+    "compute_mass_matrix",
     "draw_skeleton",
     "hello",
     "plot_trajectory",
+    "simulate_robot",
 ]
 
 

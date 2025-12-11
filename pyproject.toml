@@ -70,6 +70,7 @@ exclude = [
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
+  "COM812",                     # Trailing comma missing
   "F841",                       # Local variable {name} is assigned to but never used
   "T201",                       # `print` found
   "PTH123",                     # `open()` should be replaced by `Path.open()`
@@ -79,11 +80,12 @@ ignore = [
   "PLR0913",                    # Too many arguments in function definition ({c_args} > {max_args})
   "PLR0915",                    # Too many statements ({statements} > {max_statements})
   "S101",                       # Use of `assert` detected
-    "SIM108",                       # Use ternary operator {contents} instead of `if`-`else`-block
-      "TC001",                        # Move application import into a type-checking block
-        "TC002",                        # Move third-party import into a type-checking block
-        "TC003",                        # Move standard library import into a type-checking block
-      ]# Allow fix for all enabled rules (when `--fix`) is provided.
+  "SIM108",                     # Use ternary operator {contents} instead of `if`-`else`-block
+  "RET504",                     # Unnecessary assignment to {name} before `return` statement
+  "TC001",                      # Move application import into a type-checking block
+  "TC002",                      # Move third-party import into a type-checking block
+  "TC003",                      # Move standard library import into a type-checking block
+]# Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
 unfixable = [
   "SIM105",                     # Use `contextlib.suppress({exception})` instead of `try`-`except`-`pass`
@@ -130,6 +132,8 @@ docstring-code-line-length = "dynamic"
 [tool.pyright]
 include = ["src", "tests", "examples"]
 exclude = [".venv", "**/__pycache__"]
+venvPath = "."
+venv = ".venv"
 pythonVersion = "3.12"
 pythonPlatform = "All"
 typeCheckingMode = "basic"
@@ -153,8 +157,6 @@ reportUnusedFunction = "warning"
 reportUnusedVariable = "warning"
 reportInconsistentConstructor = "warning"
 reportUninitializedInstanceVariable = "warning"
-reportUnnecessaryIsInstance = "warning"
-reportUnnecessaryCast = "warning"
 reportUnnecessaryComparison = "warning"
 reportUnnecessaryTypeIgnoreComment = "warning"
 
@@ -187,3 +189,20 @@ markers = [
   "integration: marks tests as integration tests",
   "serious: marks as serious tests to be investigated on a priority basis",
 ]
+
+[tool.mypy]
+files = ["src", "tests", "apps"]
+python_executable = ".venv/bin/python"
+check_untyped_defs = true       # Type-checks the interior of functions without type annotations.
+
+[[tool.mypy.overrides]]
+  module = [
+    "joblib.*",
+    "numpy.*",
+    "pandas.*",
+    "scienceplots.*",
+    "scipy.*",
+    "sklearn.*",
+    "tomli.*",
+  ]
+  ignore_missing_imports = true
