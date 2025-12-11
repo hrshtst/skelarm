@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import tomllib
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
@@ -113,6 +115,53 @@ class Skeleton:
         """
         self.links: list[Link] = [Link(prop) for prop in link_props]
         self.num_links: int = len(self.links)
+
+    @classmethod
+    def from_toml(cls, file_path: str | Path) -> Skeleton:
+        """
+        Create a Skeleton from a TOML configuration file.
+
+        :param file_path: Path to the TOML file.
+        :return: A new Skeleton instance.
+        """
+        path = Path(file_path)
+        with path.open("rb") as f:
+            data = tomllib.load(f)
+
+        link_props = []
+        for link_data in data.get("link", []):
+            # Extract properties from TOML data
+            length = link_data["length"]
+            mass = link_data["mass"]
+            inertia = link_data["inertia"]
+
+            # Allow 'com' as [x, y] or 'rgx'/'rgy' keys
+            if "com" in link_data:
+                rgx, rgy = link_data["com"]
+            else:
+                rgx = link_data.get("rgx", 0.0)
+                rgy = link_data.get("rgy", 0.0)
+
+            # Allow 'limits' as [min, max] or 'qmin'/'qmax' keys
+            if "limits" in link_data:
+                qmin, qmax = link_data["limits"]
+            else:
+                qmin = link_data.get("qmin", -np.pi)
+                qmax = link_data.get("qmax", np.pi)
+
+            link_props.append(
+                LinkProp(
+                    length=length,
+                    m=mass,
+                    i=inertia,
+                    rgx=rgx,
+                    rgy=rgy,
+                    qmin=qmin,
+                    qmax=qmax,
+                )
+            )
+
+        return cls(link_props)
 
     @property
     def q(self) -> NDArray[np.float64]:
