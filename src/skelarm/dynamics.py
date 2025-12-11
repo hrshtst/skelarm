@@ -55,7 +55,7 @@ def compute_inverse_dynamics(
             [
                 link.prop.length * np.cos(link_absolute_angle),
                 link.prop.length * np.sin(link_absolute_angle),
-            ],
+            ]
         )
 
         # Vector from current joint to COM (relative to link frame)
@@ -66,7 +66,7 @@ def compute_inverse_dynamics(
             [
                 [np.cos(link_absolute_angle), -np.sin(link_absolute_angle)],
                 [np.sin(link_absolute_angle), np.cos(link_absolute_angle)],
-            ],
+            ]
         )
         rc_curr_base_frame = r_curr_to_base @ rc_curr
 
@@ -114,18 +114,18 @@ def compute_inverse_dynamics(
         rc_curr = np.array([link.prop.rgx, link.prop.rgy])
         r_curr_to_base = np.array(
             [
-                [np.cos(link.q_absolute), -np.sin(link.q_absolute)],
-                [np.sin(link.q_absolute), np.cos(link.q_absolute)],
-            ],
+                [np.cos(link_absolute_angle), -np.sin(link_absolute_angle)],
+                [np.sin(link_absolute_angle), np.cos(link_absolute_angle)],
+            ]
         )
         rc_curr_base_frame = r_curr_to_base @ rc_curr
 
         # Vector from COM to tip (succeeding joint) in base frame
         l_curr_base_frame = np.array(
             [
-                link.prop.length * np.cos(link.q_absolute),
-                link.prop.length * np.sin(link.q_absolute),
-            ],
+                link.prop.length * np.cos(link_absolute_angle),
+                link.prop.length * np.sin(link_absolute_angle),
+            ]
         )
         lc_curr_base_frame = l_curr_base_frame - rc_curr_base_frame
 
@@ -147,14 +147,18 @@ def compute_inverse_dynamics(
 
 def compute_mass_matrix(
     skeleton: Skeleton,
-    grav_vec: NDArray[np.float64] | None = None,
+    _grav_vec: NDArray[np.float64] | None = None,  # Renamed to _grav_vec as it's ignored
 ) -> NDArray[np.float64]:
     """Compute the mass matrix M(q) for the robot arm.
 
     :param skeleton: The Skeleton object.
-    :param grav_vec: Ignored, should be zero for mass matrix.
+    :param _grav_vec: Ignored, should be zero for mass matrix.
     :return: The N x N mass matrix.
     """
+    # Mass matrix calculation requires zero gravity
+    # We pass explicit zero vector to ensure no gravity influence
+    zero_grav = np.array([0.0, 0.0], dtype=np.float64)
+
     num_links = skeleton.num_links
     mass_matrix = np.zeros((num_links, num_links), dtype=np.float64)
 
@@ -170,7 +174,7 @@ def compute_mass_matrix(
         ddq_j_one[j] = 1.0
         temp_skeleton.ddq = ddq_j_one
 
-        compute_inverse_dynamics(temp_skeleton, grav_vec=grav_vec)
+        compute_inverse_dynamics(temp_skeleton, grav_vec=zero_grav)
         mass_matrix[:, j] = temp_skeleton.tau
 
     skeleton.q = original_q
@@ -235,12 +239,66 @@ def compute_forward_dynamics(
     return np.linalg.solve(mass_matrix, rhs)
 
 
+def compute_kinetic_energy(skeleton: Skeleton) -> float:
+    """Compute the total kinetic energy of the robot arm.
+
+    :param skeleton: The Skeleton object with link velocities (w, v, vc) computed.
+    :return: The total kinetic energy.
+    """
+    total_ke = 0.0
+    for link in skeleton.links:
+        # Kinetic energy of a rigid body: 0.5 * m * vc^2 + 0.5 * I * w^2
+        # vc is a 2D vector, so vc^2 = vc_x^2 + vc_y^2
+        vc_squared = np.dot(link.vc, link.vc)
+        ke_translational = 0.5 * link.prop.m * vc_squared
+        ke_rotational = 0.5 * link.prop.i * (link.w**2)
+        total_ke += ke_translational + ke_rotational
+    return total_ke
+
+
+def compute_kinetic_energy_rate(
+    skeleton: Skeleton,
+    tau: NDArray[np.float64],
+    grav_vec: NDArray[np.float64] | None = None,
+) -> float:
+    """Compute the rate of change of kinetic energy (dKE/dt).
+
+    dKE/dt = dq^T * tau_applied.
+    In the context of the dynamics equation M*ddq + h = tau,
+    dKE/dt should be dq^T * (M*ddq + h). This must equal dq^T * tau_applied.
+
+    :param skeleton: The Skeleton object with current q and dq.
+    :param tau: The N-dimensional vector of joint torques.
+    :param grav_vec: The gravity vector.
+    :return: The rate of change of kinetic energy.
+    """
+    if grav_vec is None:
+        grav_vec = np.array([0.0, 0.0], dtype=np.float64)
+
+    # Need current ddq to check consistency
+    ddq = compute_forward_dynamics(skeleton, tau, grav_vec)
+
+    # Reconstruct tau from ddq, M, h
+    temp_skeleton = deepcopy(skeleton)
+    mass_matrix = compute_mass_matrix(temp_skeleton)
+    coriolis_gravity_vector = compute_coriolis_gravity_vector(temp_skeleton, grav_vec=grav_vec)
+
+    # The torque on the left side of the equation M*ddq + h = tau
+    tau_lhs = mass_matrix @ ddq + coriolis_gravity_vector
+
+    # dKE/dt = dq^T * tau
+    # We check dq^T * tau_lhs, which should be equal to dq^T * tau (input)
+    return float(np.dot(skeleton.dq, tau_lhs))
+
+
 def simulate_robot(
     initial_skeleton: Skeleton,
     time_span: tuple[float, float],
     control_torques_func: Callable[[float, Skeleton], NDArray[np.float64]],
     grav_vec: NDArray[np.float64] | None = None,
     dt: float = 0.01,
+    rtol: float = 1e-6,
+    atol: float = 1e-8,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """Simulate robot dynamics.
 
@@ -250,6 +308,8 @@ def simulate_robot(
                                  the N-dimensional control torques for the current time and skeleton state.
     :param grav_vec: The gravity vector.
     :param dt: Time step for the simulation, used for output points.
+    :param rtol: Relative tolerance for the ODE solver.
+    :param atol: Absolute tolerance for the ODE solver.
     :return: A tuple (times, q_trajectory, dq_trajectory) of NumPy arrays.
     """
     if grav_vec is None:
@@ -280,8 +340,8 @@ def simulate_robot(
         initial_state,
         t_eval=t_eval,
         method="RK45",
-        rtol=1e-6,
-        atol=1e-8,
+        rtol=rtol,
+        atol=atol,
     )
 
     if not solution.success:

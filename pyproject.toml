@@ -71,6 +71,7 @@ exclude = [
 select = ["ALL"]
 ignore = [
   "COM812",                     # Trailing comma missing
+  "D401",                       # First line of docstring should be in imperative mood: "{first_line}"
   "F841",                       # Local variable {name} is assigned to but never used
   "T201",                       # `print` found
   "PTH123",                     # `open()` should be replaced by `Path.open()`

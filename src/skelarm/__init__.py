@@ -6,6 +6,8 @@ from .dynamics import (
     compute_coriolis_gravity_vector,
     compute_forward_dynamics,
     compute_inverse_dynamics,
+    compute_kinetic_energy,
+    compute_kinetic_energy_rate,
     compute_mass_matrix,
     simulate_robot,
 )
@@ -21,6 +23,8 @@ __all__ = [
     "compute_forward_dynamics",
     "compute_forward_kinematics",
     "compute_inverse_dynamics",
+    "compute_kinetic_energy",
+    "compute_kinetic_energy_rate",
     "compute_mass_matrix",
     "draw_skeleton",
     "hello",
