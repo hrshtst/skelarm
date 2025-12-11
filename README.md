@@ -4,7 +4,7 @@ A lightweight, physics-based dynamics simulator for a configurable planar robot 
 
 ## Features
 
-*   **Configurable Robot:** Define arbitrary planar robots with custom link lengths, masses, inertias, and centers of mass.
+*   **Configurable Robot:** Define arbitrary planar robots with custom link lengths, masses, inertias, and centers of mass. Support for TOML configuration files.
 *   **Kinematics:**
     *   Forward Kinematics (FK) to compute joint and end-effector positions.
 *   **Dynamics (Planar, No Gravity):**
@@ -47,6 +47,38 @@ A lightweight, physics-based dynamics simulator for a configurable planar robot 
     ```
 
 ## Usage Examples
+
+### TOML Configuration
+
+You can define robot configurations in TOML files. See `examples/simple_robot.toml` or `examples/four_dof_robot.toml`.
+
+```toml
+[[link]]
+length = 1.0
+mass = 2.0
+inertia = 0.5
+com = [0.5, 0.0]        # Center of mass [x, y] relative to joint
+limits = [-3.14, 3.14]  # Joint limits [min, max] in radians
+
+[[link]]
+length = 0.8
+# ...
+```
+
+Load it using `Skeleton.from_toml`:
+
+```python
+from skelarm import Skeleton
+skeleton = Skeleton.from_toml("path/to/robot.toml")
+```
+
+### 4-DOF Simulation Example
+
+Run a dynamic simulation of a 4-DOF robot loaded from a TOML file:
+
+```bash
+uv run python examples/simulate_four_dof.py
+```
 
 ### Interactive Visualizer
 
