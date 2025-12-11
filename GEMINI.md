@@ -129,7 +129,7 @@ skelarm/
 5.  [x] Implement Recursive Newton-Euler for Inverse Dynamics (Gravity Ignored).
 6.  [x] Implement Forward Dynamics and Integrator (Gravity Ignored).
 7.  [x] Add `hypothesis` tests for physics consistency (Dynamics consistency and Local Energy Conservation).
-8.  [ ] Build PyQt6 visualizer.
+8.  [x] Build PyQt6 visualizer.
 
 ## 7. Development Workflow & Commands
 
