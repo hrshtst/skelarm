@@ -7,6 +7,8 @@
 **Description:**
 A lightweight, physics-based dynamics simulator for a configurable planar robot arm. The robot acts as a "skeleton" with no shape or collision properties, focusing purely on kinematics and dynamics. Users can configure link lengths, mass properties (mass, inertia), and centers of mass (COM) for an arbitrary number of links.
 
+**Note on Gravity:** As the robot arm operates on a horizontal plane, gravitational effects are ignored in the dynamics calculations.
+
 ## 2. Technical Stack & Tooling
 The project enforces modern Python best practices and tooling.
 
@@ -91,8 +93,8 @@ skelarm/
       * **Forward Kinematics (FK):** Compute $(x, y)$ of all joints and tip given joint angles $\mathbf{q}$.
       * **Inverse Kinematics (IK):** Numerical solution (e.g., Levenberg-Marquardt via `scipy.optimize` or Jacobian transpose/pseudo-inverse) to find $\mathbf{q}$ given tip $(x, y)$.
 3.  **Dynamics:**
-      * **Inverse Dynamics (ID):** Calculate required torques $\boldsymbol{\tau}$ given $\mathbf{q}, \dot{\mathbf{q}}, \ddot{\mathbf{q}}$. (Suggested algorithm: Recursive Newton-Euler).
-      * **Forward Dynamics (FD):** Calculate $\ddot{\mathbf{q}}$ given $\mathbf{q}, \dot{\mathbf{q}}, \boldsymbol{\tau}$. This requires solving $\mathbf{M}(\mathbf{q})\ddot{\mathbf{q}} + \mathbf{h}(\mathbf{q}, \dot{\mathbf{q}}) = \boldsymbol{\tau}$.
+      * **Inverse Dynamics (ID):** Calculate required torques $\boldsymbol{\tau}$ given $\mathbf{q}, \dot{\mathbf{q}}, \ddot{\mathbf{q}}$. (Suggested algorithm: Recursive Newton-Euler). Gravity is ignored (horizontal plane).
+      * **Forward Dynamics (FD):** Calculate $\ddot{\mathbf{q}}$ given $\mathbf{q}, \dot{\mathbf{q}}, \boldsymbol{\tau}$. This requires solving $\mathbf{M}(\mathbf{q})\ddot{\mathbf{q}} + \mathbf{h}(\mathbf{q}, \dot{\mathbf{q}}) = \boldsymbol{\tau}$. Gravity is ignored.
       * Integrator: Use `scipy.integrate.odeint` or `solve_ivp` (RK45) for simulation steps.
 
 ### B. Visualization
@@ -110,24 +112,24 @@ skelarm/
 1.  **Property-Based Testing (`hypothesis`):**
       * *Kinematics:* $FK(IK(pos)) \approx pos$.
       * *Dynamics:* $ID(FD(torque)) \approx torque$.
-      * *Energy:* In the absence of friction and input torque, total energy (Kinetic + Potential) should be constant (or strictly decreasing if damping exists).
+      * *Energy:* In the absence of friction and input torque, total kinetic energy should be constant (potential energy is constant/zero as gravity is ignored).
 
 ## 5. Development Guidelines
 
   * **Docstrings:** All public functions must have NumPy-style docstrings.
   * **Typing:** All function signatures must be fully type-hinted. Use `nptyping` or `numpy.typing.NDArray` for array specs.
-  * **Error Handling:** Raise descriptive errors (e.g., `ConfigurationError` if link mass \< 0).
+  * **Error Handling:** Raise descriptive errors (e.g., `ConfigurationError` if link mass < 0).
 
 ## 6. Initial Task List
 
-1.  Initialize project with `uv` and configure `pyproject.toml`.
-2.  Implement `Link` class and `Skeleton` container.
-3.  Implement FK and verify with simple tests.
-4.  Implement basic Matplotlib visualization.
-5.  Implement Recursive Newton-Euler for Inverse Dynamics.
-6.  Implement Forward Dynamics and Integrator.
-7.  Add `hypothesis` tests for physics consistency.
-8.  Build PyQt6 visualizer.
+1.  [x] Initialize project with `uv` and configure `pyproject.toml`.
+2.  [x] Implement `Link` class and `Skeleton` container.
+3.  [x] Implement FK and verify with simple tests.
+4.  [x] Implement basic Matplotlib visualization.
+5.  [x] Implement Recursive Newton-Euler for Inverse Dynamics (Gravity Ignored).
+6.  [x] Implement Forward Dynamics and Integrator (Gravity Ignored).
+7.  [x] Add `hypothesis` tests for physics consistency (Dynamics consistency and Local Energy Conservation).
+8.  [ ] Build PyQt6 visualizer.
 
 ## 7. Development Workflow & Commands
 
