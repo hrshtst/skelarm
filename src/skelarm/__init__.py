@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .canvas import SkelarmCanvas, SkelarmViewer
 from .dynamics import (
     compute_coriolis_gravity_vector,
     compute_forward_dynamics,
@@ -18,6 +19,8 @@ from .skeleton import Link, LinkProp, Skeleton
 __all__ = [
     "Link",
     "LinkProp",
+    "SkelarmCanvas",
+    "SkelarmViewer",
     "Skeleton",
     "compute_coriolis_gravity_vector",
     "compute_forward_dynamics",
