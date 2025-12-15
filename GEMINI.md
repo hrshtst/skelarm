@@ -13,8 +13,8 @@ A lightweight, physics-based dynamics simulator for a configurable planar robot 
 The project enforces modern Python best practices and tooling.
 
 ### Core Dependencies
-* **Python:** >= 3.12
-* **Math/Physics:** `numpy`, `scipy`
+* **Python:** >= 3.12 (Supports 3.13 & 3.14 via CI)
+* **Math/Physics:** `numpy` (v2+), `scipy`
 * **Visualization (Interactive):** `PyQt6`
 * **Visualization (Static/Analysis):** `matplotlib`
 * **Configuration:** `tomllib` (built-in Python 3.11+)
@@ -22,11 +22,13 @@ The project enforces modern Python best practices and tooling.
 ### Development Environment & Quality Assurance
 * **Package Manager:** `uv` (for fast dependency resolution and venv management).
 * **Linter & Formatter:** `ruff` (strict configuration).
-* **Type Checker:** `pyright` (basic mode).
+* **Type Checker:** `pyright` (basic mode) with `np2typing` for NumPy 2.x type hints.
 * **Testing:**
     * `pytest` (standard test runner).
     * `hypothesis` (property-based testing for physics validation).
-* **Automation:** `Makefile` (entry points for lint, test, run).
+    * `nox` (test runner for multiple Python environments).
+* **Automation:** `Makefile` (entry points for lint, test, run) & `nox`.
+* **CI/CD:** GitHub Actions (configured in `.github/workflows`).
 * **Git Hooks:** `pre-commit` (enforce ruff/pyright before commit).
 
 ## 3. Directory Structure (Src-Layout)
@@ -37,7 +39,7 @@ skelarm/
 ├── .venv/                       # Managed by uv
 ├── .github/
 │   ├── workflows/
-│   │   ├── ci.yml               # CI runner (test, lint, type check)
+│   │   ├── ci.yml               # CI runner (test, lint, type check) with nox
 │   │   └── benchmark.yml        # Performance benchmarks
 │   ├── dependabot.yml           # Configuration of dependabot
 │   ├── ISSUE_TEMPLATE/          # Issue template
@@ -80,6 +82,7 @@ skelarm/
 ├── docs/                    # Documentations behind implementation
 ├── scripts/                 # Runnable utility scripts
 ├── pyproject.toml           # Unified config for uv, ruff, pyright, pytest
+├── noxfile.py               # Nox configuration for multi-env testing
 ├── Makefile                 # Task runner
 ├── .pre-commit-config.yaml  # Configurations of pre-commit
 └── README.md
@@ -125,7 +128,7 @@ skelarm/
 ## 5. Development Guidelines
 
   * **Docstrings:** All public functions must have NumPy-style docstrings.
-  * **Typing:** All function signatures must be fully type-hinted. Use `nptyping` or `numpy.typing.NDArray` for array specs.
+  * **Typing:** All function signatures must be fully type-hinted. Use `np2typing` (compatible with NumPy 2.x) for array specs.
   * **Error Handling:** Raise descriptive errors (e.g., `ConfigurationError` if link mass < 0).
 
 ## 6. Initial Task List
@@ -140,6 +143,7 @@ skelarm/
 8.  [x] Build PyQt6 visualizer.
 9.  [x] Implement TOML configuration support.
 10. [x] Add 4-DOF robot example.
+11. [x] Add multi-environment testing with `nox` and CI workflow.
 
 ## 7. Development Workflow & Commands
 
@@ -171,12 +175,12 @@ You can run these checks manually at any time.
     # Raw command: uv run pyright
     ```
 
-  * **Testing (Pytest):**
+  * **Testing (Pytest & Nox):**
 
     ```bash
-    make test           # Run all tests
-    make test-fast      # Run tests skipping slow hypothesis generation (optional)
-    # Raw command: uv run pytest
+    make test           # Run all tests in current venv
+    make nox            # Run tests across multiple Python versions (3.12, 3.13, 3.14)
+    # Raw command: uv run pytest / uv run nox
     ```
 
 ### C. The Commit Process
@@ -200,7 +204,7 @@ We use `pre-commit` to act as a gatekeeper.
 The `Makefile` should include at least these targets:
 
 ```makefile
-.PHONY: install lint format type-check test clean
+.PHONY: install lint format type-check test nox clean
 
 install:
 	uv sync
@@ -218,6 +222,9 @@ type-check:
 
 test:
 	uv run pytest
+
+nox:
+	uv run nox
 
 clean:
 	rm -rf .pytest_cache .ruff_cache .venv
