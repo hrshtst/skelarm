@@ -236,7 +236,7 @@ def compute_forward_dynamics(
     coriolis_gravity_vector = compute_coriolis_gravity_vector(temp_skeleton, grav_vec=grav_vec)
 
     rhs = tau - coriolis_gravity_vector
-    return np.linalg.solve(mass_matrix, rhs)
+    return np.linalg.solve(mass_matrix, rhs).astype(np.float64)
 
 
 def compute_kinetic_energy(skeleton: Skeleton) -> float:
