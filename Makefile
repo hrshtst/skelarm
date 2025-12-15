@@ -1,4 +1,4 @@
-.PHONY: install lint format type-check test test-cov test-fast test-serious clean all help
+.PHONY: install lint format type-check test test-cov test-fast test-serious nox clean all help
 
 # Initialize project: installs dependencies and sets up git hooks
 install:
@@ -34,6 +34,10 @@ test-fast:
 test-serious:
 	uv run pytest -m "serious"
 
+# Run tests in multiple environments using nox
+nox:
+	uv run nox
+
 # Clean up cache files
 clean:
 	rm -rf .venv
@@ -44,6 +48,7 @@ clean:
 	find . -type d -name ".ruff_cache" -exec rm -rf {} +
 	find . -type d -name "htmlcov" -exec rm -rf {} +
 	find . -type f -name ".coverage" -delete
+	find . -type d -name ".nox" -exec rm -rf {} +
 
 
 # Run all checks (useful for CI or before big commits)
@@ -61,5 +66,6 @@ help:
 	@echo "  test-cov     : Run tests with coverage report."
 	@echo "  test-fast    : Run tests skipping slow tests."
 	@echo "  test-serious : Run only serious tests."
+	@echo "  nox          : Run tests in multiple environments using nox."
 	@echo "  clean        : Clean up cache files."
 	@echo "  all          : Run all checks (format, type-check, test)."

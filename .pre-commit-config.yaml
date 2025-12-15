@@ -22,6 +22,7 @@ repos:
         args: [--fix, --exit-non-zero-on-fix, --config=pyproject.toml]
       # Run the formatter
       - id: ruff-format
+        files: \.py$
 
   - repo: local
     hooks:
