@@ -17,6 +17,7 @@ The project enforces modern Python best practices and tooling.
 * **Math/Physics:** `numpy`, `scipy`
 * **Visualization (Interactive):** `PyQt6`
 * **Visualization (Static/Analysis):** `matplotlib`
+* **Configuration:** `tomllib` (built-in Python 3.11+)
 
 ### Development Environment & Quality Assurance
 * **Package Manager:** `uv` (for fast dependency resolution and venv management).
@@ -45,7 +46,7 @@ skelarm/
 │   └── skelarm/
 │       ├── __init__.py
 │       ├── py.typed         # Marker file for static type checker
-│       ├── skeleton.py      # Core Skeleton class (state, config)
+│       ├── skeleton.py      # Core Skeleton class (state, config via TOML)
 │       ├── kinematics.py    # FK / IK solvers
 │       ├── dynamics.py      # ID / FD solvers (Equations of Motion)
 │       ├── canvas.py        # PyQt6 interactive viewer
@@ -63,12 +64,18 @@ skelarm/
 │   ├── test_simulator.py
 │   ├── test_controller.py
 │   ├── test_logger.py
+│   ├── test_config.py       # Tests for TOML configuration loading
+│   ├── test_four_dof.py     # Tests for 4-DOF robot example
 │   └── conftest.py
 ├── examples/                # Runnable scripts demonstrating usage
 │   ├── __init__.py
 │   ├── basic_kinematics.py
+│   ├── basic_plotting.py    # Basic Matplotlib plotting
 │   ├── dynamics_simulation.py
 │   ├── interactive_gui.py
+│   ├── simulate_four_dof.py # 4-DOF robot simulation
+│   ├── simple_robot.toml    # Example configuration
+│   ├── four_dof_robot.toml  # 4-DOF configuration
 │   └── reaching_control.py
 ├── docs/                    # Documentations behind implementation
 ├── scripts/                 # Runnable utility scripts
@@ -84,6 +91,7 @@ skelarm/
 
 1.  **Configuration:**
       * The robot (skeleton) is defined by a list of `Link` objects.
+      * **TOML Support:** Robots can be configured via TOML files using `Skeleton.from_toml()`.
       * Each `LinkProp` has: `length`, `mass`, `inertia`, `comx`, `comy` (relative to joint) `qmin`, `qmax`.
       * Each `Link` is instantiated by `LinkProp` object or `Mapping` object.
         *  Properties: `l`, `m`, `i`, `rgx`, `rgy` (COM relative to joint) `qmin`, `qmax`.
@@ -130,6 +138,8 @@ skelarm/
 6.  [x] Implement Forward Dynamics and Integrator (Gravity Ignored).
 7.  [x] Add `hypothesis` tests for physics consistency (Dynamics consistency and Local Energy Conservation).
 8.  [x] Build PyQt6 visualizer.
+9.  [x] Implement TOML configuration support.
+10. [x] Add 4-DOF robot example.
 
 ## 7. Development Workflow & Commands
 
