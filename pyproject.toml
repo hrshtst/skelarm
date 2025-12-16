@@ -57,6 +57,16 @@ Documentation = "https://hrshtst.github.io/skelarm/"
 requires = ["uv_build>=0.9.16,<0.10.0"]
 build-backend = "uv_build"
 
+[tool.uv.build-backend]
+source-include = [
+  "examples/**",
+  "LICENSE",
+  "Makefile",
+  "mkdocs.yml",
+  "noxfile.py",
+  "src/skelarm/py.typed",
+]
+
 [dependency-groups]
 dev = [
   "hypothesis>=6.148.7",

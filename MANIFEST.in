@@ -1,5 +1,0 @@
-include examples/*.toml
-include examples/*.py
-include LICENSE
-include README.md
-include pyproject.toml
