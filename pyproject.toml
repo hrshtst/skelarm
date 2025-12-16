@@ -3,7 +3,8 @@ name = "skelarm"
 version = "0.1.0"
 description = "A simple dynamics simulator for a configurable planar robot arm."
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "GPL-3.0-only"
+license-files = ["LICEN[CS]E*"]
 authors = [
   { name = "Hiroshi Atsuta", email = "atsuta@ieee.org" }
 ]
