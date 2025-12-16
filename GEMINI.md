@@ -79,11 +79,16 @@ skelarm/
 │   ├── simple_robot.toml    # Example configuration
 │   ├── four_dof_robot.toml  # 4-DOF configuration
 │   └── reaching_control.py
-├── docs/                    # Documentations behind implementation
+├── docs/                    # Documentations
+│   ├── api/                 # API Reference (auto-generated)
+│   ├── reference/           # Theoretical Reference (Markdown from PDF)
+│   ├── javascripts/         # JS for MathJax
+│   └── index.md             # Documentation homepage
 ├── scripts/                 # Runnable utility scripts
 ├── pyproject.toml           # Unified config for uv, ruff, pyright, pytest
 ├── noxfile.py               # Nox configuration for multi-env testing
 ├── Makefile                 # Task runner
+├── mkdocs.yml               # MkDocs configuration
 ├── .pre-commit-config.yaml  # Configurations of pre-commit
 └── README.md
 ```
@@ -144,6 +149,7 @@ skelarm/
 9.  [x] Implement TOML configuration support.
 10. [x] Add 4-DOF robot example.
 11. [x] Add multi-environment testing with `nox` and CI workflow.
+12. [x] Set up MkDocs documentation with API and Reference guides.
 
 ## 7. Development Workflow & Commands
 
@@ -191,11 +197,16 @@ We use `pre-commit` to act as a gatekeeper.
     ```bash
     git add <file1> <file2> ...
     ```
-2.  **Commit:**
+2.  **Run Pre-commit (Recommended):**
+    Running this manually before committing can save time by fixing issues (like formatting) early and avoiding commit rejections.
+    ```bash
+    uv run pre-commit run --all-files
+    ```
+3.  **Commit:**
     ```bash
     git commit -m "feat: implement recursive newton-euler"
     ```
-      * *Note:* This will automatically trigger `ruff` and `pyright`.
+      * *Note:* This will automatically trigger `ruff` and `pyright` (via pre-commit hooks).
       * If they fail, the commit is aborted. Fix the errors and try again.
       * If `ruff` auto-formats code during the hook, you must `git add` the changes again before committing.
 
@@ -230,6 +241,21 @@ clean:
 	rm -rf .pytest_cache .ruff_cache .venv
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 ```
+
+## 8. Documentation Workflow
+
+The project documentation is built using MkDocs.
+
+*   **Build Documentation:**
+    ```bash
+    make docs-build
+    ```
+*   **Serve Documentation Locally:**
+    ```bash
+    make docs-serve
+    ```
+*   **Deployment:**
+    The documentation is automatically deployed to GitHub Pages via GitHub Actions upon pushing to the `main` branch.
 
 ```
 
