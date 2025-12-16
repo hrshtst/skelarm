@@ -23,8 +23,8 @@ class LinkProp:
     i: float
     rgx: float
     rgy: float
-    qmin: float
-    qmax: float
+    qmin: float  # Radians
+    qmax: float  # Radians
 
 
 class Link:
@@ -144,10 +144,14 @@ class Skeleton:
 
             # Allow 'limits' as [min, max] or 'qmin'/'qmax' keys
             if "limits" in link_data:
-                qmin, qmax = link_data["limits"]
+                qmin_deg, qmax_deg = link_data["limits"]
             else:
-                qmin = link_data.get("qmin", -np.pi)
-                qmax = link_data.get("qmax", np.pi)
+                qmin_deg = link_data.get("qmin", -180.0)
+                qmax_deg = link_data.get("qmax", 180.0)
+
+            # Convert limits from degrees (config) to radians (internal)
+            qmin = np.deg2rad(qmin_deg)
+            qmax = np.deg2rad(qmax_deg)
 
             link_props.append(
                 LinkProp(

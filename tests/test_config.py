@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from skelarm.skeleton import Skeleton
@@ -17,7 +18,7 @@ def test_load_skeleton_from_toml(tmp_path: Path) -> None:
     mass = 2.0
     inertia = 0.5
     com = [0.5, 0.0]
-    limits = [-3.14, 3.14]
+    limits = [-180.0, 180.0]
 
     [[link]]
     length = 0.8
@@ -25,8 +26,8 @@ def test_load_skeleton_from_toml(tmp_path: Path) -> None:
     inertia = 0.3
     rgx = 0.4
     rgy = 0.1
-    qmin = -1.57
-    qmax = 1.57
+    qmin = -90.0
+    qmax = 90.0
     """
 
     config_file = tmp_path / "robot.toml"
@@ -44,8 +45,8 @@ def test_load_skeleton_from_toml(tmp_path: Path) -> None:
     assert link1.prop.i == pytest.approx(0.5)
     assert link1.prop.rgx == pytest.approx(0.5)
     assert link1.prop.rgy == pytest.approx(0.0)
-    assert link1.prop.qmin == pytest.approx(-3.14)
-    assert link1.prop.qmax == pytest.approx(3.14)
+    assert link1.prop.qmin == pytest.approx(-np.pi)
+    assert link1.prop.qmax == pytest.approx(np.pi)
 
     # Check second link
     link2 = skeleton.links[1]
@@ -54,5 +55,5 @@ def test_load_skeleton_from_toml(tmp_path: Path) -> None:
     assert link2.prop.i == pytest.approx(0.3)
     assert link2.prop.rgx == pytest.approx(0.4)
     assert link2.prop.rgy == pytest.approx(0.1)
-    assert link2.prop.qmin == pytest.approx(-1.57)
-    assert link2.prop.qmax == pytest.approx(1.57)
+    assert link2.prop.qmin == pytest.approx(-np.pi / 2)
+    assert link2.prop.qmax == pytest.approx(np.pi / 2)
