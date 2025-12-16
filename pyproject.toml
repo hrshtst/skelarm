@@ -3,7 +3,7 @@ name = "skelarm"
 version = "0.1.0"
 description = "A simple dynamics simulator for a configurable planar robot arm."
 readme = "README.md"
-license = { text = "GPL-3.0-only" }
+license = { file = "LICENSE" }
 authors = [
   { name = "Hiroshi Atsuta", email = "atsuta@ieee.org" }
 ]
@@ -60,11 +60,6 @@ build-backend = "uv_build"
 [tool.uv.build-backend]
 source-include = [
   "examples/**",
-  "LICENSE",
-  "Makefile",
-  "mkdocs.yml",
-  "noxfile.py",
-  "src/skelarm/py.typed",
 ]
 
 [dependency-groups]
