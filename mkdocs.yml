@@ -1,0 +1,69 @@
+site_name: Skelarm Documentation
+site_description: A simple dynamics simulator for a configurable planar robot arm.
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+  palette:
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: lime
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: numpy
+            show_source: true
+            show_root_heading: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.arithmatex:
+      generic: true
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+nav:
+  - Home: index.md
+  - Theory Reference:
+      - Overview: reference/index.md
+      - Differential Kinematics: reference/01_differential_kinematics.md
+      - Inverse Dynamics: reference/02_inverse_dynamics.md
+      - Forward Dynamics: reference/03_forward_dynamics.md
+      - Numerical Methods: reference/04_numerical_methods.md
+  - API Reference:
+      - Skeleton: api/skeleton.md
+      - Kinematics: api/kinematics.md
+      - Dynamics: api/dynamics.md
+      - Plotting: api/plotting.md
+      - Canvas: api/canvas.md

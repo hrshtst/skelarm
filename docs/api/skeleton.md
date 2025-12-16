@@ -1,0 +1,3 @@
+# Skeleton API
+
+::: skelarm.skeleton

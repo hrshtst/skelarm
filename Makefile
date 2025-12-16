@@ -1,9 +1,19 @@
-.PHONY: install lint format type-check test test-cov test-fast test-serious nox clean all help
+.PHONY: install lint format type-check test test-cov test-fast test-serious nox clean all help docs-build docs-serve
 
 # Initialize project: installs dependencies and sets up git hooks
 install:
 	uv sync --all-extras
 	uv run pre-commit install
+
+# Build the documentation
+docs-build:
+	uv sync --group docs
+	uv run mkdocs build
+
+# Serve the documentation locally
+docs-serve:
+	uv sync --group docs
+	uv run mkdocs serve
 
 # Check for linting errors
 lint:
@@ -69,3 +79,5 @@ help:
 	@echo "  nox          : Run tests in multiple environments using nox."
 	@echo "  clean        : Clean up cache files."
 	@echo "  all          : Run all checks (format, type-check, test)."
+	@echo "  docs-build   : Build the documentation."
+	@echo "  docs-serve   : Serve the documentation locally."

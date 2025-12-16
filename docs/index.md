@@ -148,13 +148,6 @@ We use `ruff` for linting and formatting, and `pyright` for static type checking
 *   **Type Checking:** `make type-check`
 *   **Run all checks:** `make all`
 
-## Documentation
-
-The project documentation is built using MkDocs.
-
-*   **Build Documentation:** `make docs-build`
-*   **Serve Documentation Locally:** `make docs-serve`
-
 ## License
 
 GPLv3
