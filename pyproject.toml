@@ -26,7 +26,6 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
   "Topic :: Scientific/Engineering :: Physics",
-  "Topic :: Scientific/Engineering :: Robotics",
 ]
 keywords = ["robotics", "kinematics", "dynamics", "simulation", "planar", "physics"]
 
