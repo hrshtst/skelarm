@@ -31,6 +31,16 @@ The project enforces modern Python best practices and tooling.
 * **CI/CD:** GitHub Actions (configured in `.github/workflows`).
 * **Git Hooks:** `pre-commit` (enforce ruff/pyright before commit).
 
+### Packaging & Deployment
+* **Build Backend:** `uv_build` (configured in `pyproject.toml` for fast PEP 517 builds).
+* **PyPI Metadata:** `pyproject.toml` includes Trove classifiers and keywords.
+* **Dependency Management:** `[project.optional-dependencies]` is used for `dev` and `docs` extras, ensuring `pip install skelarm[<extra>]` compatibility. `[dependency-groups]` are retained for `uv` specific workflows.
+* **License Specification:** `project.license` is set to `file = "LICENSE"` and `project.license-files = ["LICEN[CS]E*"]` for proper license inclusion.
+* **File Inclusion:** `[tool.uv.build-backend].source-include` in `pyproject.toml` explicitly includes `examples/**`.
+* **Release Automation:**
+    * `.github/workflows/create-release-draft.yml`: Automatically creates a GitHub Draft Release with auto-generated notes on `v*` tag push.
+    * `.github/workflows/release.yml`: Automatically builds and publishes to PyPI upon a GitHub Release being published (requires PyPI Trusted Publisher setup).
+
 ## 3. Directory Structure (Src-Layout)
 The project must use the `src` layout to prevent import parity issues.
 
@@ -40,7 +50,9 @@ skelarm/
 ├── .github/
 │   ├── workflows/
 │   │   ├── ci.yml               # CI runner (test, lint, type check) with nox
-│   │   └── benchmark.yml        # Performance benchmarks
+│   │   ├── benchmark.yml        # Performance benchmarks
+│   │   ├── release.yml          # PyPI publishing workflow
+│   │   └── create-release-draft.yml # Workflow to create GitHub Release draft
 │   ├── dependabot.yml           # Configuration of dependabot
 │   ├── ISSUE_TEMPLATE/          # Issue template
 │   └── PULL_REQUEST_TEMPLATE.md # Pull Request template
@@ -90,7 +102,9 @@ skelarm/
 ├── Makefile                 # Task runner
 ├── mkdocs.yml               # MkDocs configuration
 ├── .pre-commit-config.yaml  # Configurations of pre-commit
-└── README.md
+├── README.md
+├── RELEASING.md             # Guide for creating releases
+└── uv.lock                  # uv's lock file for exact dependency versions
 ```
 
 ## 4. Implementation Requirements
@@ -100,7 +114,7 @@ skelarm/
 1.  **Configuration:**
       * The robot (skeleton) is defined by a list of `Link` objects.
       * **TOML Support:** Robots can be configured via TOML files using `Skeleton.from_toml()`.
-      * Each `LinkProp` has: `length`, `mass`, `inertia`, `comx`, `comy` (relative to joint) `qmin`, `qmax`.
+      * Each `LinkProp` has: `length`, `mass`, `inertia`, `comx`, `comy` (relative to joint) `qmin`, `qmax`. Joint limits `qmin`, `qmax` in TOML configuration files are accepted in **degrees** and internally converted to **radians**.
       * Each `Link` is instantiated by `LinkProp` object or `Mapping` object.
         *  Properties: `l`, `m`, `i`, `rgx`, `rgy` (COM relative to joint) `qmin`, `qmax`.
         *  States: `q`, `dq`, `ddq`, `x`, `y`, `vx`, `vy`, `ax`, `ay`, `xg`, `yg`, `agx`, `agy`, `jx`, `jy`, `hx`, `hy`, `fx`, `fy`, `tau`, `fex`, `fey`, `rex`, `rey`, `xe`, `ye`.
