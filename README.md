@@ -6,7 +6,7 @@ A lightweight, physics-based dynamics simulator for a configurable planar robot 
 
 *   **Configurable Robot:** Define arbitrary planar robots with custom link lengths, masses, inertias, and centers of mass. Support for TOML configuration files.
 *   **Kinematics:**
-    *   Forward Kinematics (FK) to compute joint and end-effector positions.
+    *   Forward Kinematics (FK) to compute end-effector position from joint displacements.
 *   **Dynamics (Planar, No Gravity):**
     *   Inverse Dynamics (ID) using Recursive Newton-Euler algorithm.
     *   Forward Dynamics (FD) using mass matrix and Coriolis/centrifugal terms.
@@ -28,7 +28,7 @@ A lightweight, physics-based dynamics simulator for a configurable planar robot 
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/yourusername/skelarm.git
+    git clone https://github.com/hrshtst/skelarm.git
     cd skelarm
     ```
 
