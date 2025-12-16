@@ -15,6 +15,39 @@ dependencies = [
   "pyqt6>=6.10.1",
   "scipy>=1.16.3",
 ]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering :: Physics",
+  "Topic :: Scientific/Engineering :: Robotics",
+]
+keywords = ["robotics", "kinematics", "dynamics", "simulation", "planar", "physics"]
+
+[project.optional-dependencies]
+dev = [
+  "hypothesis>=6.148.7",
+  "nox>=2025.11.12",
+  "pre-commit>=4.5.0",
+  "pyright>=1.1.407",
+  "pytest>=9.0.2",
+  "pytest-cov>=7.0.0",
+  "pytest-randomly>=4.0.1",
+  "pytest-xdist>=3.8.0",
+  "ruff>=0.14.8",
+]
+docs = [
+  "mkdocs>=1.6.1",
+  "mkdocs-material>=9.5.49",
+  "mkdocstrings[python]>=0.27.0",
+  "pymdown-extensions>=10.13",
+]
 
 [project.urls]
 Repository = "https://github.com/hrshtst/skelarm"
