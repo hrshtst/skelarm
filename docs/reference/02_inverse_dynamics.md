@@ -107,7 +107,7 @@ $$
 
 ## 5. Implementation
 
-The function `skeleton_update_force` implements this backward recursion.
+The function `compute_inverse_dynamics` implements this backward recursion.
 1.  Ensure kinematics (acceleration of CoM) are updated first.
 2.  Iterate from $i=n$ down to $1$.
 3.  Compute net forces/torques required ($f_{Gi}, n_{Gi}$) from Newton's laws.

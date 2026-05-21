@@ -54,4 +54,4 @@ A crucial validation step is to ensure that the Forward Dynamics and Inverse Dyn
 
 If we compute $\tau$ from a known $\ddot{q}$ using Inverse Dynamics, and then feed that $\tau$ into Forward Dynamics, we should recover the original $\ddot{q}$ (within numerical limits).
 
-The function `skeleton_fd` should implement the construction of $H$ and $b$ and solve for $\ddot{q}$.
+The function `compute_forward_dynamics` implements the construction of $H$ and $b$ and solves for $\ddot{q}$.

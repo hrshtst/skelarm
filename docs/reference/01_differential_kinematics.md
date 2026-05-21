@@ -115,8 +115,8 @@ $$
 
 ## 5. Implementation Notes
 
-The `skeleton_t` and `link_t` structures in the codebase should maintain these values.
-- **Forward pass (`skeleton_update_state`)**: Compute $\theta_i, x_i, y_i$ and their derivatives.
+The `Skeleton` and `Link` classes in the codebase maintain these values.
+- **Forward pass (`compute_forward_kinematics`)**: Compute $\theta_i, x_i, y_i$ and their derivatives.
 - **Backward pass (`skeleton_update_jacobi`)**: Compute Jacobian columns $j_{xi}, j_{yi}$ and Coriolis bases $h_{xi}, h_{yi}$.
 
 This allows for efficient computation of endpoint velocity and acceleration given the joint state.
