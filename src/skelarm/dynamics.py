@@ -38,6 +38,7 @@ def compute_inverse_dynamics(
     prev_w = 0.0  # Angular velocity of the previous link frame
     prev_dw = 0.0  # Angular acceleration of the previous link frame
     prev_dv = -grav_vec  # Linear acceleration of the previous link origin (base)
+    prev_link_vec = np.array([0.0, 0.0], dtype=np.float64)  # Previous link's joint-to-tip vector (base frame)
 
     # Forward Pass (Base to End-effector)
     for i, link in enumerate(skeleton.links):
@@ -54,13 +55,17 @@ def compute_inverse_dynamics(
         link.w = prev_w + link.dq
         link.dw = prev_dw + link.ddq
 
-        # Vector from previous joint to current joint (in base frame)
-        r_prev_to_curr = np.array(
+        # Vector spanning the current link (current joint to its tip), in the base frame.
+        link_vec = np.array(
             [
                 link.prop.length * np.cos(link_absolute_angle),
                 link.prop.length * np.sin(link_absolute_angle),
             ]
         )
+
+        # The current joint sits at the previous link's tip, so acceleration is
+        # propagated from the previous joint across the previous link's vector.
+        r_prev_to_curr = prev_link_vec
 
         # Vector from current joint to COM (relative to link frame)
         rc_curr = np.array([link.prop.rgx, link.prop.rgy])
@@ -95,6 +100,7 @@ def compute_inverse_dynamics(
         prev_w = link.w
         prev_dw = link.dw
         prev_dv = link.dv
+        prev_link_vec = link_vec
 
     # Backward Pass (End-effector to Base)
     for i in range(skeleton.num_links - 1, -1, -1):
@@ -113,8 +119,9 @@ def compute_inverse_dynamics(
             succ_f = succ_link.f
             succ_n = succ_link.n
 
-        # Vector from current joint to COM (in base frame)
-        # Reuse calculation logic
+        # Vector from current joint to COM (in base frame). Use this link's own
+        # absolute angle (stored during the forward pass), not the loop-final value.
+        link_absolute_angle = link.q_absolute
         rc_curr = np.array([link.prop.rgx, link.prop.rgy])
         r_curr_to_base = np.array(
             [
@@ -124,24 +131,25 @@ def compute_inverse_dynamics(
         )
         rc_curr_base_frame = r_curr_to_base @ rc_curr
 
-        # Vector from COM to tip (succeeding joint) in base frame
+        # Vector from current joint to the next joint (full link) in the base frame.
+        # The succeeding link's force acts at the next joint, so this full-length
+        # vector is its moment arm about the current joint.
         l_curr_base_frame = np.array(
             [
                 link.prop.length * np.cos(link_absolute_angle),
                 link.prop.length * np.sin(link_absolute_angle),
             ]
         )
-        lc_curr_base_frame = l_curr_base_frame - rc_curr_base_frame
 
         # Force balance: f_i = F_i + f_{i+1}
         link.f = fi + succ_f
 
         # Moment balance: n_i = N_i + n_{i+1} + (r_{i, i+1} x f_{i+1}) + (r_{i, com} x F_i)
         # 2D cross product: x*fy - y*fx
-        cross_lc_succ_f = lc_curr_base_frame[0] * succ_f[1] - lc_curr_base_frame[1] * succ_f[0]
+        cross_l_succ_f = l_curr_base_frame[0] * succ_f[1] - l_curr_base_frame[1] * succ_f[0]
         cross_rc_fi = rc_curr_base_frame[0] * fi[1] - rc_curr_base_frame[1] * fi[0]
 
-        link.n = ni + succ_n + cross_lc_succ_f + cross_rc_fi
+        link.n = ni + succ_n + cross_l_succ_f + cross_rc_fi
 
         # Joint torque
         # link.n is torque ON the link.

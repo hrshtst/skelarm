@@ -266,6 +266,7 @@ def test_simulate_robot_single_link_static_no_gravity() -> None:
 # === Hypothesis Tests ===
 
 
+@pytest.mark.slow
 @given(skel=skeleton_strategy(), tau_elements=st.floats(min_value=-10.0, max_value=10.0))
 @settings(deadline=10000)  # Increase deadline to 10 seconds
 def test_dynamics_consistency_hypothesis(skel: Skeleton, tau_elements: float) -> None:
@@ -290,6 +291,7 @@ def test_dynamics_consistency_hypothesis(skel: Skeleton, tau_elements: float) ->
         assert tau_reconstructed[i] == pytest.approx(tau_input[i], abs=1e-6)
 
 
+@pytest.mark.slow
 @given(skel=skeleton_strategy())
 @settings(deadline=10000)  # Increase deadline to 10 seconds
 def test_local_energy_conservation_hypothesis(skel: Skeleton) -> None:
@@ -307,3 +309,39 @@ def test_local_energy_conservation_hypothesis(skel: Skeleton) -> None:
 
     # dKE/dt should be zero if there are no external torques and no potential energy change
     assert dke_dt == pytest.approx(0.0, abs=1e-6)
+
+
+@pytest.mark.slow
+@given(skel=skeleton_strategy())
+@settings(deadline=10000)
+def test_mass_matrix_symmetric_positive_definite_hypothesis(skel: Skeleton) -> None:
+    """The mass matrix M(q) must always be symmetric and positive-definite."""
+    mass_matrix = compute_mass_matrix(skel)
+
+    # Symmetry: M == M^T.
+    assert mass_matrix == pytest.approx(mass_matrix.T, abs=1e-9)
+
+    # Positive-definiteness: all eigenvalues strictly positive. M is symmetric, so use eigvalsh.
+    eigenvalues = np.linalg.eigvalsh(mass_matrix)
+    assert np.all(eigenvalues > 0)
+
+
+def test_two_link_dynamics_round_trip_with_gravity() -> None:
+    """ID/FD round-trip with two links and non-zero gravity: FD(tau) then ID should recover tau."""
+    link_props = [
+        LinkProp(length=1.0, m=1.5, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+        LinkProp(length=0.8, m=1.0, i=0.05, rgx=0.4, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+    ]
+    skeleton = Skeleton(link_props)
+    skeleton.q = np.array([np.pi / 6, -np.pi / 4])
+    skeleton.dq = np.array([0.3, -0.2])
+
+    grav_vec = np.array([0.0, -9.81], dtype=np.float64)
+    tau_input = np.array([0.7, -0.3])
+
+    ddq = compute_forward_dynamics(skeleton, tau_input, grav_vec=grav_vec)
+
+    skeleton.ddq = ddq
+    compute_inverse_dynamics(skeleton, grav_vec=grav_vec)
+
+    assert skeleton.tau == pytest.approx(tau_input, abs=1e-6)
