@@ -25,25 +25,15 @@ def draw_skeleton(ax: matplotlib.axes.Axes, skeleton: Skeleton, color: str = "bl
     if not skeleton.links:
         return
 
-    # Extract joint and end-effector positions
-    joint_x = [link.x for link in skeleton.links]
-    joint_y = [link.y for link in skeleton.links]
-    tip_x = [link.xe for link in skeleton.links]
-    tip_y = [link.ye for link in skeleton.links]
+    # Draw each link as a line from its start joint (x, y) to its tip (xe, ye).
+    for link in skeleton.links:
+        ax.plot([link.x, link.xe], [link.y, link.ye], color=color, linewidth=linewidth, marker="o", markersize=5)
 
-    # Combine all x and y coordinates for plotting
-    all_x_coords = [0.0, *joint_x]  # Start from base (0,0)
-    all_y_coords = [0.0, *joint_y]  # Start from base (0,0)
-
-    # For each link, draw a line from its start (joint) to its end (tip)
-    for i in range(skeleton.num_links):
-        x_coords = [skeleton.links[i].x, skeleton.links[i].xe]
-        y_coords = [skeleton.links[i].y, skeleton.links[i].ye]
-        ax.plot(x_coords, y_coords, color=color, linewidth=linewidth, marker="o", markersize=5)
-
-    # Set appropriate limits
-    all_coords = [abs(c) for c in all_x_coords + all_y_coords + tip_x + tip_y]
-    max_range = max(all_coords) * 1.1 if all_coords else 1.0  # Ensure max_range is not 0 for empty list
+    # Scale the axes to fit the base (0, 0) and every joint and tip position.
+    coords = [0.0]
+    for link in skeleton.links:
+        coords.extend((link.x, link.y, link.xe, link.ye))
+    max_range = max(abs(c) for c in coords) * 1.1
 
     ax.set_xlim(-max_range, max_range)
     ax.set_ylim(-max_range, max_range)
@@ -51,7 +41,7 @@ def draw_skeleton(ax: matplotlib.axes.Axes, skeleton: Skeleton, color: str = "bl
     ax.set_xlabel("X Position")
     ax.set_ylabel("Y Position")
     ax.set_title("Robot Arm Skeleton")
-    ax.grid()  # FBT003: Use ax.grid() instead of ax.grid(True)
+    ax.grid()
 
 
 def plot_trajectory(
@@ -77,4 +67,4 @@ def plot_trajectory(
     ax.set_xlabel("X Position")
     ax.set_ylabel("Y Position")
     ax.set_title("Tip Trajectory")
-    ax.grid()  # FBT003: Use ax.grid() instead of ax.grid(True)
+    ax.grid()

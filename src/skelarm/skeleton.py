@@ -170,8 +170,6 @@ class Skeleton:
     @property
     def q(self) -> NDArray[np.float64]:
         """Return current joint angles."""
-        import numpy as np  # Import at runtime for actual usage
-
         return np.array([link.q for link in self.links], dtype=np.float64)
 
     @q.setter
@@ -186,8 +184,6 @@ class Skeleton:
     @property
     def dq(self) -> NDArray[np.float64]:
         """Return current joint angular velocities."""
-        import numpy as np  # Import at runtime for actual usage
-
         return np.array([link.dq for link in self.links], dtype=np.float64)
 
     @dq.setter
@@ -202,8 +198,6 @@ class Skeleton:
     @property
     def ddq(self) -> NDArray[np.float64]:
         """Return current joint angular accelerations."""
-        import numpy as np  # Import at runtime for actual usage
-
         return np.array([link.ddq for link in self.links], dtype=np.float64)
 
     @ddq.setter
@@ -218,8 +212,6 @@ class Skeleton:
     @property
     def tau(self) -> NDArray[np.float64]:
         """Return current joint torques."""
-        import numpy as np
-
         return np.array([link.tau for link in self.links], dtype=np.float64)
 
     @tau.setter
