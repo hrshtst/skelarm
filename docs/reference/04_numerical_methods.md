@@ -5,7 +5,8 @@ This document describes the numerical methods used to solve the mathematical mod
 ## 1. Linear Equation Solver
 
 To solve the forward dynamics equation $H \ddot{q} = \text{RHS}$, we solve a linear system of the form $Ax = b$.
-Since $H$ is symmetric and positive definite, robust methods like Cholesky decomposition could be used, but for general purposes, **Gaussian Elimination** is implemented.
+Since $H$ is symmetric and positive definite, robust methods like Cholesky decomposition could be used.
+The `skelarm` implementation delegates this to NumPy's `numpy.linalg.solve` (an LU-based LAPACK solver). The **Gaussian Elimination** algorithm below is presented as the classic method that such solvers build upon.
 
 ### Gaussian Elimination
 The process involves transforming the augmented matrix $[A | b]$ into an upper triangular form (forward elimination) and then performing back substitution to find $x$.
@@ -29,6 +30,8 @@ The process involves transforming the augmented matrix $[A | b]$ into an upper t
 
 To simulate the motion over time, we integrate the joint acceleration $\ddot{q}$ to get velocity $\dot{q}$ and position $q$.
 The state of the system is $X = [q^T, \dot{q}^T]^T$. The system dynamics can be written as $\dot{X} = f(t, X)$.
+
+`skelarm` performs this integration with SciPy's `scipy.integrate.solve_ivp` using the adaptive `RK45` method (the Dormand–Prince embedded Runge–Kutta pair). The fixed-step Euler and RK4 schemes below are background on the underlying ideas; the adaptive solver varies its step size automatically to control error.
 
 ### Euler's Method
 The simplest numerical integration method. It approximates the next state based on the current slope.
