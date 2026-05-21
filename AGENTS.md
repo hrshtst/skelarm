@@ -26,6 +26,15 @@ First-time setup: `uv sync --all-extras && uv run pre-commit install`.
 - ruff runs rule set `"ALL"` with project-specific ignores — run `make format` rather than guessing.
 - Type checker is **pyright** (basic mode), not mypy.
 
+## Development methodology — TDD
+
+Follow red-green-refactor for all behavioral changes; don't write implementation before a failing test exists:
+1. **Red** — write a test capturing the desired behavior, run it, and confirm it fails *for the expected reason*.
+2. **Green** — write the minimum code to make it pass.
+3. **Refactor** — clean up with the test green.
+
+For bug fixes, first add a test that reproduces the bug (red), then fix it. Where behavior is a mathematical relationship (FK/IK, ID/FD round-trips, energy conservation), prefer expressing it as a `hypothesis` property rather than a single example.
+
 ## Physics gotchas
 
 - **Gravity is ignored** — the arm operates on a horizontal plane. Do not add gravity terms to dynamics.
