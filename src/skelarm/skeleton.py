@@ -42,10 +42,12 @@ class Link:
         if isinstance(properties, LinkProp):
             self.prop = properties
         elif isinstance(properties, dict):
-            # Ensure 'l' is handled if passed in dict, convert to 'length'
-            if "l" in properties:
-                properties["length"] = properties.pop("l")
-            self.prop = LinkProp(**properties)
+            # Copy first so the caller's dict is not mutated, then accept 'l' as
+            # an alias for 'length'.
+            props = dict(properties)
+            if "l" in props:
+                props["length"] = props.pop("l")
+            self.prop = LinkProp(**props)
         else:
             error_msg = "Properties must be a LinkProp object or a dictionary."
             raise TypeError(error_msg)

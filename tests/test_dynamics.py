@@ -161,6 +161,17 @@ def test_compute_coriolis_gravity_vector_single_link_static_no_gravity() -> None
     assert h_vector[0] == pytest.approx(expected_h)
 
 
+def test_forward_dynamics_singular_mass_matrix_raises_informative_error() -> None:
+    """A degenerate (massless, inertia-less) link yields a singular M and a clear error."""
+    degenerate_link = LinkProp(length=1.0, m=0.0, i=0.0, rgx=0.0, rgy=0.0, qmin=-np.pi, qmax=np.pi)
+    skeleton = Skeleton(link_props=[degenerate_link])
+    skeleton.q = np.array([0.0])
+    skeleton.dq = np.array([0.0])
+
+    with pytest.raises(ValueError, match="singular"):
+        compute_forward_dynamics(skeleton, tau=np.array([0.0]))
+
+
 def test_compute_forward_dynamics_single_link_consistency() -> None:
     """Test compute_forward_dynamics for consistency with inverse dynamics.
 

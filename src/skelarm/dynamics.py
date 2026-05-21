@@ -265,7 +265,14 @@ def compute_forward_dynamics(
     coriolis_gravity_vector = compute_coriolis_gravity_vector(temp_skeleton, grav_vec=grav_vec)
 
     rhs = tau - coriolis_gravity_vector
-    return np.linalg.solve(mass_matrix, rhs).astype(np.float64)
+    try:
+        return np.linalg.solve(mass_matrix, rhs).astype(np.float64)
+    except np.linalg.LinAlgError as exc:
+        msg = (
+            "Mass matrix is singular for the current configuration; forward dynamics has no unique "
+            "solution. Check for links with zero mass and inertia or other degenerate properties."
+        )
+        raise ValueError(msg) from exc
 
 
 def compute_kinetic_energy(skeleton: Skeleton) -> float:
