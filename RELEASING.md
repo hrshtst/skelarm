@@ -32,7 +32,7 @@ git commit -m "chore: Bump version to v0.2.0" # Use your new version
 Create an annotated Git tag matching the new version number, prefixed with `v` (e.g., `v0.2.0`). Then, push both the commit and the new tag to your GitHub repository.
 
 ```bash
-git tag v0.2.0              # Use your new version
+git tag -a v0.2.0 -m "v0.2.0"  # Use your new version (annotated tag)
 git push origin main        # Assuming 'main' is your primary branch
 git push origin v0.2.0      # Push the new tag
 ```

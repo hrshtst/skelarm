@@ -170,5 +170,7 @@ poetry.toml
 # LSP config files
 pyrightconfig.json
 
-# Claude Code
-.claude/
+# Claude Code — share skills and team settings; keep personal settings local
+.claude/*
+!.claude/skills/
+!.claude/settings.json
