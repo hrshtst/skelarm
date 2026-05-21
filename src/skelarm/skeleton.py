@@ -31,11 +31,13 @@ class Link:
     """Represents a single link of the robot arm."""
 
     def __init__(self, properties: LinkProp | dict[str, Any]) -> None:
-        """
-        Initialize a Link object from LinkProp or a dictionary.
+        """Initialize a Link object from LinkProp or a dictionary.
 
-        :param properties: Either a LinkProp object or a dictionary containing
-                           link properties ('length', 'm', 'i', 'rgx', 'rgy', 'qmin', 'qmax').
+        Parameters
+        ----------
+        properties : LinkProp | dict[str, Any]
+            Either a LinkProp object or a dictionary containing link properties
+            ('length', 'm', 'i', 'rgx', 'rgy', 'qmin', 'qmax').
         """
         if isinstance(properties, LinkProp):
             self.prop = properties
@@ -108,21 +110,29 @@ class Skeleton:
     """Represents the entire robot arm (skeleton)."""
 
     def __init__(self, link_props: Sequence[LinkProp | dict[str, Any]]) -> None:
-        """
-        Initialize the Skeleton with a list of link properties.
+        """Initialize the Skeleton with a list of link properties.
 
-        :param link_props: A list of LinkProp objects or dictionaries, one for each link.
+        Parameters
+        ----------
+        link_props : Sequence[LinkProp | dict[str, Any]]
+            A list of LinkProp objects or dictionaries, one for each link.
         """
         self.links: list[Link] = [Link(prop) for prop in link_props]
         self.num_links: int = len(self.links)
 
     @classmethod
     def from_toml(cls, file_path: str | Path) -> Skeleton:
-        """
-        Create a Skeleton from a TOML configuration file.
+        """Create a Skeleton from a TOML configuration file.
 
-        :param file_path: Path to the TOML file.
-        :return: A new Skeleton instance.
+        Parameters
+        ----------
+        file_path : str | Path
+            Path to the TOML file.
+
+        Returns
+        -------
+        Skeleton
+            A new Skeleton instance.
         """
         path = Path(file_path)
         with path.open("rb") as f:

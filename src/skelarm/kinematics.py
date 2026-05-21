@@ -18,7 +18,10 @@ def compute_forward_kinematics(skeleton: Skeleton) -> None:
 
     The base of the robot arm is assumed to be at (0, 0) with zero velocity.
 
-    :param skeleton: The Skeleton object containing the robot arm's links and joint angles.
+    Parameters
+    ----------
+    skeleton : Skeleton
+        The Skeleton object containing the robot arm's links and joint angles.
     """
     current_x = 0.0
     current_y = 0.0

@@ -14,13 +14,18 @@ from skelarm.skeleton import Skeleton
 
 
 def draw_skeleton(ax: matplotlib.axes.Axes, skeleton: Skeleton, color: str = "blue", linewidth: float = 2.0) -> None:
-    """
-    Draw the robot arm skeleton on a given Matplotlib Axes object.
+    """Draw the robot arm skeleton on a given Matplotlib Axes object.
 
-    :param ax: The Matplotlib Axes object to draw on.
-    :param skeleton: The Skeleton object containing the robot arm's links.
-    :param color: Color of the robot arm links.
-    :param linewidth: Width of the lines representing the links.
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The Matplotlib Axes object to draw on.
+    skeleton : Skeleton
+        The Skeleton object containing the robot arm's links.
+    color : str, optional
+        Color of the robot arm links.
+    linewidth : float, optional
+        Width of the lines representing the links.
     """
     if not skeleton.links:
         return
@@ -52,15 +57,22 @@ def plot_trajectory(
     linestyle: str = "-",
     linewidth: float = 1.0,
 ) -> None:
-    """
-    Plot a 2D trajectory on a given Matplotlib Axes object.
+    """Plot a 2D trajectory on a given Matplotlib Axes object.
 
-    :param ax: The Matplotlib Axes object to draw on.
-    :param trajectory_x: NumPy array of x-coordinates for the trajectory.
-    :param trajectory_y: NumPy array of y-coordinates for the trajectory.
-    :param color: Color of the trajectory line.
-    :param linestyle: Style of the trajectory line (e.g., '-', '--', ':').
-    :param linewidth: Width of the trajectory line.
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The Matplotlib Axes object to draw on.
+    trajectory_x : NDArray[np.float64]
+        Array of x-coordinates for the trajectory.
+    trajectory_y : NDArray[np.float64]
+        Array of y-coordinates for the trajectory.
+    color : str, optional
+        Color of the trajectory line.
+    linestyle : str, optional
+        Style of the trajectory line (e.g., '-', '--', ':').
+    linewidth : float, optional
+        Width of the trajectory line.
     """
     ax.plot(trajectory_x, trajectory_y, color=color, linestyle=linestyle, linewidth=linewidth, label="Tip Trajectory")
     ax.legend()

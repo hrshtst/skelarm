@@ -21,10 +21,14 @@ def compute_inverse_dynamics(
 ) -> None:
     """Compute the inverse dynamics of the robot arm using the Recursive Newton-Euler algorithm.
 
-    Updates the `tau` (joint torque) for each link in the skeleton.
+    Updates the ``tau`` (joint torque) for each link in the skeleton.
 
-    :param skeleton: The Skeleton object containing the robot arm's links and their states.
-    :param grav_vec: A 2D NumPy array representing the gravity vector. Defaults to zero (planar motion).
+    Parameters
+    ----------
+    skeleton : Skeleton
+        The Skeleton object containing the robot arm's links and their states.
+    grav_vec : NDArray[np.float64] | None, optional
+        A 2D gravity vector. Defaults to zero (planar motion).
     """
     if grav_vec is None:
         grav_vec = np.array([0.0, 0.0], dtype=np.float64)
@@ -151,9 +155,17 @@ def compute_mass_matrix(
 ) -> NDArray[np.float64]:
     """Compute the mass matrix M(q) for the robot arm.
 
-    :param skeleton: The Skeleton object.
-    :param _grav_vec: Ignored, should be zero for mass matrix.
-    :return: The N x N mass matrix.
+    Parameters
+    ----------
+    skeleton : Skeleton
+        The Skeleton object.
+    _grav_vec : NDArray[np.float64] | None, optional
+        Ignored; the mass matrix is computed with zero gravity.
+
+    Returns
+    -------
+    NDArray[np.float64]
+        The N x N mass matrix.
     """
     # Mass matrix calculation requires zero gravity
     # We pass explicit zero vector to ensure no gravity influence
@@ -190,9 +202,17 @@ def compute_coriolis_gravity_vector(
 ) -> NDArray[np.float64]:
     """Compute the Coriolis and gravity vector h(q, dq).
 
-    :param skeleton: The Skeleton object.
-    :param grav_vec: The gravity vector.
-    :return: The N-dimensional vector h.
+    Parameters
+    ----------
+    skeleton : Skeleton
+        The Skeleton object.
+    grav_vec : NDArray[np.float64] | None, optional
+        The gravity vector. Defaults to zero (planar motion).
+
+    Returns
+    -------
+    NDArray[np.float64]
+        The N-dimensional vector h.
     """
     if grav_vec is None:
         grav_vec = np.array([0.0, 0.0], dtype=np.float64)
@@ -223,10 +243,19 @@ def compute_forward_dynamics(
 ) -> NDArray[np.float64]:
     """Compute joint accelerations ddq given torques.
 
-    :param skeleton: The Skeleton object.
-    :param tau: Joint torques.
-    :param grav_vec: Gravity vector.
-    :return: Joint accelerations ddq.
+    Parameters
+    ----------
+    skeleton : Skeleton
+        The Skeleton object.
+    tau : NDArray[np.float64]
+        Joint torques.
+    grav_vec : NDArray[np.float64] | None, optional
+        The gravity vector. Defaults to zero (planar motion).
+
+    Returns
+    -------
+    NDArray[np.float64]
+        Joint accelerations ddq.
     """
     if grav_vec is None:
         grav_vec = np.array([0.0, 0.0], dtype=np.float64)
@@ -242,8 +271,15 @@ def compute_forward_dynamics(
 def compute_kinetic_energy(skeleton: Skeleton) -> float:
     """Compute the total kinetic energy of the robot arm.
 
-    :param skeleton: The Skeleton object with link velocities (w, v, vc) computed.
-    :return: The total kinetic energy.
+    Parameters
+    ----------
+    skeleton : Skeleton
+        The Skeleton object with link velocities (w, v, vc) computed.
+
+    Returns
+    -------
+    float
+        The total kinetic energy.
     """
     total_ke = 0.0
     for link in skeleton.links:
@@ -267,10 +303,19 @@ def compute_kinetic_energy_rate(
     In the context of the dynamics equation M*ddq + h = tau,
     dKE/dt should be dq^T * (M*ddq + h). This must equal dq^T * tau_applied.
 
-    :param skeleton: The Skeleton object with current q and dq.
-    :param tau: The N-dimensional vector of joint torques.
-    :param grav_vec: The gravity vector.
-    :return: The rate of change of kinetic energy.
+    Parameters
+    ----------
+    skeleton : Skeleton
+        The Skeleton object with current q and dq.
+    tau : NDArray[np.float64]
+        The N-dimensional vector of joint torques.
+    grav_vec : NDArray[np.float64] | None, optional
+        The gravity vector. Defaults to zero (planar motion).
+
+    Returns
+    -------
+    float
+        The rate of change of kinetic energy.
     """
     if grav_vec is None:
         grav_vec = np.array([0.0, 0.0], dtype=np.float64)
@@ -302,15 +347,28 @@ def simulate_robot(
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """Simulate robot dynamics.
 
-    :param initial_skeleton: The initial Skeleton state (q, dq).
-    :param time_span: A tuple (start_time, end_time) for the simulation.
-    :param control_torques_func: A callable function `f(t, skeleton) -> tau` that returns
-                                 the N-dimensional control torques for the current time and skeleton state.
-    :param grav_vec: The gravity vector.
-    :param dt: Time step for the simulation, used for output points.
-    :param rtol: Relative tolerance for the ODE solver.
-    :param atol: Absolute tolerance for the ODE solver.
-    :return: A tuple (times, q_trajectory, dq_trajectory) of NumPy arrays.
+    Parameters
+    ----------
+    initial_skeleton : Skeleton
+        The initial Skeleton state (q, dq).
+    time_span : tuple[float, float]
+        A tuple (start_time, end_time) for the simulation.
+    control_torques_func : Callable[[float, Skeleton], NDArray[np.float64]]
+        A callable ``f(t, skeleton) -> tau`` returning the N-dimensional control
+        torques for the current time and skeleton state.
+    grav_vec : NDArray[np.float64] | None, optional
+        The gravity vector. Defaults to zero (planar motion).
+    dt : float, optional
+        Time step for the simulation, used for output points.
+    rtol : float, optional
+        Relative tolerance for the ODE solver.
+    atol : float, optional
+        Absolute tolerance for the ODE solver.
+
+    Returns
+    -------
+    tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
+        A tuple (times, q_trajectory, dq_trajectory) of NumPy arrays.
     """
     if grav_vec is None:
         grav_vec = np.array([0.0, 0.0], dtype=np.float64)
