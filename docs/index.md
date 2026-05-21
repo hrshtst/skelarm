@@ -161,11 +161,11 @@ GPLv3
 
 ## AI Assistance & Development Workflow
 
-This project is developed with the assistance of an AI coding agent using the [Gemini CLI](https://geminicli.com/) tool. The AI is also used to generate commit messages and parts of the documentation, including API and theoretical reference sections.
+This project is developed with the assistance of AI coding agents. The AI is also used to generate commit messages and parts of the documentation, including API and theoretical reference sections.
 
 **Workflow:**
-1.  **Context & Theory (Human):** The maintainer, **[Hiroshi Atsuta](https://github.com/hrshtst)**, establishes the project roadmap in `GEMINI.md` and writes the theoretical background implemented as documentation in [docs/reference/](docs/reference/).
-2.  **Scaffolding (AI):** The AI assistant uses these documents and the constraints defined in `GEMINI.md` to implement code scaffolding and initial logic.
+1.  **Context & Theory (Human):** The maintainer, **[Hiroshi Atsuta](https://github.com/hrshtst)**, establishes the project guidance in `AGENTS.md` and writes the theoretical background implemented as documentation in [docs/reference/](docs/reference/).
+2.  **Scaffolding (AI):** The AI assistant uses these documents and the constraints defined in `AGENTS.md` to implement code scaffolding and initial logic.
 3.  **Review & Revision (Human):** The maintainer reviews, tests, and revises the generated code to ensure quality and correctness. This cycle is repeated during the development.
 
 **Responsibility:**
