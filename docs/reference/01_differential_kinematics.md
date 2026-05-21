@@ -58,6 +58,9 @@ $$
 
 ## 3. Jacobian Matrix
 
+!!! note "Theory only"
+    Sections 3 and 4 describe the Jacobian and Coriolis-basis formulation but are **not yet implemented** in the Python port. `compute_forward_kinematics` currently computes link positions, velocities, and COM accelerations only.
+
 The relationship between the endpoint velocity $(\dot{x}, \dot{y})$ and the joint velocities $\dot{q} = [\dot{q}_1, \dots, \dot{q}_n]^T$ is linear and defined by the Jacobian matrix $J$:
 
 $$
@@ -105,11 +108,19 @@ $$
 
 where $h_{xi}$ and $h_{yi}$ represent the basis for centripetal and Coriolis accelerations.
 
-**Recursive computation (backward):**
+These bases are the time derivatives of the Jacobian columns ($h_{xi} = \dot{j}_{xi}$, $h_{yi} = \dot{j}_{yi}$), so geometrically:
 $$
 \begin{aligned}
-h_{xi} &= -(\dot{y}_n - \dot{y}_{i-1}) = -\sum_{j=i}^n j_{yj} \dot{q}_j \\
-h_{yi} &= \dot{x}_n - \dot{x}_{i-1} = \sum_{j=i}^n j_{xj} \dot{q}_j
+h_{xi} &= -(\dot{y}_n - \dot{y}_{i-1}) \\
+h_{yi} &= \dot{x}_n - \dot{x}_{i-1}
+\end{aligned}
+$$
+
+**Recursive computation (backward, for $i = n, \dots, 1$, with $h_{x(n+1)} = h_{y(n+1)} = 0$):**
+$$
+\begin{aligned}
+h_{xi} &= h_{x(i+1)} - \dot{\theta}_i l_i \cos \theta_i \\
+h_{yi} &= h_{y(i+1)} - \dot{\theta}_i l_i \sin \theta_i
 \end{aligned}
 $$
 
@@ -117,6 +128,6 @@ $$
 
 The `Skeleton` and `Link` classes in the codebase maintain these values.
 - **Forward pass (`compute_forward_kinematics`)**: Compute $\theta_i, x_i, y_i$ and their derivatives.
-- **Backward pass (`skeleton_update_jacobi`)**: Compute Jacobian columns $j_{xi}, j_{yi}$ and Coriolis bases $h_{xi}, h_{yi}$.
+- **Backward pass (Jacobian)**: Compute Jacobian columns $j_{xi}, j_{yi}$ and Coriolis bases $h_{xi}, h_{yi}$. *(Not yet implemented in the Python port — see the note in Section 3.)*
 
-This allows for efficient computation of endpoint velocity and acceleration given the joint state.
+This would allow for efficient computation of endpoint velocity and acceleration given the joint state.
