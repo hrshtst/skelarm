@@ -18,6 +18,7 @@ Consider a planar $n$-link arm.
 The velocity of each link and joint can be computed recursively from the base (link 0) to the endpoint (link $n$).
 
 **Base conditions (fixed base):**
+
 $$
 \begin{aligned}
 \dot{\theta}_0 &= 0 \\
@@ -27,6 +28,7 @@ $$
 $$
 
 **Recursive step (for $i = 1, \dots, n$):**
+
 $$
 \begin{aligned}
 \dot{\theta}_i &= \dot{\theta}_{i-1} + \dot{q}_i \\
@@ -39,6 +41,7 @@ $$
 Similarly, acceleration can be computed recursively.
 
 **Base conditions:**
+
 $$
 \begin{aligned}
 \ddot{\theta}_0 &= 0 \\
@@ -48,6 +51,7 @@ $$
 $$
 
 **Recursive step (for $i = 1, \dots, n$):**
+
 $$
 \begin{aligned}
 \ddot{\theta}_i &= \ddot{\theta}_{i-1} + \ddot{q}_i \\
@@ -68,6 +72,7 @@ $$
 $$
 
 Or effectively:
+
 $$
 \dot{x} = \sum_{i=1}^n j_{xi} \dot{q}_i, \quad \dot{y} = \sum_{i=1}^n j_{yi} \dot{q}_i
 $$
@@ -76,9 +81,13 @@ $$
 The elements of the Jacobian matrix can be computed recursively *backward* from the endpoint to the base.
 
 **Base conditions (virtual link $n+1$):**
-$$j_{x(n+1)} = 0, \quad j_{y(n+1)} = 0$$
+
+$$
+j_{x(n+1)} = 0, \quad j_{y(n+1)} = 0
+$$
 
 **Recursive step (for $i = n, \dots, 1$):**
+
 $$
 \begin{aligned}
 j_{xi} &= j_{x(i+1)} - l_i \sin \theta_i \\
@@ -87,12 +96,14 @@ j_{yi} &= j_{y(i+1)} + l_i \cos \theta_i
 $$
 
 Alternatively, geometrically:
+
 $$
 \begin{aligned}
 j_{xi} &= -(y_n - y_{i-1}) \\
 j_{yi} &= x_n - x_{i-1}
 \end{aligned}
 $$
+
 where $(x_n, y_n)$ is the endpoint position and $(x_{i-1}, y_{i-1})$ is the position of the $(i-1)$-th joint (the origin of link $i$).
 
 ## 4. Centripetal and Coriolis Forces
@@ -109,6 +120,7 @@ $$
 where $h_{xi}$ and $h_{yi}$ represent the basis for centripetal and Coriolis accelerations.
 
 These bases are the time derivatives of the Jacobian columns ($h_{xi} = \dot{j}_{xi}$, $h_{yi} = \dot{j}_{yi}$), so geometrically:
+
 $$
 \begin{aligned}
 h_{xi} &= -(\dot{y}_n - \dot{y}_{i-1}) \\
@@ -117,6 +129,7 @@ h_{yi} &= \dot{x}_n - \dot{x}_{i-1}
 $$
 
 **Recursive computation (backward, for $i = n, \dots, 1$, with $h_{x(n+1)} = h_{y(n+1)} = 0$):**
+
 $$
 \begin{aligned}
 h_{xi} &= h_{x(i+1)} - \dot{\theta}_i l_i \cos \theta_i \\

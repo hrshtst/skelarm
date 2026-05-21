@@ -42,6 +42,7 @@ $$
 q_{k+1} &= q_k + \dot{q}_k \Delta t
 \end{aligned}
 $$
+
 where $\Delta t$ is the time step.
 **Error:** $O(\Delta t)$ (Global error). It is often unstable or inaccurate for stiff systems or large steps.
 
@@ -49,6 +50,7 @@ where $\Delta t$ is the time step.
 The classical 4th-order Runge-Kutta method provides much higher accuracy by sampling the slope at four points within the time step.
 
 Let $y_k$ be the state variable (e.g., $q$ or $\dot{q}$).
+
 $$
 y_{k+1} = y_k + \frac{\Delta t}{6} (k_1 + 2k_2 + 2k_3 + k_4)
 $$

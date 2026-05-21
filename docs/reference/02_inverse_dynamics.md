@@ -10,6 +10,7 @@ For each link $i$, we define:
 - $I_i$: Moment of inertia about the CoM.
 
 The CoM is defined relative to the joint frame by offsets $r_{ix}$ (longitudinal) and $r_{iy}$ (perpendicular).
+
 $$
 \begin{aligned}
 x_{Gi} &= x_{i-1} + r_{ix} \cos \theta_i - r_{iy} \sin \theta_i \\
@@ -46,6 +47,7 @@ The net force and torque on link $i$ are the sum of these interactions.
 Note that link $i$ is connected to link $i-1$ (at joint $i$) and link $i+1$ (at joint $i+1$).
 
 **Force Balance:**
+
 $$
 \begin{aligned}
 f_{Gix} &= f_{ix} - f_{(i+1)x} + f_{Eix} \\
@@ -54,6 +56,7 @@ f_{Giy} &= f_{iy} - f_{(i+1)y} + f_{Eiy}
 $$
 
 **Torque Balance:**
+
 $$
 \begin{aligned}
 n_{Gi} &= \tau_i - \tau_{i+1} \\
@@ -68,6 +71,7 @@ $$
 To find the joint torques $\tau_i$, we compute recursively **backward** from the tip ($n$) to the base ($1$).
 
 **Base conditions (Tip):**
+
 $$
 f_{(n+1)x} = 0, \quad f_{(n+1)y} = 0, \quad \tau_{n+1} = 0
 $$
@@ -103,6 +107,7 @@ $$
        &\quad - (x_{Gi} - x_{i-1}) f_{Giy} + (y_{Gi} - y_{i-1}) f_{Gix}
 \end{aligned}
 $$
+
 *(Note: The exact formulation in code may vary slightly in term grouping, but follows Newton-Euler logic.)*
 
 ## 5. Implementation
