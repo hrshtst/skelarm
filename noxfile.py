@@ -16,7 +16,8 @@ def tests(session: nox.Session) -> None:
     # Install the package itself
     session.install(".")
 
-    session.run("pytest")
+    # Enforce a coverage floor in CI so coverage cannot silently regress.
+    session.run("pytest", "--cov=skelarm", "--cov-fail-under=78")
 
 
 @nox.session
