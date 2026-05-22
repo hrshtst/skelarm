@@ -20,7 +20,7 @@ where:
 !!! note "Mapping to the implementation"
     - In the code, $H$ is the `mass_matrix` ($M$) returned by `compute_mass_matrix`, and $b$ is the `coriolis_gravity_vector` ($h$) returned by `compute_coriolis_gravity_vector`.
     - The arm is modelled on a horizontal plane, so **gravity is ignored by default**: the gravity term in $b$ vanishes unless a non-zero `grav_vec` is passed explicitly.
-    - The external-force term $J_E^T f_E$ is **not** applied by `compute_forward_dynamics`; external tip forces are only consumed by `compute_inverse_dynamics`.
+    - The external-force term $J_E^T f_E$ is applied through the `fex`/`fey` and `rex`/`rey` fields on each `Link`; `compute_forward_dynamics` preserves its torque-only function signature and reads those loads from the skeleton state.
 
 ## 2. Derivation and Components
 

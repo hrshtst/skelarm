@@ -9,10 +9,37 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.integrate import solve_ivp
 
+from skelarm.kinematics import compute_forward_kinematics
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from skelarm.skeleton import Skeleton
+
+
+def _cross_2d(a: NDArray[np.float64], b: NDArray[np.float64]) -> float:
+    """Return the scalar z component of a 2D cross product."""
+    return float(a[0] * b[1] - a[1] * b[0])
+
+
+def _rotate_to_base(vector: NDArray[np.float64], angle: float) -> NDArray[np.float64]:
+    """Rotate a 2D vector from the link frame into the base frame."""
+    cos_angle = np.cos(angle)
+    sin_angle = np.sin(angle)
+    return np.array(
+        [
+            cos_angle * vector[0] - sin_angle * vector[1],
+            sin_angle * vector[0] + cos_angle * vector[1],
+        ],
+        dtype=np.float64,
+    )
+
+
+def _clear_external_forces(skeleton: Skeleton) -> None:
+    """Clear external loads on a temporary skeleton."""
+    for link in skeleton.links:
+        link.fex = 0.0
+        link.fey = 0.0
 
 
 def compute_inverse_dynamics(
@@ -33,86 +60,20 @@ def compute_inverse_dynamics(
     if grav_vec is None:
         grav_vec = np.array([0.0, 0.0], dtype=np.float64)
 
-    # Initialize base angular and linear velocities/accelerations
-    # Assuming base is fixed at (0,0) with no rotation
-    prev_w = 0.0  # Angular velocity of the previous link frame
-    prev_dw = 0.0  # Angular acceleration of the previous link frame
-    prev_dv = -grav_vec  # Linear acceleration of the previous link origin (base)
-    prev_link_vec = np.array([0.0, 0.0], dtype=np.float64)  # Previous link's joint-to-tip vector (base frame)
-
-    # Forward Pass (Base to End-effector)
-    for i, link in enumerate(skeleton.links):
-        # Rotation matrix from previous frame to current frame (for 2D, purely angular)
-        if i == 0:
-            link_absolute_angle = link.q
-        else:
-            prev_link = skeleton.links[i - 1]
-            link_absolute_angle = prev_link.q_absolute + link.q
-
-        link.q_absolute = link_absolute_angle
-
-        # Angular velocity and acceleration (scalar sum for 2D)
-        link.w = prev_w + link.dq
-        link.dw = prev_dw + link.ddq
-
-        # Vector spanning the current link (current joint to its tip), in the base frame.
-        link_vec = np.array(
-            [
-                link.prop.length * np.cos(link_absolute_angle),
-                link.prop.length * np.sin(link_absolute_angle),
-            ]
-        )
-
-        # The current joint sits at the previous link's tip, so acceleration is
-        # propagated from the previous joint across the previous link's vector.
-        r_prev_to_curr = prev_link_vec
-
-        # Vector from current joint to COM (relative to link frame)
-        rc_curr = np.array([link.prop.rgx, link.prop.rgy])
-
-        # Rotate rc_curr to base frame
-        r_curr_to_base = np.array(
-            [
-                [np.cos(link_absolute_angle), -np.sin(link_absolute_angle)],
-                [np.sin(link_absolute_angle), np.cos(link_absolute_angle)],
-            ]
-        )
-        rc_curr_base_frame = r_curr_to_base @ rc_curr
-
-        # Linear acceleration of link origin (joint)
-        # 2D cross product terms:
-        # dw x r = [-dw * ry, dw * rx]
-        # w x (w x r) = [-w^2 * rx, -w^2 * ry]
-
-        cross_dw_r_prev = np.array([-prev_dw * r_prev_to_curr[1], prev_dw * r_prev_to_curr[0]])
-        term3 = np.array([-(prev_w**2) * r_prev_to_curr[0], -(prev_w**2) * r_prev_to_curr[1]])
-
-        link.dv = prev_dv + cross_dw_r_prev + term3
-
-        # Linear acceleration of center of mass (COM)
-        # dvc_i = dv_i + dw_i x rc_i + w_i x (w_i x rc_i)
-        cross_dw_rc = np.array([-link.dw * rc_curr_base_frame[1], link.dw * rc_curr_base_frame[0]])
-        term_com3 = np.array([-(link.w**2) * rc_curr_base_frame[0], -(link.w**2) * rc_curr_base_frame[1]])
-
-        link.dvc = link.dv + cross_dw_rc + term_com3
-
-        # Update for next iteration
-        prev_w = link.w
-        prev_dw = link.dw
-        prev_dv = link.dv
-        prev_link_vec = link_vec
+    compute_forward_kinematics(skeleton)
 
     # Backward Pass (End-effector to Base)
     for i in range(skeleton.num_links - 1, -1, -1):
         link = skeleton.links[i]
 
-        # fi is the inertial force. Gravity is handled via initial prev_dv.
-        fi = link.prop.m * link.dvc
+        # fi is the inertial force with optional gravity folded into the
+        # effective COM acceleration.
+        fi = link.prop.m * (link.dvc - grav_vec)
         ni = link.prop.i * link.dw
 
         # Forces/moments from the succeeding link
         if i == skeleton.num_links - 1:
-            succ_f = np.array([link.fex, link.fey])
+            succ_f = np.array([0.0, 0.0], dtype=np.float64)
             succ_n = 0.0
         else:
             succ_link = skeleton.links[i + 1]
@@ -121,35 +82,29 @@ def compute_inverse_dynamics(
 
         # Vector from current joint to COM (in base frame). Use this link's own
         # absolute angle (stored during the forward pass), not the loop-final value.
-        link_absolute_angle = link.q_absolute
-        rc_curr = np.array([link.prop.rgx, link.prop.rgy])
-        r_curr_to_base = np.array(
-            [
-                [np.cos(link_absolute_angle), -np.sin(link_absolute_angle)],
-                [np.sin(link_absolute_angle), np.cos(link_absolute_angle)],
-            ]
+        rc_curr_base_frame = _rotate_to_base(
+            np.array([link.prop.rgx, link.prop.rgy], dtype=np.float64),
+            link.q_absolute,
         )
-        rc_curr_base_frame = r_curr_to_base @ rc_curr
 
         # Vector from current joint to the next joint (full link) in the base frame.
         # The succeeding link's force acts at the next joint, so this full-length
         # vector is its moment arm about the current joint.
-        l_curr_base_frame = np.array(
-            [
-                link.prop.length * np.cos(link_absolute_angle),
-                link.prop.length * np.sin(link_absolute_angle),
-            ]
+        l_curr_base_frame = _rotate_to_base(
+            np.array([link.prop.length, 0.0], dtype=np.float64),
+            link.q_absolute,
         )
+        ext_f = np.array([link.fex, link.fey], dtype=np.float64)
+        ext_r = _rotate_to_base(np.array([link.rex, link.rey], dtype=np.float64), link.q_absolute)
 
-        # Force balance: f_i = F_i + f_{i+1}
-        link.f = fi + succ_f
+        # Force balance: parent force supplies inertial and child loads, minus
+        # force already supplied by the environment.
+        link.f = fi + succ_f - ext_f
 
         # Moment balance: n_i = N_i + n_{i+1} + (r_{i, i+1} x f_{i+1}) + (r_{i, com} x F_i)
         # 2D cross product: x*fy - y*fx
-        cross_l_succ_f = l_curr_base_frame[0] * succ_f[1] - l_curr_base_frame[1] * succ_f[0]
-        cross_rc_fi = rc_curr_base_frame[0] * fi[1] - rc_curr_base_frame[1] * fi[0]
-
-        link.n = ni + succ_n + cross_l_succ_f + cross_rc_fi
+        link.n = ni + succ_n + _cross_2d(l_curr_base_frame, succ_f) + _cross_2d(rc_curr_base_frame, fi)
+        link.n -= _cross_2d(ext_r, ext_f)
 
         # Joint torque
         # link.n is torque ON the link.
@@ -188,6 +143,7 @@ def compute_mass_matrix(
 
     temp_skeleton = deepcopy(skeleton)
     temp_skeleton.dq = np.zeros(num_links)
+    _clear_external_forces(temp_skeleton)
 
     for j in range(num_links):
         ddq_j_one = np.zeros(num_links)
@@ -208,7 +164,10 @@ def compute_coriolis_gravity_vector(
     skeleton: Skeleton,
     grav_vec: NDArray[np.float64] | None = None,
 ) -> NDArray[np.float64]:
-    """Compute the Coriolis and gravity vector h(q, dq).
+    """Compute the bias vector h(q, dq).
+
+    The returned vector includes Coriolis, optional gravity, and any external
+    forces stored on the skeleton's links.
 
     Parameters
     ----------
@@ -220,7 +179,7 @@ def compute_coriolis_gravity_vector(
     Returns
     -------
     NDArray[np.float64]
-        The N-dimensional vector h.
+        The N-dimensional bias vector h.
     """
     if grav_vec is None:
         grav_vec = np.array([0.0, 0.0], dtype=np.float64)

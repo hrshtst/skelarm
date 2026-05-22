@@ -84,8 +84,8 @@ class Link:
         # External forces/torques
         self.fex: float = 0.0  # External force x
         self.fey: float = 0.0  # External force y
-        self.rex: float = 0.0  # External force x application point
-        self.rey: float = 0.0  # External force y application point
+        self.rex: float = 0.0  # External force x application point in the link frame
+        self.rey: float = 0.0  # External force y application point in the link frame
 
         # End-effector position (global)
         self.xe: float = 0.0

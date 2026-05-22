@@ -43,6 +43,8 @@ Three types of forces act on each segment:
 2.  **Constraint Force ($f_{ix}, f_{iy}$):** Forces at the joints maintaining connection between links.
 3.  **External Force ($f_{Eix}, f_{Eiy}$):** Forces from the environment acting at a point $(x_{Ei}, y_{Ei})$.
 
+In the Python implementation, `fex` and `fey` are expressed in the world frame, while `rex` and `rey` are the external-force application point in the link-local frame measured from that link's joint.
+
 The net force and torque on link $i$ are the sum of these interactions.
 Note that link $i$ is connected to link $i-1$ (at joint $i$) and link $i+1$ (at joint $i+1$).
 
@@ -113,9 +115,9 @@ $$
 ## 5. Implementation
 
 The function `compute_inverse_dynamics` implements this backward recursion.
-1.  Ensure kinematics (acceleration of CoM) are updated first.
+1.  Compute forward kinematics internally, including COM acceleration.
 2.  Iterate from $i=n$ down to $1$.
 3.  Compute net forces/torques required ($f_{Gi}, n_{Gi}$) from Newton's laws.
-4.  Compute joint constraint forces $(f_{ix}, f_{iy})$.
+4.  Compute joint constraint forces $(f_{ix}, f_{iy})$, subtracting any external force supplied by the environment.
 5.  Compute joint torque $\tau_i$.
 </content>

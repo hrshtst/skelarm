@@ -111,3 +111,57 @@ def test_forward_kinematics_two_links_45_degrees() -> None:
     assert skeleton.links[1].y == pytest.approx(expected_y1)
     assert skeleton.links[1].xe == pytest.approx(expected_x2)
     assert skeleton.links[1].ye == pytest.approx(expected_y2)
+
+
+def test_forward_kinematics_populates_velocities_from_differential_motion() -> None:
+    """Joint, tip, and COM velocities should match finite differences."""
+    link_props = [
+        LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.4, rgy=0.1, qmin=-np.pi, qmax=np.pi),
+        LinkProp(length=1.2, m=1.0, i=0.1, rgx=0.5, rgy=-0.1, qmin=-np.pi, qmax=np.pi),
+    ]
+    skeleton = Skeleton(link_props)
+    skeleton.q = np.array([0.4, -0.7])
+    skeleton.dq = np.array([0.8, 0.3])
+    skeleton.ddq = np.array([0.0, 0.0])
+
+    next_skeleton = Skeleton(link_props)
+    epsilon = 1e-7
+    next_skeleton.q = skeleton.q + epsilon * skeleton.dq
+    next_skeleton.dq = skeleton.dq
+    next_skeleton.ddq = skeleton.ddq
+
+    compute_forward_kinematics(skeleton)
+    compute_forward_kinematics(next_skeleton)
+
+    for link, next_link in zip(skeleton.links, next_skeleton.links, strict=True):
+        joint_velocity = (np.array([next_link.x, next_link.y]) - np.array([link.x, link.y])) / epsilon
+        tip_velocity = (np.array([next_link.xe, next_link.ye]) - np.array([link.xe, link.ye])) / epsilon
+        com_velocity = (np.array([next_link.xg, next_link.yg]) - np.array([link.xg, link.yg])) / epsilon
+
+        assert link.v == pytest.approx(joint_velocity, abs=1e-6)
+        assert np.array([link.vx, link.vy]) == pytest.approx(tip_velocity, abs=1e-6)
+        assert link.vc == pytest.approx(com_velocity, abs=1e-6)
+
+
+def test_forward_kinematics_populates_accelerations_analytically() -> None:
+    """Tip and COM accelerations should follow planar rigid-body formulas."""
+    link_props = [
+        LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+        LinkProp(length=1.2, m=1.0, i=0.1, rgx=0.6, rgy=0.2, qmin=-np.pi, qmax=np.pi),
+    ]
+    skeleton = Skeleton(link_props)
+    skeleton.q = np.array([0.3, -0.5])
+    skeleton.dq = np.array([0.7, -0.2])
+    skeleton.ddq = np.array([1.1, -0.4])
+
+    compute_forward_kinematics(skeleton)
+
+    first_tip_acceleration = np.array(
+        [
+            -(0.7**2) * np.cos(0.3) - 1.1 * np.sin(0.3),
+            -(0.7**2) * np.sin(0.3) + 1.1 * np.cos(0.3),
+        ]
+    )
+    assert np.array([skeleton.links[0].ax, skeleton.links[0].ay]) == pytest.approx(first_tip_acceleration)
+    assert skeleton.links[1].dv == pytest.approx(first_tip_acceleration)
+    assert skeleton.links[1].dvc == pytest.approx(np.array([skeleton.links[1].agx, skeleton.links[1].agy]))

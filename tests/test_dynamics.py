@@ -219,6 +219,67 @@ def test_compute_forward_dynamics_single_link_consistency() -> None:
     assert tau_reconstructed[0] == pytest.approx(tau_input[0])
 
 
+def test_inverse_dynamics_single_link_external_tip_force_requires_opposing_torque() -> None:
+    """An upward tip force on a horizontal link reduces the required actuator torque."""
+    link_prop = LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi)
+    skeleton = Skeleton(link_props=[link_prop])
+    skeleton.q = np.array([0.0])
+    skeleton.dq = np.array([0.0])
+    skeleton.ddq = np.array([0.0])
+    skeleton.links[0].fey = 2.0
+    skeleton.links[0].rex = 1.0
+
+    compute_inverse_dynamics(skeleton)
+
+    assert skeleton.tau == pytest.approx(np.array([-2.0]))
+
+
+def test_inverse_dynamics_external_force_on_nonterminal_link_affects_upstream_torques() -> None:
+    """External forces should apply to every link at rex/rey, not only the tip link."""
+    link_props = [
+        LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+        LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+    ]
+    skeleton = Skeleton(link_props)
+    skeleton.q = np.array([0.0, 0.0])
+    skeleton.dq = np.array([0.0, 0.0])
+    skeleton.ddq = np.array([0.0, 0.0])
+    skeleton.links[0].fey = 2.0
+    skeleton.links[0].rex = 0.5
+
+    compute_inverse_dynamics(skeleton)
+
+    assert skeleton.tau == pytest.approx(np.array([-1.0, 0.0]))
+
+
+def test_forward_dynamics_round_trip_with_external_force() -> None:
+    """FD should include external forces stored on links and remain consistent with ID."""
+    link_prop = LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi)
+    skeleton = Skeleton(link_props=[link_prop])
+    skeleton.q = np.array([0.0])
+    skeleton.dq = np.array([0.0])
+    skeleton.links[0].fey = 2.0
+    skeleton.links[0].rex = 1.0
+
+    ddq = compute_forward_dynamics(skeleton, tau=np.array([0.0]))
+    skeleton.ddq = ddq
+    compute_inverse_dynamics(skeleton)
+
+    assert ddq == pytest.approx(np.array([2.0 / 0.35]))
+    assert skeleton.tau == pytest.approx(np.array([0.0]))
+
+
+def test_mass_matrix_ignores_external_forces() -> None:
+    """Mass matrix construction should be independent of current external loads."""
+    link_prop = LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi)
+    unloaded = Skeleton(link_props=[link_prop])
+    loaded = Skeleton(link_props=[link_prop])
+    loaded.links[0].fey = 2.0
+    loaded.links[0].rex = 1.0
+
+    assert compute_mass_matrix(loaded) == pytest.approx(compute_mass_matrix(unloaded))
+
+
 def test_simulate_robot_single_link_static_no_gravity() -> None:
     """Test simulate_robot for a single link arm starting static with no gravity.
 
