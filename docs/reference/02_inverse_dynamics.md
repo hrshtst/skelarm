@@ -104,13 +104,13 @@ Or equivalently, using the joint positions directly in the torque balance:
 $$
 \begin{aligned}
 \tau_i &= n_{Gi} + \tau_{i+1} \\
-       &\quad - (x_i - x_{i-1}) f_{(i+1)y} + (y_i - y_{i-1}) f_{(i+1)x} \\
-       &\quad + (x_{Ei} - x_{i-1}) f_{Eiy} - (y_{Ei} - y_{i-1}) f_{Eix} \\
-       &\quad - (x_{Gi} - x_{i-1}) f_{Giy} + (y_{Gi} - y_{i-1}) f_{Gix}
+       &\quad + (x_i - x_{i-1}) f_{(i+1)y} - (y_i - y_{i-1}) f_{(i+1)x} \\
+       &\quad - (x_{Ei} - x_{i-1}) f_{Eiy} + (y_{Ei} - y_{i-1}) f_{Eix} \\
+       &\quad + (x_{Gi} - x_{i-1}) f_{Giy} - (y_{Gi} - y_{i-1}) f_{Gix}
 \end{aligned}
 $$
 
-*(Note: The exact formulation in code may vary slightly in term grouping, but follows Newton-Euler logic.)*
+*(This second form takes moments about the proximal joint and is what `compute_inverse_dynamics` implements: `n = N + n_{i+1} + l \times f_{i+1} + r_c \times F_i - r_E \times f_E`.)*
 
 ## 5. Implementation
 
