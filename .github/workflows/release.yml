@@ -28,5 +28,10 @@ jobs:
       - name: Build package
         run: uv build
 
+      # uv build writes a dist/.gitignore that twine (used by the publish
+      # action) rejects as an unknown distribution format.
+      - name: Remove non-distribution files
+        run: rm -f dist/.gitignore
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
