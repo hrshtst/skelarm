@@ -7,10 +7,61 @@ on:
     branches: ["main", "develop"]
   workflow_dispatch:
 
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege by default; no job needs write access.
+permissions:
+  contents: read
+
+env:
+  # Pin uv for reproducible runs (matches the local toolchain).
+  UV_VERSION: "0.11.6"
+
 jobs:
+  pre-commit:
+    name: Pre-commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Run pre-commit hooks
+        run: uv run pre-commit run --all-files --show-diff-on-failure
+
+  lint-type-check:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Run Lint
+        run: uv run nox -s lint
+
+      - name: Run Type Check
+        run: uv run nox -s type_check
+
   tests:
     name: Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -26,44 +77,67 @@ jobs:
           sudo apt-get install -y libegl1 libopengl0 libxkbcommon-x11-0 libdbus-1-3
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v5
         with:
-          version: "latest"
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
 
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
 
-      - name: Install dependencies
-        run: uv sync --all-extras --dev
-
       - name: Run Tests
         run: uv run nox -s tests-${{ matrix.python-version }}
 
-  lint-type-check:
-    name: Lint & Type Check
+      - name: Upload coverage data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: .coverage*
+          if-no-files-found: ignore
+
+  docs-build:
+    name: Docs Build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libegl1 libopengl0 libxkbcommon-x11-0 libdbus-1-3
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      # --strict turns broken references and dead links into build failures,
+      # so docs regressions are caught on the PR instead of at deploy time.
+      - name: Build documentation (strict)
+        run: uv run --group docs mkdocs build --strict
+
+  build:
+    name: Build Distribution
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v5
         with:
-          version: "latest"
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
 
-      - name: Set up Python
-        run: uv python install 3.12
+      - name: Build package
+        run: uv build
 
-      - name: Install dependencies
-        run: uv sync --all-extras --dev
+      - name: Check distribution metadata
+        # Scope the glob to real artifacts; `uv build` also writes a dist/.gitignore.
+        run: uvx twine check dist/*.whl dist/*.tar.gz
 
-      - name: Run Lint
-        run: uv run nox -s lint
-
-      - name: Run Type Check
-        run: uv run nox -s type_check
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
