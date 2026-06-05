@@ -4,6 +4,9 @@ on:
   release:
     types: [published]
 
+env:
+  UV_VERSION: "0.11.6"
+
 jobs:
   pypi-publish:
     name: Build and publish to PyPI
@@ -20,10 +23,15 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          version: "latest"
+          version: ${{ env.UV_VERSION }}
 
       - name: Build package
         run: uv build
+
+      # uv build writes a dist/.gitignore that twine (used by the publish
+      # action) rejects as an unknown distribution format.
+      - name: Remove non-distribution files
+        run: rm -f dist/.gitignore
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

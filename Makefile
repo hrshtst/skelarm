@@ -34,7 +34,7 @@ test:
 
 # Run tests with coverage report
 test-cov:
-	uv run pytest --cov=src --cov-report=html --cov-report=term
+	uv run pytest --cov=src --cov-branch --cov-report=html --cov-report=term
 
 # Fast tests: Skip tests marked with @pytest.mark.slow
 test-fast:

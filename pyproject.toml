@@ -20,7 +20,6 @@ classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
   "Intended Audience :: Science/Research",
-  "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
@@ -55,7 +54,7 @@ Repository = "https://github.com/hrshtst/skelarm"
 Documentation = "https://hrshtst.github.io/skelarm/"
 
 [build-system]
-requires = ["uv_build>=0.9.16,<0.10.0"]
+requires = ["uv_build>=0.9.16,<0.12.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
@@ -222,10 +221,6 @@ reportInvalidStubStatement = "none"
 reportIncompleteStub = "none"
 reportUnsupportedDunderAll = "none"
 
-[tool.bandit]
-exclude_dirs = ["tests", ".venv"]
-skips = ["B101", "B311", "B404", "B603"]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
@@ -233,27 +228,9 @@ addopts = [
   "-ra",
   "--strict-markers",
   "--strict-config",
-  "--cov-branch",
 ]
 markers = [
   "slow: marks tests as slow (deselect with '-m \"not slow\"')",
   "integration: marks tests as integration tests",
   "serious: marks as serious tests to be investigated on a priority basis",
 ]
-
-[tool.mypy]
-files = ["src", "tests", "apps"]
-python_executable = ".venv/bin/python"
-check_untyped_defs = true       # Type-checks the interior of functions without type annotations.
-
-[[tool.mypy.overrides]]
-  module = [
-    "joblib.*",
-    "numpy.*",
-    "pandas.*",
-    "scienceplots.*",
-    "scipy.*",
-    "sklearn.*",
-    "tomli.*",
-  ]
-  ignore_missing_imports = true
