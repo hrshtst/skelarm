@@ -16,6 +16,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Guard against publishing a tag whose version does not match the package.
+      - name: Verify tag matches package version
+        run: |
+          VERSION=$(grep -m1 -E '^version[[:space:]]*=' pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$VERSION" != "$TAG" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match pyproject.toml version ${VERSION}"
+            exit 1
+          fi
+          echo "Tag ${GITHUB_REF_NAME} matches pyproject.toml version ${VERSION}."
+
       - name: Create Release Draft
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
