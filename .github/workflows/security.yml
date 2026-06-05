@@ -34,13 +34,12 @@ jobs:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
 
-      # Audit the exact locked dependency tree (runtime + dev + docs),
-      # excluding the project itself which is not published to an index.
-      - name: Export locked dependencies
-        run: uv export --frozen --no-emit-project --all-groups --no-hashes -o requirements.txt
-
+      # Audit the resolved lockfile (runtime + dev + docs) by syncing it and
+      # inspecting the installed environment. pip-audit's `-r` mode re-resolves
+      # the requirements in a throwaway venv that uv's standalone Python can't
+      # bootstrap (no ensurepip), so environment mode is used instead.
       - name: Audit dependencies
-        run: uvx pip-audit -r requirements.txt
+        run: uv run --frozen --all-extras --with pip-audit pip-audit --skip-editable
 
   codeql:
     name: CodeQL
