@@ -37,12 +37,11 @@ keywords = [
 
 [project.optional-dependencies]
 dev = [
+  "basedpyright>=1.39.6",
   "hypothesis>=6.148.7",
   "mypy>=1.20.0",
   "nox>=2025.11.12",
-  "pre-commit>=4.5.0",
-  "pyright>=1.1.407",
-  "pytest>=9.0.2",
+  "pre-commit>=4.5.0",  "pytest>=9.0.2",
   "pytest-cov>=7.0.0",
   "pytest-randomly>=4.0.1",
   "pytest-xdist>=3.8.0",
@@ -68,12 +67,11 @@ source-include = ["examples/**"]
 
 [dependency-groups]
 dev = [
+  "basedpyright>=1.39.6",
   "hypothesis>=6.148.7",
   "mypy>=1.20.0",
   "nox>=2025.11.12",
-  "pre-commit>=4.5.0",
-  "pyright>=1.1.407",
-  "pytest>=9.0.2",
+  "pre-commit>=4.5.0",  "pytest>=9.0.2",
   "pytest-cov>=7.0.0",
   "pytest-randomly>=4.0.1",
   "pytest-xdist>=3.8.0",
@@ -184,6 +182,7 @@ docstring-code-format = true
 # enabled.
 docstring-code-line-length = "dynamic"
 
+# basedpyright (the active type checker) is a pyright fork and reads this section.
 [tool.pyright]
 include = ["src", "tests", "examples"]
 exclude = [".venv", "**/__pycache__"]

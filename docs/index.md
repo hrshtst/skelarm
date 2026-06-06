@@ -141,7 +141,7 @@ make test-cov
 
 ## Development
 
-We use `ruff` for linting and formatting, and `pyright` for static type checking.
+We use `ruff` for linting and formatting, and `basedpyright` and `mypy` for static type checking.
 
 *   **Linting:** `make lint`
 *   **Formatting:** `make format`

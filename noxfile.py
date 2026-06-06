@@ -29,9 +29,9 @@ def lint(session: nox.Session) -> None:
 
 @nox.session
 def type_check(session: nox.Session) -> None:
-    """Run static type checking using pyright and mypy."""
+    """Run static type checking using basedpyright and mypy."""
     # Install the type checkers and the package (so dependencies are available for type checking)
-    session.install("pyright", "mypy")
+    session.install("basedpyright", "mypy")
     session.install(".")
-    session.run("pyright")
+    session.run("basedpyright")
     session.run("mypy")

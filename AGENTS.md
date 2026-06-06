@@ -10,7 +10,7 @@ Tooling runs through `uv` and the `Makefile`:
 
 - `make all` — format + type-check + test (run this before declaring a code change done)
 - `make format` — ruff auto-format and fixable-lint (use this, not bare `ruff`)
-- `make lint` / `make type-check` — ruff check (no fix) / pyright
+- `make lint` / `make type-check` — ruff check (no fix) / basedpyright + mypy
 - `make test` — full pytest suite; `make test-fast` skips slow tests; `make test-cov` adds coverage
 - `make nox` — run tests across Python 3.12 / 3.13 / 3.14
 - Single test: `uv run pytest tests/test_dynamics.py -k 'name'`
@@ -24,7 +24,7 @@ First-time setup: `uv sync --all-extras && uv run pre-commit install`.
 - Every module must start with `from __future__ import annotations` (enforced by ruff isort).
 - Public functions need full type hints and **NumPy-style docstrings**; use `np2typing` for array types.
 - ruff runs rule set `"ALL"` with project-specific ignores — run `make format` rather than guessing.
-- Type checkers are **pyright** (basic mode) and **mypy** — `make type-check` runs both, and both must pass.
+- Type checkers are **basedpyright** (a pyright fork, basic mode) and **mypy** — `make type-check` runs both, and both must pass.
 
 ## Development methodology — TDD
 
@@ -49,6 +49,6 @@ For bug fixes, first add a test that reproduces the bug (red), then fix it. Wher
 ## Workflow
 
 - Commits land directly on `main`. Use Conventional Commit prefixes (`feat:`, `fix:`, `docs:`, `chore:`).
-- Pre-commit (ruff + pyright) gates every commit; if ruff reformats during the hook, `git add` again before retrying.
+- Pre-commit (ruff + basedpyright + mypy) gates every commit; if ruff reformats during the hook, `git add` again before retrying.
 - AI-generated code must be disclosed in PR descriptions (see README §"AI Assistance").
 - Releases follow `RELEASING.md`.
