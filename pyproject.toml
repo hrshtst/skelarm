@@ -1,13 +1,11 @@
 [project]
 name = "skelarm"
-version = "0.1.0"
+version = "0.2.0"
 description = "A simple dynamics simulator for a configurable planar robot arm."
 readme = "README.md"
 license = "GPL-3.0-only"
 license-files = ["LICEN[CS]E*"]
-authors = [
-  { name = "Hiroshi Atsuta", email = "atsuta@ieee.org" }
-]
+authors = [{ name = "Hiroshi Atsuta", email = "atsuta@ieee.org" }]
 requires-python = ">=3.12"
 dependencies = [
   "matplotlib>=3.10.7",
@@ -28,7 +26,14 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Physics",
   "Typing :: Typed",
 ]
-keywords = ["robotics", "kinematics", "dynamics", "simulation", "planar", "physics"]
+keywords = [
+  "robotics",
+  "kinematics",
+  "dynamics",
+  "simulation",
+  "planar",
+  "physics",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -58,9 +63,7 @@ requires = ["uv_build>=0.9.16,<0.12.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-source-include = [
-  "examples/**",
-]
+source-include = ["examples/**"]
 
 [dependency-groups]
 dev = [
@@ -119,26 +122,26 @@ exclude = [
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
-  "COM812",                     # Trailing comma missing
-  "D401",                       # First line of docstring should be in imperative mood: "{first_line}"
-  "F841",                       # Local variable {name} is assigned to but never used
-  "T201",                       # `print` found
-  "PTH123",                     # `open()` should be replaced by `Path.open()`
-  "PLC0415",                    # `import` should be at the top-level of a file
-  "PLR0911",                    # Too many return statements ({returns} > {max_returns})
-  "PLR0912",                    # Too many branches ({branches} > {max_branches})
-  "PLR0913",                    # Too many arguments in function definition ({c_args} > {max_args})
-  "PLR0915",                    # Too many statements ({statements} > {max_statements})
-  "S101",                       # Use of `assert` detected
-  "SIM108",                     # Use ternary operator {contents} instead of `if`-`else`-block
-  "RET504",                     # Unnecessary assignment to {name} before `return` statement
-  "TC001",                      # Move application import into a type-checking block
-  "TC002",                      # Move third-party import into a type-checking block
-  "TC003",                      # Move standard library import into a type-checking block
-]# Allow fix for all enabled rules (when `--fix`) is provided.
+  "COM812",  # Trailing comma missing
+  "D401",    # First line of docstring should be in imperative mood: "{first_line}"
+  "F841",    # Local variable {name} is assigned to but never used
+  "T201",    # `print` found
+  "PTH123",  # `open()` should be replaced by `Path.open()`
+  "PLC0415", # `import` should be at the top-level of a file
+  "PLR0911", # Too many return statements ({returns} > {max_returns})
+  "PLR0912", # Too many branches ({branches} > {max_branches})
+  "PLR0913", # Too many arguments in function definition ({c_args} > {max_args})
+  "PLR0915", # Too many statements ({statements} > {max_statements})
+  "S101",    # Use of `assert` detected
+  "SIM108",  # Use ternary operator {contents} instead of `if`-`else`-block
+  "RET504",  # Unnecessary assignment to {name} before `return` statement
+  "TC001",   # Move application import into a type-checking block
+  "TC002",   # Move third-party import into a type-checking block
+  "TC003",   # Move standard library import into a type-checking block
+] # Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
 unfixable = [
-  "SIM105",                     # Use `contextlib.suppress({exception})` instead of `try`-`except`-`pass`
+  "SIM105", # Use `contextlib.suppress({exception})` instead of `try`-`except`-`pass`
 ]
 
 # Allow unused variables when underscore-prefixed.
@@ -224,11 +227,7 @@ reportUnsupportedDunderAll = "none"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
-addopts = [
-  "-ra",
-  "--strict-markers",
-  "--strict-config",
-]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
 markers = [
   "slow: marks tests as slow (deselect with '-m \"not slow\"')",
   "integration: marks tests as integration tests",
