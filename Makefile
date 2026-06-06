@@ -24,9 +24,10 @@ format:
 	uv run ruff check --fix . --config=pyproject.toml
 	uv run ruff format . --config=pyproject.toml
 
-# Run static type checking
+# Run static type checking (pyright + mypy)
 type-check:
 	uv run pyright
+	uv run mypy
 
 # Run tests
 test:

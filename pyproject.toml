@@ -38,6 +38,7 @@ keywords = [
 [project.optional-dependencies]
 dev = [
   "hypothesis>=6.148.7",
+  "mypy>=1.20.0",
   "nox>=2025.11.12",
   "pre-commit>=4.5.0",
   "pyright>=1.1.407",
@@ -68,6 +69,7 @@ source-include = ["examples/**"]
 [dependency-groups]
 dev = [
   "hypothesis>=6.148.7",
+  "mypy>=1.20.0",
   "nox>=2025.11.12",
   "pre-commit>=4.5.0",
   "pyright>=1.1.407",
@@ -223,6 +225,16 @@ reportImplicitStringConcatenation = "none"
 reportInvalidStubStatement = "none"
 reportIncompleteStub = "none"
 reportUnsupportedDunderAll = "none"
+
+[tool.mypy]
+files = ["src", "tests", "examples"]
+python_version = "3.12"
+check_untyped_defs = true       # Type-checks the interior of functions without type annotations.
+
+# scipy ships no py.typed marker, so mypy cannot resolve its types.
+[[tool.mypy.overrides]]
+  module = ["scipy.*"]
+  ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

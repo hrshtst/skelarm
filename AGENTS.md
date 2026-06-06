@@ -24,7 +24,7 @@ First-time setup: `uv sync --all-extras && uv run pre-commit install`.
 - Every module must start with `from __future__ import annotations` (enforced by ruff isort).
 - Public functions need full type hints and **NumPy-style docstrings**; use `np2typing` for array types.
 - ruff runs rule set `"ALL"` with project-specific ignores — run `make format` rather than guessing.
-- Type checker is **pyright** (basic mode), not mypy.
+- Type checkers are **pyright** (basic mode) and **mypy** — `make type-check` runs both, and both must pass.
 
 ## Development methodology — TDD
 
