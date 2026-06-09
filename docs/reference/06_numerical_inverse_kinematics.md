@@ -1,8 +1,8 @@
 # Numerical Inverse Kinematics
 
 !!! warning "Rough draft"
-    This chapter is an early draft sketching the approach; the title and details
-    are still to be refined, and the method is not yet implemented in `skelarm`.
+    This chapter is an early draft sketching the approach; the details are still
+    to be refined, and the method is not yet implemented in `skelarm`.
 
 The [Kinematics](01_kinematics.md) chapter solved inverse kinematics in closed
 form for a two-joint arm. That tidy solution does not survive past two joints:
