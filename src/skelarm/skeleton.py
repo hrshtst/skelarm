@@ -58,13 +58,14 @@ class Link:
         self.ddq: float = 0.0  # Joint angular acceleration
         self.q_absolute: float = 0.0  # Absolute angle of the link (used in RNE)
 
-        # End-effector position and velocity (local to link)
-        self.x: float = 0.0
-        self.y: float = 0.0
-        self.vx: float = 0.0
-        self.vy: float = 0.0
-        self.ax: float = 0.0
-        self.ay: float = 0.0
+        # Joint-origin (link start) position, plus tip (end-effector) velocity
+        # and acceleration in the base frame. The tip position is xe/ye below.
+        self.x: float = 0.0  # joint-origin x
+        self.y: float = 0.0  # joint-origin y
+        self.vx: float = 0.0  # tip velocity x
+        self.vy: float = 0.0  # tip velocity y
+        self.ax: float = 0.0  # tip acceleration x
+        self.ay: float = 0.0  # tip acceleration y
 
         # Center of mass position and velocity (global)
         self.xg: float = 0.0
