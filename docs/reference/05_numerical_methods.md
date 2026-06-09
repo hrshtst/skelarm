@@ -1,66 +1,82 @@
 # Numerical Methods
 
-This document describes the numerical methods used to solve the mathematical models of the robot arm.
+Two numerical building blocks turn the dynamics equations into a running
+simulation: a **linear solver** that extracts the joint acceleration from the
+equation of motion at each instant, and an **ODE integrator** that advances the
+state through time. `skelarm` leans on mature library routines for both, but the
+classic methods behind them are worth seeing.
 
-## 1. Linear Equation Solver
+## 1. Linear equation solver
 
-To solve the forward dynamics equation $H \ddot{q} = \text{RHS}$, we solve a linear system of the form $Ax = b$.
-Since $H$ is symmetric and positive definite, robust methods like Cholesky decomposition could be used.
-The `skelarm` implementation delegates this to NumPy's `numpy.linalg.solve` (an LU-based LAPACK solver). The **Gaussian Elimination** algorithm below is presented as the classic method that such solvers build upon.
+The [forward dynamics](04_forward_dynamics.md) chapter leaves a linear system
+$H \ddot{q} = \tau - b + J_E^{T} f_E$ to solve for $\ddot{q}$ at every step — a
+problem of the general form $A x = b$. Because $H$ is symmetric positive definite,
+it can be solved robustly (Cholesky is the natural specialized choice); `skelarm`
+delegates to NumPy's `numpy.linalg.solve`, an LU-based LAPACK routine. The
+textbook method underlying such solvers is **Gaussian elimination**.
 
-### Gaussian Elimination
-The process involves transforming the augmented matrix $[A | b]$ into an upper triangular form (forward elimination) and then performing back substitution to find $x$.
+### Gaussian elimination
 
-**Algorithm:**
-1.  **Forward Elimination:**
-    For each column $k$ from 1 to $n-1$:
-    - For each row $i$ from $k+1$ to $n$:
-        - Compute factor $f = A_{ik} / A_{kk}$.
-        - Subtract row $k$ multiplied by $f$ from row $i$.
-        - $A_{ij} \leftarrow A_{ij} - f \cdot A_{kj}$ for $j=k \dots n$.
-        - $b_i \leftarrow b_i - f \cdot b_k$.
+The idea is to reduce $A$ to triangular form and then read off the unknowns:
 
-2.  **Back Substitution:**
-    For row $i$ from $n$ down to 1:
-    - $x_i = (b_i - \sum_{j=i+1}^n A_{ij} x_j) / A_{ii}$.
+1. **Forward elimination.** For each pivot column $k = 1, \dots, n-1$ and each row
+   $i > k$, subtract a multiple $f = A_{ik}/A_{kk}$ of row $k$ from row $i$ so that
+   $A_{ik}$ becomes zero, applying the same operation to the right-hand side:
+   $A_{ij} \leftarrow A_{ij} - f A_{kj}$ and $b_i \leftarrow b_i - f b_k$. This
+   leaves an upper-triangular system.
+2. **Back substitution.** Solve from the last row upward,
+   $x_i = \bigl(b_i - \sum_{j>i} A_{ij} x_j\bigr) / A_{ii}$.
 
-*Note: Pivoting (swapping rows to maximize the pivot element $|A_{kk}|$) is often necessary for numerical stability, though simple implementations might skip it if $A$ is known to be well-behaved.*
+Robust implementations add **pivoting** — reordering rows so the pivot $|A_{kk}|$
+is large — for numerical stability. The equation of motion's $H$ is regular,
+symmetric, and positive definite, so even a naive pivot-free elimination is safe
+here.
 
-## 2. Differential Equation Solver (Integration)
+## 2. Time integration
 
-To simulate the motion over time, we integrate the joint acceleration $\ddot{q}$ to get velocity $\dot{q}$ and position $q$.
-The state of the system is $X = [q^T, \dot{q}^T]^T$. The system dynamics can be written as $\dot{X} = f(t, X)$.
+Simulating motion means integrating the joint acceleration twice, to velocity and
+then position. Stacking the state as $X = [q^{T}, \dot{q}^{T}]^{T}$ recasts the
+second-order dynamics as a first-order system $\dot{X} = f(t, X)$, whose velocity
+half is $\dot{q}$ and whose acceleration half is the
+[forward-dynamics](04_forward_dynamics.md) solve. `skelarm` integrates it with
+SciPy's `scipy.integrate.solve_ivp` using the adaptive `RK45` (Dormand–Prince)
+method, which adjusts its step size automatically to control the error. The two
+fixed-step schemes below are the ideas it refines.
 
-`skelarm` performs this integration with SciPy's `scipy.integrate.solve_ivp` using the adaptive `RK45` method (the Dormand–Prince embedded Runge–Kutta pair). The fixed-step Euler and RK4 schemes below are background on the underlying ideas; the adaptive solver varies its step size automatically to control error.
+### Euler's method
 
-### Euler's Method
-The simplest numerical integration method. It approximates the next state based on the current slope.
+The simplest scheme advances the state along its current slope over a fixed step
+$\Delta t$:
+
+$$
+\dot{q}_{k+1} = \dot{q}_k + \ddot{q}_k\, \Delta t, \qquad
+q_{k+1} = q_k + \dot{q}_k\, \Delta t.
+$$
+
+It is easy but only first-order accurate (global error $O(\Delta t)$), and it
+drifts off the true trajectory for large steps or stiff dynamics.
+
+### Runge–Kutta (RK4)
+
+The classical fourth-order Runge–Kutta method samples the slope at four points
+across the step and blends them, which buys much higher accuracy. For a state $y$
+(standing in for the stacked $X$),
+
+$$
+y_{k+1} = y_k + \frac{\Delta t}{6}\,(k_1 + 2 k_2 + 2 k_3 + k_4),
+$$
+
+with
 
 $$
 \begin{aligned}
-\dot{q}_{k+1} &= \dot{q}_k + \ddot{q}_k \Delta t \\
-q_{k+1} &= q_k + \dot{q}_k \Delta t
+k_1 &= f(t_k, y_k), \\
+k_2 &= f\!\left(t_k + \tfrac{\Delta t}{2},\ y_k + \tfrac{\Delta t}{2} k_1\right), \\
+k_3 &= f\!\left(t_k + \tfrac{\Delta t}{2},\ y_k + \tfrac{\Delta t}{2} k_2\right), \\
+k_4 &= f\!\left(t_k + \Delta t,\ y_k + \Delta t\, k_3\right).
 \end{aligned}
 $$
 
-where $\Delta t$ is the time step.
-**Error:** $O(\Delta t)$ (Global error). It is often unstable or inaccurate for stiff systems or large steps.
-
-### Runge-Kutta Method (RK4)
-The classical 4th-order Runge-Kutta method provides much higher accuracy by sampling the slope at four points within the time step.
-
-Let $y_k$ be the state variable (e.g., $q$ or $\dot{q}$).
-
-$$
-y_{k+1} = y_k + \frac{\Delta t}{6} (k_1 + 2k_2 + 2k_3 + k_4)
-$$
-
-where:
-- $k_1 = f(t_k, y_k)$
-- $k_2 = f(t_k + \frac{\Delta t}{2}, y_k + \frac{\Delta t}{2} k_1)$
-- $k_3 = f(t_k + \frac{\Delta t}{2}, y_k + \frac{\Delta t}{2} k_2)$
-- $k_4 = f(t_k + \Delta t, y_k + \Delta t k_3)$
-
-For our second-order system $\ddot{q} = g(q, \dot{q}, \tau)$, we apply this to the state vector $X = [q, \dot{q}]$.
-
-**Error:** $O(\Delta t^4)$. This is the standard method for simulating smooth mechanical systems.
+Its global error is $O(\Delta t^{4})$, making it the usual workhorse for smooth
+mechanical systems — and the fixed-step sibling of the adaptive RK45 that
+`skelarm` actually uses.
