@@ -15,18 +15,18 @@ def main() -> None:
     # 1. Load the robot configuration
     config_path = Path(__file__).parent / "four_dof_robot.toml"
     skeleton = Skeleton.from_toml(config_path)
-    print(f"Loaded {skeleton.num_links}-link robot from {config_path.name}")
+    print(f"Loaded {skeleton.num_joints}-DOF robot from {config_path.name}")
 
     # 2. Set initial state (arbitrary pose, e.g., [0, pi/6, -pi/6, pi/3])
     skeleton.q = np.array([0.0, np.pi / 6, -np.pi / 6, np.pi / 3])
-    skeleton.dq = np.zeros(skeleton.num_links)
+    skeleton.dq = np.zeros(skeleton.num_joints)
 
     print(f"Initial q: {skeleton.q}")
     print(f"Initial dq: {skeleton.dq}")
 
     # 3. Define control function (zero torque)
     def zero_torque_control(_t: float, skel: Skeleton) -> NDArray[np.float64]:
-        return np.zeros(skel.num_links)
+        return np.zeros(skel.num_joints)
 
     # 4. Run simulation
     # Simulate for 1.0 second
@@ -43,7 +43,7 @@ def main() -> None:
     # the robot should remain static (velocities near zero)
     # assuming initial velocities were zero.
     assert np.allclose(q_traj[-1], skeleton.q, atol=1e-4)
-    assert np.allclose(dq_traj[-1], np.zeros(skeleton.num_links), atol=1e-4)
+    assert np.allclose(dq_traj[-1], np.zeros(skeleton.num_joints), atol=1e-4)
     print("Static test passed: Robot remained stationary under zero torque/gravity.")
 
 

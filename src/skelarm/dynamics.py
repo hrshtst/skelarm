@@ -62,8 +62,9 @@ def compute_inverse_dynamics(
 
     compute_forward_kinematics(skeleton)
 
-    # Backward Pass (End-effector to Base)
-    for i in range(skeleton.num_links - 1, -1, -1):
+    # Backward Pass (endpoint down to the first movable joint; the base link at
+    # index 0 is fixed and carries no actuation torque).
+    for i in range(skeleton.num_links - 1, 0, -1):
         link = skeleton.links[i]
 
         # fi is the inertial force with optional gravity folded into the
@@ -134,19 +135,19 @@ def compute_mass_matrix(
     # We pass explicit zero vector to ensure no gravity influence
     zero_grav = np.array([0.0, 0.0], dtype=np.float64)
 
-    num_links = skeleton.num_links
-    mass_matrix = np.zeros((num_links, num_links), dtype=np.float64)
+    num_joints = skeleton.num_joints
+    mass_matrix = np.zeros((num_joints, num_joints), dtype=np.float64)
 
     original_q = skeleton.q
     original_dq = skeleton.dq
     original_ddq = skeleton.ddq
 
     temp_skeleton = deepcopy(skeleton)
-    temp_skeleton.dq = np.zeros(num_links)
+    temp_skeleton.dq = np.zeros(num_joints)
     _clear_external_forces(temp_skeleton)
 
-    for j in range(num_links):
-        ddq_j_one = np.zeros(num_links)
+    for j in range(num_joints):
+        ddq_j_one = np.zeros(num_joints)
         ddq_j_one[j] = 1.0
         temp_skeleton.ddq = ddq_j_one
 
@@ -184,13 +185,13 @@ def compute_coriolis_gravity_vector(
     if grav_vec is None:
         grav_vec = np.array([0.0, 0.0], dtype=np.float64)
 
-    num_links = skeleton.num_links
+    num_joints = skeleton.num_joints
     original_q = skeleton.q
     original_dq = skeleton.dq
     original_ddq = skeleton.ddq
 
     temp_skeleton = deepcopy(skeleton)
-    temp_skeleton.ddq = np.zeros(num_links)
+    temp_skeleton.ddq = np.zeros(num_joints)
 
     compute_inverse_dynamics(temp_skeleton, grav_vec=grav_vec)
     h_vector = temp_skeleton.tau
@@ -347,11 +348,11 @@ def simulate_robot(
     if grav_vec is None:
         grav_vec = np.array([0.0, 0.0], dtype=np.float64)
 
-    num_links = initial_skeleton.num_links
+    num_joints = initial_skeleton.num_joints
 
     def ode_system(t: float, state: NDArray[np.float64]) -> NDArray[np.float64]:
-        q = state[:num_links]
-        dq = state[num_links:]
+        q = state[:num_joints]
+        dq = state[num_joints:]
 
         current_skeleton = deepcopy(initial_skeleton)
         current_skeleton.q = q
@@ -380,7 +381,7 @@ def simulate_robot(
         msg = f"ODE integration failed: {solution.message}"
         raise RuntimeError(msg)
 
-    q_trajectory = solution.y[:num_links, :].T
-    dq_trajectory = solution.y[num_links:, :].T
+    q_trajectory = solution.y[:num_joints, :].T
+    dq_trajectory = solution.y[num_joints:, :].T
 
     return solution.t, q_trajectory, dq_trajectory

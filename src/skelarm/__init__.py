@@ -12,7 +12,13 @@ from .dynamics import (
     compute_mass_matrix,
     simulate_robot,
 )
-from .kinematics import compute_forward_kinematics
+from .kinematics import (
+    compute_coriolis_basis,
+    compute_endpoint_acceleration,
+    compute_endpoint_velocity,
+    compute_forward_kinematics,
+    compute_jacobian,
+)
 from .plotting import draw_skeleton, plot_trajectory
 from .skeleton import Link, LinkProp, Skeleton
 
@@ -22,10 +28,14 @@ __all__ = [
     "SkelarmCanvas",
     "SkelarmViewer",
     "Skeleton",
+    "compute_coriolis_basis",
     "compute_coriolis_gravity_vector",
+    "compute_endpoint_acceleration",
+    "compute_endpoint_velocity",
     "compute_forward_dynamics",
     "compute_forward_kinematics",
     "compute_inverse_dynamics",
+    "compute_jacobian",
     "compute_kinetic_energy",
     "compute_kinetic_energy_rate",
     "compute_mass_matrix",

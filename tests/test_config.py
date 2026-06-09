@@ -35,11 +35,11 @@ def test_load_skeleton_from_toml(tmp_path: Path) -> None:
 
     skeleton = Skeleton.from_toml(config_file)
 
-    expected_num_links = 2
-    assert skeleton.num_links == expected_num_links
+    expected_num_joints = 2
+    assert skeleton.num_joints == expected_num_joints
 
-    # Check first link
-    link1 = skeleton.links[0]
+    # Check first movable link (links[0] is the fixed base link)
+    link1 = skeleton.links[1]
     assert link1.prop.length == pytest.approx(1.0)
     assert link1.prop.m == pytest.approx(2.0)
     assert link1.prop.i == pytest.approx(0.5)
@@ -48,8 +48,8 @@ def test_load_skeleton_from_toml(tmp_path: Path) -> None:
     assert link1.prop.qmin == pytest.approx(-np.pi)
     assert link1.prop.qmax == pytest.approx(np.pi)
 
-    # Check second link
-    link2 = skeleton.links[1]
+    # Check second movable link
+    link2 = skeleton.links[2]
     assert link2.prop.length == pytest.approx(0.8)
     assert link2.prop.m == pytest.approx(1.5)
     assert link2.prop.i == pytest.approx(0.3)
@@ -57,3 +57,26 @@ def test_load_skeleton_from_toml(tmp_path: Path) -> None:
     assert link2.prop.rgy == pytest.approx(0.1)
     assert link2.prop.qmin == pytest.approx(-np.pi / 2)
     assert link2.prop.qmax == pytest.approx(np.pi / 2)
+
+
+def test_load_skeleton_with_base_length(tmp_path: Path) -> None:
+    """A top-level base_length is loaded as the fixed base (zeroth) link."""
+    toml_content = """
+    base_length = 0.5
+
+    [[link]]
+    length = 1.0
+    mass = 1.0
+    inertia = 0.1
+    com = [0.5, 0.0]
+    limits = [-180.0, 180.0]
+    """
+
+    config_file = tmp_path / "robot.toml"
+    config_file.write_text(toml_content, encoding="utf-8")
+
+    skeleton = Skeleton.from_toml(config_file)
+
+    assert skeleton.num_joints == 1
+    assert skeleton.base_length == pytest.approx(0.5)
+    assert skeleton.links[0].prop.length == pytest.approx(0.5)

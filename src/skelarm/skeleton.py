@@ -72,11 +72,14 @@ class Link:
         self.agx: float = 0.0
         self.agy: float = 0.0
 
+        # Endpoint Jacobian column and centripetal/Coriolis acceleration basis
+        # for this joint (filled by the differential-kinematics helpers).
+        self.jx: float = 0.0  # x-component of this joint's Jacobian column
+        self.jy: float = 0.0  # y-component of this joint's Jacobian column
+        self.hx: float = 0.0  # x-component of the centripetal/Coriolis basis
+        self.hy: float = 0.0  # y-component of the centripetal/Coriolis basis
+
         # Joint forces/torques
-        self.jx: float = 0.0  # Force at joint x
-        self.jy: float = 0.0  # Force at joint y
-        self.hx: float = 0.0  # Moment at joint x
-        self.hy: float = 0.0  # Moment at joint y
         self.fx: float = 0.0  # Force applied to link x
         self.fy: float = 0.0  # Force applied to link y
         self.tau: float = 0.0  # Torque at joint
@@ -111,16 +114,39 @@ class Link:
 class Skeleton:
     """Represents the entire robot arm (skeleton)."""
 
-    def __init__(self, link_props: Sequence[LinkProp | dict[str, Any]]) -> None:
-        """Initialize the Skeleton with a list of link properties.
+    def __init__(
+        self,
+        link_props: Sequence[LinkProp | dict[str, Any]],
+        base_length: float = 0.0,
+    ) -> None:
+        """Initialize the Skeleton with a list of movable-link properties.
+
+        Following the reference notes, the arm is built around a fixed *base*
+        (zeroth) link of length ``base_length``. It is stored as ``links[0]`` and
+        carries the first joint at ``(base_length, 0)``; the actuated links given
+        in ``link_props`` follow as ``links[1:]``. A "2-link arm" therefore holds
+        three links in total: the base plus two movable links.
 
         Parameters
         ----------
         link_props : Sequence[LinkProp | dict[str, Any]]
-            A list of LinkProp objects or dictionaries, one for each link.
+            A list of LinkProp objects or dictionaries, one for each *movable*
+            link.
+        base_length : float, optional
+            Length of the fixed base link, i.e. the offset from the origin to the
+            first joint. Defaults to 0.0 (first joint at the origin).
         """
-        self.links: list[Link] = [Link(prop) for prop in link_props]
+        base_prop = LinkProp(length=base_length, m=0.0, i=0.0, rgx=0.0, rgy=0.0, qmin=0.0, qmax=0.0)
+        self.links: list[Link] = [Link(base_prop), *(Link(prop) for prop in link_props)]
+        # Total number of links including the fixed base (matches the reference
+        # ``num``); the actuated degrees of freedom are the movable links only.
         self.num_links: int = len(self.links)
+        self.num_joints: int = self.num_links - 1
+
+    @property
+    def base_length(self) -> float:
+        """Length of the fixed base (zeroth) link."""
+        return self.links[0].prop.length
 
     @classmethod
     def from_toml(cls, file_path: str | Path) -> Skeleton:
@@ -139,6 +165,9 @@ class Skeleton:
         path = Path(file_path)
         with path.open("rb") as f:
             data = tomllib.load(f)
+
+        # Optional fixed base link length (offset from the origin to joint 1).
+        base_length = float(data.get("base_length", 0.0))
 
         link_props = []
         for link_data in data.get("link", []):
@@ -177,60 +206,60 @@ class Skeleton:
                 )
             )
 
-        return cls(link_props)
+        return cls(link_props, base_length=base_length)
 
     @property
     def q(self) -> NDArray[np.float64]:
-        """Return current joint angles."""
-        return np.array([link.q for link in self.links], dtype=np.float64)
+        """Return current joint angles (one per movable link)."""
+        return np.array([link.q for link in self.links[1:]], dtype=np.float64)
 
     @q.setter
     def q(self, q_values: NDArray[np.float64]) -> None:
         """Set joint angles."""
-        if len(q_values) != self.num_links:
-            error_msg = f"Expected {self.num_links} joint angles, but got {len(q_values)}"
+        if len(q_values) != self.num_joints:
+            error_msg = f"Expected {self.num_joints} joint angles, but got {len(q_values)}"
             raise ValueError(error_msg)
-        for i, link in enumerate(self.links):
-            link.q = q_values[i]
+        for link, value in zip(self.links[1:], q_values, strict=True):
+            link.q = value
 
     @property
     def dq(self) -> NDArray[np.float64]:
-        """Return current joint angular velocities."""
-        return np.array([link.dq for link in self.links], dtype=np.float64)
+        """Return current joint angular velocities (one per movable link)."""
+        return np.array([link.dq for link in self.links[1:]], dtype=np.float64)
 
     @dq.setter
     def dq(self, dq_values: NDArray[np.float64]) -> None:
         """Set joint angular velocities."""
-        if len(dq_values) != self.num_links:
-            error_msg = f"Expected {self.num_links} joint angular velocities, but got {len(dq_values)}"
+        if len(dq_values) != self.num_joints:
+            error_msg = f"Expected {self.num_joints} joint angular velocities, but got {len(dq_values)}"
             raise ValueError(error_msg)
-        for i, link in enumerate(self.links):
-            link.dq = dq_values[i]
+        for link, value in zip(self.links[1:], dq_values, strict=True):
+            link.dq = value
 
     @property
     def ddq(self) -> NDArray[np.float64]:
-        """Return current joint angular accelerations."""
-        return np.array([link.ddq for link in self.links], dtype=np.float64)
+        """Return current joint angular accelerations (one per movable link)."""
+        return np.array([link.ddq for link in self.links[1:]], dtype=np.float64)
 
     @ddq.setter
     def ddq(self, ddq_values: NDArray[np.float64]) -> None:
         """Set joint angular accelerations."""
-        if len(ddq_values) != self.num_links:
-            error_msg = f"Expected {self.num_links} joint angular accelerations, but got {len(ddq_values)}"
+        if len(ddq_values) != self.num_joints:
+            error_msg = f"Expected {self.num_joints} joint angular accelerations, but got {len(ddq_values)}"
             raise ValueError(error_msg)
-        for i, link in enumerate(self.links):
-            link.ddq = ddq_values[i]
+        for link, value in zip(self.links[1:], ddq_values, strict=True):
+            link.ddq = value
 
     @property
     def tau(self) -> NDArray[np.float64]:
-        """Return current joint torques."""
-        return np.array([link.tau for link in self.links], dtype=np.float64)
+        """Return current joint torques (one per movable link)."""
+        return np.array([link.tau for link in self.links[1:]], dtype=np.float64)
 
     @tau.setter
     def tau(self, tau_values: NDArray[np.float64]) -> None:
         """Set joint torques."""
-        if len(tau_values) != self.num_links:
-            error_msg = f"Expected {self.num_links} joint torques, but got {len(tau_values)}"
+        if len(tau_values) != self.num_joints:
+            error_msg = f"Expected {self.num_joints} joint torques, but got {len(tau_values)}"
             raise ValueError(error_msg)
-        for i, link in enumerate(self.links):
-            link.tau = tau_values[i]
+        for link, value in zip(self.links[1:], tau_values, strict=True):
+            link.tau = value

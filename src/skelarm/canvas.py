@@ -125,7 +125,8 @@ class SkelarmViewer(QMainWindow):
         self.sliders: list[QSlider] = []
         self.angle_labels: list[QLabel] = []
 
-        for i, link in enumerate(skeleton.links):
+        # Skip the fixed base link (links[0]); only movable joints get a slider.
+        for i, link in enumerate(skeleton.links[1:]):
             row_layout = QVBoxLayout()
 
             header_layout = QHBoxLayout()

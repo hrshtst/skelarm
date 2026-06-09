@@ -44,12 +44,12 @@ def skeleton_strategy(draw: st.DrawFn) -> Skeleton:
     """Strategy to generate a Skeleton object with random state."""
     link_props = draw(link_props_strategy())
     skeleton = Skeleton(link_props)
-    num_links = len(link_props)
+    num_joints = len(link_props)
 
     # Generate random q, dq, ddq within reasonable ranges
-    q = draw(arrays(np.float64, num_links, elements=st.floats(min_value=-np.pi / 2, max_value=np.pi / 2)))
-    dq = draw(arrays(np.float64, num_links, elements=st.floats(min_value=-1.0, max_value=1.0)))
-    ddq = draw(arrays(np.float64, num_links, elements=st.floats(min_value=-5.0, max_value=5.0)))
+    q = draw(arrays(np.float64, num_joints, elements=st.floats(min_value=-np.pi / 2, max_value=np.pi / 2)))
+    dq = draw(arrays(np.float64, num_joints, elements=st.floats(min_value=-1.0, max_value=1.0)))
+    ddq = draw(arrays(np.float64, num_joints, elements=st.floats(min_value=-5.0, max_value=5.0)))
 
     skeleton.q = q
     skeleton.dq = dq
@@ -89,7 +89,7 @@ def test_inverse_dynamics_single_link_static_no_gravity() -> None:
 
     expected_tau = 0.0
 
-    assert skeleton.links[0].tau == pytest.approx(expected_tau)
+    assert skeleton.links[1].tau == pytest.approx(expected_tau)
 
 
 def test_compute_mass_matrix_single_link() -> None:
@@ -226,8 +226,8 @@ def test_inverse_dynamics_single_link_external_tip_force_requires_opposing_torqu
     skeleton.q = np.array([0.0])
     skeleton.dq = np.array([0.0])
     skeleton.ddq = np.array([0.0])
-    skeleton.links[0].fey = 2.0
-    skeleton.links[0].rex = 1.0
+    skeleton.links[1].fey = 2.0
+    skeleton.links[1].rex = 1.0
 
     compute_inverse_dynamics(skeleton)
 
@@ -244,8 +244,8 @@ def test_inverse_dynamics_external_force_on_nonterminal_link_affects_upstream_to
     skeleton.q = np.array([0.0, 0.0])
     skeleton.dq = np.array([0.0, 0.0])
     skeleton.ddq = np.array([0.0, 0.0])
-    skeleton.links[0].fey = 2.0
-    skeleton.links[0].rex = 0.5
+    skeleton.links[1].fey = 2.0
+    skeleton.links[1].rex = 0.5
 
     compute_inverse_dynamics(skeleton)
 
@@ -258,8 +258,8 @@ def test_forward_dynamics_round_trip_with_external_force() -> None:
     skeleton = Skeleton(link_props=[link_prop])
     skeleton.q = np.array([0.0])
     skeleton.dq = np.array([0.0])
-    skeleton.links[0].fey = 2.0
-    skeleton.links[0].rex = 1.0
+    skeleton.links[1].fey = 2.0
+    skeleton.links[1].rex = 1.0
 
     ddq = compute_forward_dynamics(skeleton, tau=np.array([0.0]))
     skeleton.ddq = ddq
@@ -274,8 +274,8 @@ def test_mass_matrix_ignores_external_forces() -> None:
     link_prop = LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi)
     unloaded = Skeleton(link_props=[link_prop])
     loaded = Skeleton(link_props=[link_prop])
-    loaded.links[0].fey = 2.0
-    loaded.links[0].rex = 1.0
+    loaded.links[1].fey = 2.0
+    loaded.links[1].rex = 1.0
 
     assert compute_mass_matrix(loaded) == pytest.approx(compute_mass_matrix(unloaded))
 
@@ -332,10 +332,10 @@ def test_simulate_robot_single_link_static_no_gravity() -> None:
 @settings(deadline=10000)  # Increase deadline to 10 seconds
 def test_dynamics_consistency_hypothesis(skel: Skeleton, tau_elements: float) -> None:
     """Property-based test for dynamics consistency: ID(FD(tau)) approx tau."""
-    num_links = skel.num_links
+    num_joints = skel.num_joints
 
     # Generate random control torques
-    tau_input = np.full(num_links, tau_elements, dtype=np.float64)
+    tau_input = np.full(num_joints, tau_elements, dtype=np.float64)
 
     # Compute ddq using forward dynamics
     ddq_computed = compute_forward_dynamics(skel, tau_input)
@@ -348,7 +348,7 @@ def test_dynamics_consistency_hypothesis(skel: Skeleton, tau_elements: float) ->
     tau_reconstructed = skel.tau
 
     # Assert consistency
-    for i in range(num_links):
+    for i in range(num_joints):
         assert tau_reconstructed[i] == pytest.approx(tau_input[i], abs=1e-6)
 
 
@@ -357,13 +357,13 @@ def test_dynamics_consistency_hypothesis(skel: Skeleton, tau_elements: float) ->
 @settings(deadline=10000)  # Increase deadline to 10 seconds
 def test_local_energy_conservation_hypothesis(skel: Skeleton) -> None:
     """Property-based test for local energy conservation: dKE/dt should be 0 when tau_input = 0."""
-    num_links = skel.num_links
+    num_joints = skel.num_joints
 
     # Ensure current q and dq are set on the skeleton
     compute_forward_kinematics(skel)  # Computes w, v, vc
 
     # No external torques for energy conservation check
-    tau_input = np.full(num_links, 0.0, dtype=np.float64)
+    tau_input = np.full(num_joints, 0.0, dtype=np.float64)
 
     # Calculate the rate of change of kinetic energy
     dke_dt = compute_kinetic_energy_rate(skel, tau_input)
