@@ -16,7 +16,7 @@ Consider the planar arm in the figure below. It models a human arm made of an
 upper arm and a forearm. A fixed **base link** of length $l_0$ carries the first
 joint; the two movable links of length $l_1$ and $l_2$ follow.
 
-![Velocity of a two-joint planar arm with base link l0, links l1 and l2, joint angles q1 and q2, joint rates q1-dot and q2-dot, and endpoint velocity (x-dot, y-dot).](fig/joint_velocity_2dof.png)
+![Velocity of a two-joint planar arm with base link l0, links l1 and l2, joint angles q1 and q2, joint rates q1-dot and q2-dot, and endpoint velocity (x-dot, y-dot).](fig/joint_velocity_2dof.png){ width="320" style="display: block; margin: 0 auto;" }
 
 *Endpoint velocity of a two-joint arm. The base link $l_0$ offsets the first
 joint along the $x$-axis; $q_1, q_2$ are the joint angles and
