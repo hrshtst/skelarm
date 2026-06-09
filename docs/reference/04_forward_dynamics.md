@@ -15,7 +15,7 @@ K = \frac{1}{2} \sum_{k=1}^{n} \left\{ m_k (\dot{x}_{Gk}^2 + \dot{y}_{Gk}^2) + I
 $$
 
 Applying Lagrange's equation $\frac{d}{dt}\frac{\partial K}{\partial \dot{\theta}_i} - \frac{\partial K}{\partial \theta_i} = n_i$
-(with $n_i$ the generalised force for the absolute angle $\theta_i$) produces, after
+(with $n_i$ the generalized force for the absolute angle $\theta_i$) produces, after
 some algebra, the matrix form
 
 $$
@@ -32,7 +32,7 @@ $\partial h_{ykj}/\partial \theta_j = h_{xkj}$.
 
 The system is actuated in **joint** coordinates $q$, related to the absolute
 angles by $\theta = T q$, where $T$ is the lower-triangular matrix of ones
-($\theta_i = \sum_{j \le i} q_j$). Mapping the generalised force $n$ onto the
+($\theta_i = \sum_{j \le i} q_j$). Mapping the generalized force $n$ onto the
 actuator torque $\tau$ and an external load $f_E$ via the principle of virtual
 work gives $\tau + J_E^{T} f_E = T^{T} n$, and hence the equation of motion in
 joint space:

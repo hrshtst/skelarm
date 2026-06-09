@@ -38,7 +38,7 @@ y &= l_1 \sin q_1 + l_2 \sin(q_1 + q_2).
 \end{aligned}
 $$
 
-This composition generalises directly to $n$ links by accumulating one rotated
+This composition generalizes directly to $n$ links by accumulating one rotated
 link vector per joint — the recursion that `compute_forward_kinematics`
 evaluates.
 
@@ -112,7 +112,7 @@ it relates the **joint velocities** $\dot{q}$ to the endpoint velocity through t
 Jacobian, and extends the same idea to acceleration.
 
 !!! note "Base link as the zeroth link"
-    Following the reference notes, the arm is modelled with an explicit fixed base
+    Following the reference notes, the arm is modeled with an explicit fixed base
     link of length $l_0$. In `skelarm` it is `links[0]`, configurable through the
     `base_length` argument of `Skeleton` (or a top-level `base_length` key in a
     TOML config). The actuated links are `links[1:]`, so `num_links` counts the

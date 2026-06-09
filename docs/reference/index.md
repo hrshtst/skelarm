@@ -3,7 +3,7 @@
 This section contains theoretical reference documentation for the `skelarm` robot kinematics and dynamics library.
 The content is derived from the project's foundational lessons.
 
-The arm is modelled around a fixed **base link** of length $l_0$ (the zeroth
+The arm is modeled around a fixed **base link** of length $l_0$ (the zeroth
 link), followed by the actuated links. So a "two-link arm" holds three links in
 total; in code, `links[0]` is the base and `links[1:]` are the movable joints.
 

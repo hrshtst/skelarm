@@ -7,8 +7,8 @@ change* of the joint angles and the resulting endpoint velocity (and, one
 derivative further, the endpoint acceleration).
 
 This page builds the relationship up from a concrete two-joint arm and then
-generalises it to an arbitrary number of joints, mirroring how the `skelarm`
-kinematics code is organised.
+generalizes it to an arbitrary number of joints, mirroring how the `skelarm`
+kinematics code is organized.
 
 ## 1. A two-joint arm
 
@@ -45,7 +45,7 @@ $$
 Notice that the constant base length $l_0$ drops out of the velocity: it shifts
 *where* the arm is but never *how fast* the endpoint moves.
 
-## 2. Generalising to $n$ joints
+## 2. Generalizing to $n$ joints
 
 Introduce the **absolute link angle** $\theta_i$ — the orientation of link $i$
 measured from the $x$-axis — so that $\theta_i = \theta_{i-1} + q_i$. With this
