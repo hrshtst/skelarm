@@ -4,9 +4,10 @@ A lightweight, physics-based dynamics simulator for a configurable planar robot 
 
 ## Features
 
-*   **Configurable Robot:** Define arbitrary planar robots with custom link lengths, masses, inertias, and centers of mass. Support for TOML configuration files.
+*   **Configurable Robot:** Define arbitrary planar robots with custom link lengths, masses, inertias, and centers of mass, plus a configurable fixed base link. Support for TOML configuration files.
 *   **Kinematics:**
-    *   Forward Kinematics (FK) to compute end-effector position from joint displacements.
+    *   Forward Kinematics (FK): recursive computation of joint, tip, and center-of-mass position, velocity, and acceleration.
+    *   Differential Kinematics: endpoint Jacobian and centripetal/Coriolis basis, with helpers to evaluate endpoint velocity and acceleration.
 *   **Dynamics (Planar, No Gravity):**
     *   Inverse Dynamics (ID) using Recursive Newton-Euler algorithm.
     *   Forward Dynamics (FD) using mass matrix and Coriolis/centrifugal terms.
@@ -53,6 +54,8 @@ A lightweight, physics-based dynamics simulator for a configurable planar robot 
 You can define robot configurations in TOML files. See `examples/simple_robot.toml` or `examples/four_dof_robot.toml`.
 
 ```toml
+base_length = 0.0  # Optional fixed base link offsetting the first joint along +x
+
 [[link]]
 length = 1.0
 mass = 2.0
