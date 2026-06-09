@@ -76,7 +76,7 @@ H \ddot{q} = \tau - b + J_E^{T} f_E
 $$
 
 with a standard solver (Gaussian elimination, or — since $H$ is symmetric
-positive definite — Cholesky). See [Numerical Methods](04_numerical_methods.md).
+positive definite — Cholesky). See [Numerical Methods](05_numerical_methods.md).
 
 ## 4. How `skelarm` builds $H$ and $b$
 

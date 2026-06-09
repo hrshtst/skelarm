@@ -1,10 +1,10 @@
 # Differential Kinematics
 
-Forward kinematics gives a single snapshot: it maps a set of joint angles to the
-endpoint position. Motion, however, is the variation of that configuration as
-time passes. **Differential kinematics** studies the relationship between the
-*rates of change* of the joint angles and the resulting endpoint velocity (and,
-one derivative further, the endpoint acceleration).
+The [Kinematics](01_kinematics.md) chapter fixed the arm's configuration at a
+single instant. Motion, however, is the variation of that configuration as time
+passes. **Differential kinematics** studies the relationship between the *rates of
+change* of the joint angles and the resulting endpoint velocity (and, one
+derivative further, the endpoint acceleration).
 
 This page builds the relationship up from a concrete two-joint arm and then
 generalises it to an arbitrary number of joints, mirroring how the `skelarm`
@@ -12,9 +12,10 @@ kinematics code is organised.
 
 ## 1. A two-joint arm
 
-Consider the planar arm in the figure below. It models a human arm made of an
-upper arm and a forearm. A fixed **base link** of length $l_0$ carries the first
-joint; the two movable links of length $l_1$ and $l_2$ follow.
+Recall the two-joint arm from the [Kinematics](01_kinematics.md) chapter — a fixed
+base link $l_0$ followed by two movable links of length $l_1$ and $l_2$. The figure
+below revisits it, now with the joint velocities $\dot{q}_1, \dot{q}_2$ and the
+resulting endpoint velocity drawn in.
 
 ![Velocity of a two-joint planar arm with base link l0, links l1 and l2, joint angles q1 and q2, joint velocities q1-dot and q2-dot, and endpoint velocity (x-dot, y-dot).](fig/joint_velocity_2dof.png){ width="320" style="display: block; margin: 0 auto;" }
 
@@ -22,8 +23,7 @@ joint; the two movable links of length $l_1$ and $l_2$ follow.
 joint along the $x$-axis; $q_1, q_2$ are the joint angles and
 $\dot{q}_1, \dot{q}_2$ their velocities.*
 
-Because the base link is fixed and lies along the $x$-axis, the first joint sits
-at $(l_0, 0)$, and the endpoint $(x, y)$ is
+Its endpoint position is
 
 $$
 \begin{aligned}
@@ -205,10 +205,5 @@ assert np.allclose(compute_endpoint_velocity(skeleton), [tip.vx, tip.vy])
 assert np.allclose(compute_endpoint_acceleration(skeleton), [tip.ax, tip.ay])
 ```
 
-!!! note "Base link as the zeroth link"
-    Following the reference notes, the arm is modelled with an explicit fixed
-    base link of length $l_0$. In `skelarm` it is `links[0]`, configurable through
-    the `base_length` argument of `Skeleton` (or a top-level `base_length` key in
-    a TOML config). The actuated links are `links[1:]`, so `num_links` counts the
-    base plus the movable links while `num_joints` counts the actuated degrees of
-    freedom. A "two-link arm" therefore holds three links in total.
+The base link is set up in the [Kinematics](01_kinematics.md) chapter; here it
+contributes only a constant offset, since a fixed link has no velocity.

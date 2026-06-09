@@ -57,10 +57,11 @@ nav:
   - Home: index.md
   - Theory Reference:
       - Overview: reference/index.md
-      - Differential Kinematics: reference/01_differential_kinematics.md
-      - Inverse Dynamics: reference/02_inverse_dynamics.md
-      - Forward Dynamics: reference/03_forward_dynamics.md
-      - Numerical Methods: reference/04_numerical_methods.md
+      - Kinematics: reference/01_kinematics.md
+      - Differential Kinematics: reference/02_differential_kinematics.md
+      - Inverse Dynamics: reference/03_inverse_dynamics.md
+      - Forward Dynamics: reference/04_forward_dynamics.md
+      - Numerical Methods: reference/05_numerical_methods.md
   - API Reference:
       - Skeleton: api/skeleton.md
       - Kinematics: api/kinematics.md

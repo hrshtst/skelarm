@@ -38,7 +38,7 @@ $$
 where $(x_{i-1}, y_{i-1})$ is the origin of joint $i$ and $\theta_i$ the absolute
 link angle. Differentiating twice in time (and reusing the joint-origin
 velocities and accelerations from the [differential
-kinematics](01_differential_kinematics.md)) gives the CoM velocity
+kinematics](02_differential_kinematics.md)) gives the CoM velocity
 $(\dot{x}_{Gi}, \dot{y}_{Gi})$ and acceleration $(\ddot{x}_{Gi}, \ddot{y}_{Gi})$.
 
 ## 2. Newton–Euler equations for one link
@@ -142,4 +142,4 @@ equal minus the moment of that force about the joint. The
 poses suggested in the lesson — a straight arm pushed along and across its length,
 an L-shaped pose, and several oblique configurations — which is the simplest way
 to confirm the force computation by hand. Full numerical validation against
-forward dynamics follows in the [next chapter](03_forward_dynamics.md).
+forward dynamics follows in the [next chapter](04_forward_dynamics.md).
