@@ -62,6 +62,7 @@ nav:
       - Inverse Dynamics: reference/03_inverse_dynamics.md
       - Forward Dynamics: reference/04_forward_dynamics.md
       - Numerical Methods: reference/05_numerical_methods.md
+      - Numerical Inverse Kinematics: reference/06_numerical_inverse_kinematics.md
   - API Reference:
       - Skeleton: api/skeleton.md
       - Kinematics: api/kinematics.md

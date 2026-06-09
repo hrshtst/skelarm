@@ -100,9 +100,9 @@ general) two distinct configurations for a reachable target.
 !!! note "Beyond two joints"
     The clean closed form above is special to the two-joint arm. Arms with more
     joints are typically *redundant* — infinitely many configurations reach a
-    given endpoint — and the inverse problem is then solved numerically. That
-    approach is covered in a later chapter; this page deliberately stops at the
-    analytic two-joint case.
+    given endpoint — and the inverse problem is then solved numerically, as
+    sketched in [Numerical Inverse Kinematics](06_numerical_inverse_kinematics.md);
+    this page deliberately stops at the analytic two-joint case.
 
 ## 3. Where this leads
 

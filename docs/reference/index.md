@@ -28,3 +28,5 @@ total; in code, `links[0]` is the base and `links[1:]` are the movable joints.
 5.  [Numerical Methods](05_numerical_methods.md)
     -   Linear Equation Solver (Gaussian Elimination).
     -   ODE Solver (Euler, Runge-Kutta).
+6.  [Numerical Inverse Kinematics](06_numerical_inverse_kinematics.md)
+    -   Jacobian iteration for the general n-joint case (rough draft).
