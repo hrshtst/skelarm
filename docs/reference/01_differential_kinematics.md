@@ -16,11 +16,11 @@ Consider the planar arm in the figure below. It models a human arm made of an
 upper arm and a forearm. A fixed **base link** of length $l_0$ carries the first
 joint; the two movable links of length $l_1$ and $l_2$ follow.
 
-![Velocity of a two-joint planar arm with base link l0, links l1 and l2, joint angles q1 and q2, joint rates q1-dot and q2-dot, and endpoint velocity (x-dot, y-dot).](fig/joint_velocity_2dof.png){ width="320" style="display: block; margin: 0 auto;" }
+![Velocity of a two-joint planar arm with base link l0, links l1 and l2, joint angles q1 and q2, joint velocities q1-dot and q2-dot, and endpoint velocity (x-dot, y-dot).](fig/joint_velocity_2dof.png){ width="320" style="display: block; margin: 0 auto;" }
 
 *Endpoint velocity of a two-joint arm. The base link $l_0$ offsets the first
 joint along the $x$-axis; $q_1, q_2$ are the joint angles and
-$\dot{q}_1, \dot{q}_2$ their rates.*
+$\dot{q}_1, \dot{q}_2$ their velocities.*
 
 Because the base link is fixed and lies along the $x$-axis, the first joint sits
 at $(l_0, 0)$, and the endpoint $(x, y)$ is
@@ -32,7 +32,7 @@ y &= l_1 \sin q_1 + l_2 \sin(q_1 + q_2).
 \end{aligned}
 $$
 
-Differentiating with respect to time relates the joint rates to the endpoint
+Differentiating with respect to time relates the joint velocities to the endpoint
 velocity at the current configuration:
 
 $$
@@ -100,7 +100,7 @@ contributes its $l_0$ offset with zero velocity and acceleration.
 
 ## 3. The Jacobian
 
-The endpoint velocity is *linear* in the joint rates, so it can be packed into a
+The endpoint velocity is *linear* in the joint velocities, so it can be packed into a
 matrix–vector product. Writing the endpoint as $(x, y) \equiv (x_n, y_n)$,
 
 $$
