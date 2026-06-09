@@ -12,14 +12,14 @@ acceleration of every joint, find the actuator torques that generate them. The
 solution is a single **backward** sweep along the chain, from the endpoint to the
 base, applying Newton–Euler equations link by link.
 
-![A four-joint planar arm. The inset isolates link i, showing its mass m_i and inertia I_i about the center of mass, the constraint force (f_ix, f_iy) and torque tau_i at the proximal joint, the reaction force (-f_(i+1)x, -f_(i+1)y) and torque -tau_(i+1) at the distal joint, and the center-of-mass offsets r_ix and r_iy.](fig/inertia_and_force_4dof.png)
+![A four-joint planar arm. The inset isolates link i, showing its mass m_i and inertia I_i about the center of mass, the constraint force (f_ix, f_iy) and torque tau_i at the proximal joint, the reaction force (-f_(i+1)x, -f_(i+1)y) and torque -tau_(i+1) at the distal joint, and the center-of-mass offsets r_ix and r_iy.](fig/inertia_and_force_4dof.png){ width="560" style="display: block; margin: 0 auto;" }
 
 *Inertia and forces acting on link $i$ of a four-joint arm. The center of mass
 sits at offsets $r_{ix}$ (along the link) and $r_{iy}$ (perpendicular to it).*
 
 ## 1. Mass properties and the center of mass
 
-Each link $i$ is characterised by its **mass properties**, which depend only on
+Each link $i$ is characterized by its **mass properties**, which depend only on
 the body and not on its motion: the mass $m_i$, the first moments
 $m_i x_{Gi}, m_i y_{Gi}$, and the moment of inertia $I_i$ about the center of mass
 (CoM).
@@ -123,7 +123,7 @@ inertial force at the CoM respectively.
 
 ## 5. Implementation
 
-`compute_inverse_dynamics` realises this sweep:
+`compute_inverse_dynamics` realizes this sweep:
 
 1. Run `compute_forward_kinematics` to obtain the CoM accelerations and joint
    positions.

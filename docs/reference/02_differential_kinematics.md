@@ -169,7 +169,7 @@ computable, which is exactly what lets one validate the other.
 
 | Function | Returns | Theory |
 | --- | --- | --- |
-| `compute_forward_kinematics` | (updates link state) | Sections 2; forward velocity/acceleration recursion |
+| `compute_forward_kinematics` | (updates link state) | Section 2; forward velocity/acceleration recursion |
 | `compute_jacobian` | $2 \times n$ matrix $J$ | Section 3 |
 | `compute_coriolis_basis` | $2 \times n$ matrix $H$ | Section 4 |
 | `compute_endpoint_velocity` | $J \dot{q}$ | Section 3 |
