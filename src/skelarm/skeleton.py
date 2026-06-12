@@ -228,8 +228,6 @@ class Skeleton:
 
         skeleton = cls(link_props, base_length=base_length)
         skeleton.q = np.array(initial_angles, dtype=np.float64)
-        # Re-run FK: setting q above invalidates the state computed during construction.
-        compute_forward_kinematics(skeleton)
         return skeleton
 
     @property
@@ -239,12 +237,13 @@ class Skeleton:
 
     @q.setter
     def q(self, q_values: NDArray[np.float64]) -> None:
-        """Set joint angles."""
+        """Set joint angles and refresh the derived link states."""
         if len(q_values) != self.num_joints:
             error_msg = f"Expected {self.num_joints} joint angles, but got {len(q_values)}"
             raise ValueError(error_msg)
         for link, value in zip(self.links[1:], q_values, strict=True):
             link.q = value
+        compute_forward_kinematics(self)
 
     @property
     def dq(self) -> NDArray[np.float64]:
@@ -253,12 +252,13 @@ class Skeleton:
 
     @dq.setter
     def dq(self, dq_values: NDArray[np.float64]) -> None:
-        """Set joint angular velocities."""
+        """Set joint angular velocities and refresh the derived link states."""
         if len(dq_values) != self.num_joints:
             error_msg = f"Expected {self.num_joints} joint angular velocities, but got {len(dq_values)}"
             raise ValueError(error_msg)
         for link, value in zip(self.links[1:], dq_values, strict=True):
             link.dq = value
+        compute_forward_kinematics(self)
 
     @property
     def ddq(self) -> NDArray[np.float64]:
@@ -267,12 +267,13 @@ class Skeleton:
 
     @ddq.setter
     def ddq(self, ddq_values: NDArray[np.float64]) -> None:
-        """Set joint angular accelerations."""
+        """Set joint angular accelerations and refresh the derived link states."""
         if len(ddq_values) != self.num_joints:
             error_msg = f"Expected {self.num_joints} joint angular accelerations, but got {len(ddq_values)}"
             raise ValueError(error_msg)
         for link, value in zip(self.links[1:], ddq_values, strict=True):
             link.ddq = value
+        compute_forward_kinematics(self)
 
     @property
     def tau(self) -> NDArray[np.float64]:

@@ -17,8 +17,6 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from skelarm.kinematics import compute_forward_kinematics
-
 if TYPE_CHECKING:
     from skelarm.skeleton import Skeleton
 
@@ -99,9 +97,6 @@ class SkelarmViewer(QMainWindow):
         super().__init__()
         self.skeleton = skeleton
 
-        # Ensure kinematics are computed initially
-        compute_forward_kinematics(self.skeleton)
-
         self.canvas = SkelarmCanvas(skeleton)
 
         self.setWindowTitle("Skelarm Viewer")
@@ -167,6 +162,6 @@ class SkelarmViewer(QMainWindow):
             self.angle_labels[i].setText(f"{angle_deg}°")
             new_q.append(math.radians(angle_deg))
 
+        # The eager q setter refreshes the forward kinematics.
         self.skeleton.q = np.array(new_q)
-        compute_forward_kinematics(self.skeleton)
         self.canvas.update_skeleton()

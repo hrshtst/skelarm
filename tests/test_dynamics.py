@@ -349,6 +349,70 @@ def test_simulate_robot_end_time_not_exact_multiple_of_dt(t_end: float, dt: floa
     assert len(times) == len(q_traj) == len(dq_traj)
 
 
+def test_simulate_robot_control_callback_sees_current_kinematics() -> None:
+    """The control callback must observe link positions matching the state it is given.
+
+    A coasting single link (unit length, constant dq) sweeps through a range of
+    angles; at every callback invocation the tip position must equal cos(q) for
+    the q handed to the callback, not the kinematics of the initial pose.
+    """
+    link_prop = LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi)
+    skeleton = Skeleton(link_props=[link_prop])
+    skeleton.q = np.array([0.5])
+    skeleton.dq = np.array([1.0])
+
+    observed: list[tuple[float, float]] = []
+
+    def recording_torque(_t: float, skel: Skeleton) -> np.ndarray:
+        observed.append((skel.q[0], skel.links[-1].xe))
+        return np.array([0.0])
+
+    simulate_robot(skeleton, (0.0, 0.5), recording_torque, dt=0.05)
+
+    qs = np.array([q for q, _ in observed])
+    tip_xs = np.array([xe for _, xe in observed])
+    minimum_sweep = 0.1  # the arm must actually sweep through a range of angles
+    assert qs.max() - qs.min() > minimum_sweep
+    assert tip_xs == pytest.approx(np.cos(qs))
+
+
+def test_dynamics_hot_paths_do_not_trigger_setter_kinematics(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mass matrix, FD, and simulation must write link state directly, not via the eager setters.
+
+    The eager q/dq/ddq setters re-run forward kinematics on every assignment, which
+    would double the FK work in the dynamics loops; those loops refresh kinematics
+    themselves (via inverse dynamics or explicitly), so they must bypass the setters.
+    """
+    import skelarm.skeleton as skeleton_module
+
+    link_props = [
+        LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+        LinkProp(length=0.8, m=0.8, i=0.05, rgx=0.4, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+    ]
+    skeleton = Skeleton(link_props)
+    skeleton.q = np.array([0.3, -0.2])
+    skeleton.dq = np.array([0.5, 0.1])
+
+    setter_fk_calls: list[Skeleton] = []
+    real_fk = skeleton_module.compute_forward_kinematics
+
+    def counting_fk(skel: Skeleton) -> None:
+        setter_fk_calls.append(skel)
+        real_fk(skel)
+
+    monkeypatch.setattr(skeleton_module, "compute_forward_kinematics", counting_fk)
+
+    def zero_torque(_t: float, _skeleton: Skeleton) -> np.ndarray:
+        return np.zeros(2)
+
+    compute_mass_matrix(skeleton)
+    compute_coriolis_gravity_vector(skeleton)
+    compute_forward_dynamics(skeleton, np.zeros(2))
+    simulate_robot(skeleton, (0.0, 0.05), zero_torque, dt=0.01)
+
+    assert setter_fk_calls == []
+
+
 # === Hypothesis Tests ===
 
 

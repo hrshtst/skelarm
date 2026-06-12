@@ -24,6 +24,25 @@ def test_new_skeleton_starts_with_consistent_forward_kinematics() -> None:
     assert skeleton.links[2].ye == pytest.approx(0.0)
 
 
+def test_setting_joint_state_refreshes_link_states() -> None:
+    """Assigning q, dq, or ddq must leave the derived link states up to date without an explicit FK call."""
+    link_prop = LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi)
+    skeleton = Skeleton(link_props=[link_prop])
+    tip = skeleton.links[1]
+
+    skeleton.q = np.array([np.pi / 2])
+    assert tip.xe == pytest.approx(0.0, abs=1e-12)
+    assert tip.ye == pytest.approx(1.0)
+
+    skeleton.q = np.array([0.0])
+    skeleton.dq = np.array([1.0])
+    assert np.array([tip.vx, tip.vy]) == pytest.approx(np.array([0.0, 1.0]))
+
+    # With w = 1 and dw = 2 the tip acceleration is dw x l + w^2 (-l) = (-1, 2).
+    skeleton.ddq = np.array([2.0])
+    assert np.array([tip.ax, tip.ay]) == pytest.approx(np.array([-1.0, 2.0]))
+
+
 def test_link_does_not_mutate_input_dict() -> None:
     """Building a Link from a dict must not mutate the caller's dictionary."""
     properties = {"l": 1.0, "m": 2.0, "i": 0.5, "rgx": 0.5, "rgy": 0.0, "qmin": -1.0, "qmax": 1.0}

@@ -138,25 +138,20 @@ def compute_mass_matrix(
     num_joints = skeleton.num_joints
     mass_matrix = np.zeros((num_joints, num_joints), dtype=np.float64)
 
-    original_q = skeleton.q
-    original_dq = skeleton.dq
-    original_ddq = skeleton.ddq
-
+    # Write the link state directly rather than through the eager q/dq/ddq
+    # setters: each setter assignment would re-run forward kinematics, and
+    # inverse dynamics refreshes the kinematics itself anyway.
     temp_skeleton = deepcopy(skeleton)
-    temp_skeleton.dq = np.zeros(num_joints)
     _clear_external_forces(temp_skeleton)
+    for link in temp_skeleton.links[1:]:
+        link.dq = 0.0
 
     for j in range(num_joints):
-        ddq_j_one = np.zeros(num_joints)
-        ddq_j_one[j] = 1.0
-        temp_skeleton.ddq = ddq_j_one
+        for k, link in enumerate(temp_skeleton.links[1:]):
+            link.ddq = 1.0 if k == j else 0.0
 
         compute_inverse_dynamics(temp_skeleton, grav_vec=zero_grav)
         mass_matrix[:, j] = temp_skeleton.tau
-
-    skeleton.q = original_q
-    skeleton.dq = original_dq
-    skeleton.ddq = original_ddq
 
     return mass_matrix
 
@@ -185,23 +180,13 @@ def compute_coriolis_gravity_vector(
     if grav_vec is None:
         grav_vec = np.array([0.0, 0.0], dtype=np.float64)
 
-    num_joints = skeleton.num_joints
-    original_q = skeleton.q
-    original_dq = skeleton.dq
-    original_ddq = skeleton.ddq
-
+    # Raw link writes for the same reason as in compute_mass_matrix.
     temp_skeleton = deepcopy(skeleton)
-    temp_skeleton.ddq = np.zeros(num_joints)
+    for link in temp_skeleton.links[1:]:
+        link.ddq = 0.0
 
     compute_inverse_dynamics(temp_skeleton, grav_vec=grav_vec)
-    h_vector = temp_skeleton.tau
-
-    # Restore original state
-    skeleton.q = original_q
-    skeleton.dq = original_dq
-    skeleton.ddq = original_ddq
-
-    return h_vector
+    return temp_skeleton.tau
 
 
 def compute_forward_dynamics(
@@ -354,10 +339,14 @@ def simulate_robot(
         q = state[:num_joints]
         dq = state[num_joints:]
 
+        # Raw link writes bypass the eager setters (which would run FK twice);
+        # one explicit FK pass then gives the control callback link positions
+        # and velocities consistent with the state it is handed.
         current_skeleton = deepcopy(initial_skeleton)
-        current_skeleton.q = q
-        current_skeleton.dq = dq
-        # ddq is computed, not set from state
+        for link, q_value, dq_value in zip(current_skeleton.links[1:], q, dq, strict=True):
+            link.q = q_value
+            link.dq = dq_value
+        compute_forward_kinematics(current_skeleton)
 
         tau = control_torques_func(t, current_skeleton)
         ddq = compute_forward_dynamics(current_skeleton, tau, grav_vec)
