@@ -161,7 +161,9 @@ class Skeleton:
         Returns
         -------
         Skeleton
-            A new Skeleton instance.
+            A new Skeleton instance. Each link's initial joint angle is taken
+            from its optional ``q0`` key (in degrees, like the limits) and
+            defaults to zero.
         """
         path = Path(file_path)
         with path.open("rb") as f:
@@ -171,6 +173,7 @@ class Skeleton:
         base_length = float(data.get("base_length", 0.0))
 
         link_props = []
+        initial_angles = []
         for link_data in data.get("link", []):
             # Extract properties from TOML data
             length = link_data["length"]
@@ -195,6 +198,9 @@ class Skeleton:
             qmin = np.deg2rad(qmin_deg)
             qmax = np.deg2rad(qmax_deg)
 
+            # Optional initial joint angle, in degrees like the limits.
+            initial_angles.append(np.deg2rad(link_data.get("q0", 0.0)))
+
             link_props.append(
                 LinkProp(
                     length=length,
@@ -207,7 +213,9 @@ class Skeleton:
                 )
             )
 
-        return cls(link_props, base_length=base_length)
+        skeleton = cls(link_props, base_length=base_length)
+        skeleton.q = np.array(initial_angles, dtype=np.float64)
+        return skeleton
 
     @property
     def q(self) -> NDArray[np.float64]:

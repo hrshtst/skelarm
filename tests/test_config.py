@@ -59,6 +59,33 @@ def test_load_skeleton_from_toml(tmp_path: Path) -> None:
     assert link2.prop.qmax == pytest.approx(np.pi / 2)
 
 
+def test_load_skeleton_with_initial_angles(tmp_path: Path) -> None:
+    """A per-link q0 (degrees) sets the initial joint angle; omitting it defaults to zero."""
+    toml_content = """
+    [[link]]
+    length = 1.0
+    mass = 2.0
+    inertia = 0.5
+    com = [0.5, 0.0]
+    limits = [-180.0, 180.0]
+    q0 = 30.0
+
+    [[link]]
+    length = 0.8
+    mass = 1.5
+    inertia = 0.3
+    com = [0.4, 0.0]
+    limits = [-90.0, 90.0]
+    """
+
+    config_file = tmp_path / "robot.toml"
+    config_file.write_text(toml_content, encoding="utf-8")
+
+    skeleton = Skeleton.from_toml(config_file)
+
+    assert skeleton.q == pytest.approx(np.array([np.deg2rad(30.0), 0.0]))
+
+
 def test_load_skeleton_with_base_length(tmp_path: Path) -> None:
     """A top-level base_length is loaded as the fixed base (zeroth) link."""
     toml_content = """

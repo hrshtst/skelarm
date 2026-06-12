@@ -62,6 +62,7 @@ mass = 2.0
 inertia = 0.5
 com = [0.5, 0.0]        # Center of mass [x, y] relative to joint
 limits = [-180.0, 180.0]  # Joint limits [min, max] in degrees
+q0 = 30.0               # Optional initial joint angle in degrees (default 0)
 
 [[link]]
 length = 0.8
