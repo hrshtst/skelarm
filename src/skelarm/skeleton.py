@@ -275,6 +275,52 @@ class Skeleton:
             link.ddq = value
         compute_forward_kinematics(self)
 
+    def set_state(
+        self,
+        q: NDArray[np.float64] | None = None,
+        dq: NDArray[np.float64] | None = None,
+        ddq: NDArray[np.float64] | None = None,
+    ) -> None:
+        """Set joint angles, velocities, and accelerations in one call.
+
+        Unlike assigning ``q``, ``dq``, and ``ddq`` separately (each of which
+        re-runs forward kinematics), this writes all provided values first and
+        refreshes the derived link states with a single forward-kinematics
+        pass. Arguments left as ``None`` keep their current values.
+
+        Parameters
+        ----------
+        q : NDArray[np.float64] | None, optional
+            Joint angles, one per movable link.
+        dq : NDArray[np.float64] | None, optional
+            Joint angular velocities, one per movable link.
+        ddq : NDArray[np.float64] | None, optional
+            Joint angular accelerations, one per movable link.
+
+        Raises
+        ------
+        ValueError
+            If any provided array does not hold one value per movable link.
+            The skeleton is left unmodified in that case.
+        """
+        # Validate everything before writing anything, so a bad argument
+        # cannot leave the skeleton partially updated.
+        for name, values in (("q", q), ("dq", dq), ("ddq", ddq)):
+            if values is not None and len(values) != self.num_joints:
+                error_msg = f"Expected {self.num_joints} values for {name}, but got {len(values)}"
+                raise ValueError(error_msg)
+
+        if q is not None:
+            for link, value in zip(self.links[1:], q, strict=True):
+                link.q = value
+        if dq is not None:
+            for link, value in zip(self.links[1:], dq, strict=True):
+                link.dq = value
+        if ddq is not None:
+            for link, value in zip(self.links[1:], ddq, strict=True):
+                link.ddq = value
+        compute_forward_kinematics(self)
+
     @property
     def tau(self) -> NDArray[np.float64]:
         """Return current joint torques (one per movable link)."""
