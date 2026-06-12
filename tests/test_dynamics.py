@@ -324,6 +324,31 @@ def test_simulate_robot_single_link_static_no_gravity() -> None:
     assert dq_traj[-1, 0] == pytest.approx(initial_skeleton.dq[0])
 
 
+@pytest.mark.parametrize(
+    ("t_end", "dt"),
+    [
+        (0.7, 0.1),  # looks like an exact multiple of dt, but is not in floating point
+        (0.95, 0.1),  # plainly not a multiple of dt
+    ],
+)
+def test_simulate_robot_end_time_not_exact_multiple_of_dt(t_end: float, dt: float) -> None:
+    """The output time grid must stay within time_span when dt does not divide it exactly."""
+    link_prop = LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi)
+    skeleton = Skeleton(link_props=[link_prop])
+    skeleton.q = np.array([np.pi / 4])
+    skeleton.dq = np.array([0.0])
+
+    def zero_torque(_t: float, _skeleton: Skeleton) -> np.ndarray:
+        return np.array([0.0])
+
+    times, q_traj, dq_traj = simulate_robot(skeleton, (0.0, t_end), zero_torque, dt=dt)
+
+    assert times[0] == pytest.approx(0.0)
+    assert times[-1] == pytest.approx(t_end)
+    assert np.all(np.diff(times) > 0.0)
+    assert len(times) == len(q_traj) == len(dq_traj)
+
+
 # === Hypothesis Tests ===
 
 

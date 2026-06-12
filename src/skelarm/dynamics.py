@@ -365,7 +365,11 @@ def simulate_robot(
         return np.concatenate((dq, ddq))
 
     initial_state = np.concatenate((initial_skeleton.q, initial_skeleton.dq))
-    t_eval = np.arange(time_span[0], time_span[1] + dt, dt)
+    # Sample every dt and end exactly at the final time. A naive
+    # ``arange(t0, t1 + dt, dt)`` can overshoot t1 through float rounding,
+    # which solve_ivp rejects.
+    t_eval = np.arange(time_span[0], time_span[1], dt)
+    t_eval = np.append(t_eval[t_eval < time_span[1]], time_span[1])
 
     solution = solve_ivp(
         ode_system,
