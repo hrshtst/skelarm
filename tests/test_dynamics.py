@@ -12,7 +12,7 @@ from skelarm.dynamics import (
     compute_coriolis_gravity_vector,
     compute_forward_dynamics,
     compute_inverse_dynamics,
-    compute_kinetic_energy_rate,
+    compute_kinetic_energy,
     compute_mass_matrix,
     simulate_robot,
 )
@@ -379,22 +379,54 @@ def test_dynamics_consistency_hypothesis(skel: Skeleton, tau_elements: float) ->
 
 @pytest.mark.slow
 @given(skel=skeleton_strategy())
-@settings(deadline=10000)  # Increase deadline to 10 seconds
-def test_local_energy_conservation_hypothesis(skel: Skeleton) -> None:
-    """Property-based test for local energy conservation: dKE/dt should be 0 when tau_input = 0."""
-    num_joints = skel.num_joints
+@settings(deadline=10000)
+def test_kinetic_energy_matches_mass_matrix_quadratic_form_hypothesis(skel: Skeleton) -> None:
+    """KE from link velocities must equal the joint-space form 0.5 * dq^T M(q) dq.
 
-    # Ensure current q and dq are set on the skeleton
-    compute_forward_kinematics(skel)  # Computes w, v, vc
+    The two sides come from independent code paths: the left from the velocities
+    propagated by forward kinematics, the right from the mass matrix assembled via
+    inverse dynamics. Agreement ties the inertial terms of the dynamics to the
+    kinematics.
+    """
+    compute_forward_kinematics(skel)
 
-    # No external torques for energy conservation check
-    tau_input = np.full(num_joints, 0.0, dtype=np.float64)
+    kinetic_energy = compute_kinetic_energy(skel)
+    mass_matrix = compute_mass_matrix(skel)
+    joint_space_energy = 0.5 * float(skel.dq @ mass_matrix @ skel.dq)
 
-    # Calculate the rate of change of kinetic energy
-    dke_dt = compute_kinetic_energy_rate(skel, tau_input)
+    assert kinetic_energy == pytest.approx(joint_space_energy, abs=1e-9)
 
-    # dKE/dt should be zero if there are no external torques and no potential energy change
-    assert dke_dt == pytest.approx(0.0, abs=1e-6)
+
+def test_passive_motion_conserves_kinetic_energy() -> None:
+    """With zero torque and no gravity, KE stays constant along a simulated trajectory.
+
+    Unlike checking dq^T tau (an algebraic identity for any M and h), this recomputes
+    the kinetic energy from the simulated states, so it fails if the inertial or
+    Coriolis terms of the dynamics are wrong.
+    """
+    link_props = [
+        LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+        LinkProp(length=0.8, m=0.8, i=0.05, rgx=0.4, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+    ]
+    skeleton = Skeleton(link_props)
+    skeleton.q = np.array([0.3, -0.5])
+    skeleton.dq = np.array([1.0, -0.5])
+
+    compute_forward_kinematics(skeleton)
+    initial_energy = compute_kinetic_energy(skeleton)
+    assert initial_energy > 0.0
+
+    def zero_torque(_t: float, _skeleton: Skeleton) -> np.ndarray:
+        return np.zeros(2)
+
+    _times, q_traj, dq_traj = simulate_robot(skeleton, (0.0, 1.0), zero_torque, dt=0.1)
+
+    for q, dq in zip(q_traj, dq_traj, strict=True):
+        sample = Skeleton(link_props)
+        sample.q = q
+        sample.dq = dq
+        compute_forward_kinematics(sample)
+        assert compute_kinetic_energy(sample) == pytest.approx(initial_energy, rel=1e-4)
 
 
 @pytest.mark.slow
