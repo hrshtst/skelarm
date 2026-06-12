@@ -10,6 +10,10 @@ from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
+# Runtime-safe despite the apparent cycle: kinematics imports Skeleton only
+# under TYPE_CHECKING.
+from skelarm.kinematics import compute_forward_kinematics
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
@@ -128,6 +132,10 @@ class Skeleton:
         in ``link_props`` follow as ``links[1:]``. A "2-link arm" therefore holds
         three links in total: the base plus two movable links.
 
+        Forward kinematics is computed once at the end of construction, so the
+        derived link states (positions, COM, ...) start out consistent with the
+        initial pose.
+
         Parameters
         ----------
         link_props : Sequence[LinkProp | dict[str, Any]]
@@ -143,6 +151,10 @@ class Skeleton:
         # ``num``); the actuated degrees of freedom are the movable links only.
         self.num_links: int = len(self.links)
         self.num_joints: int = self.num_links - 1
+        # Make the derived link states (positions, COM, ...) consistent with the
+        # initial pose right away, so a fresh skeleton can be drawn or queried
+        # without an explicit forward-kinematics call.
+        compute_forward_kinematics(self)
 
     @property
     def base_length(self) -> float:
@@ -163,7 +175,8 @@ class Skeleton:
         Skeleton
             A new Skeleton instance. Each link's initial joint angle is taken
             from its optional ``q0`` key (in degrees, like the limits) and
-            defaults to zero.
+            defaults to zero; the link positions are already consistent with
+            that pose.
         """
         path = Path(file_path)
         with path.open("rb") as f:
@@ -215,6 +228,8 @@ class Skeleton:
 
         skeleton = cls(link_props, base_length=base_length)
         skeleton.q = np.array(initial_angles, dtype=np.float64)
+        # Re-run FK: setting q above invalidates the state computed during construction.
+        compute_forward_kinematics(skeleton)
         return skeleton
 
     @property

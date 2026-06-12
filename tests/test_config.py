@@ -86,6 +86,29 @@ def test_load_skeleton_with_initial_angles(tmp_path: Path) -> None:
     assert skeleton.q == pytest.approx(np.array([np.deg2rad(30.0), 0.0]))
 
 
+def test_load_skeleton_initial_pose_reflected_in_link_positions(tmp_path: Path) -> None:
+    """from_toml must return a skeleton whose link positions already match the q0 pose."""
+    toml_content = """
+    [[link]]
+    length = 1.0
+    mass = 1.0
+    inertia = 0.1
+    com = [0.5, 0.0]
+    limits = [-180.0, 180.0]
+    q0 = 90.0
+    """
+
+    config_file = tmp_path / "robot.toml"
+    config_file.write_text(toml_content, encoding="utf-8")
+
+    skeleton = Skeleton.from_toml(config_file)
+
+    tip = skeleton.links[-1]
+    assert tip.q_absolute == pytest.approx(np.pi / 2)
+    assert tip.xe == pytest.approx(0.0, abs=1e-12)
+    assert tip.ye == pytest.approx(1.0)
+
+
 def test_load_skeleton_with_base_length(tmp_path: Path) -> None:
     """A top-level base_length is loaded as the fixed base (zeroth) link."""
     toml_content = """
