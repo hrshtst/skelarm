@@ -37,11 +37,11 @@ def test_forward_kinematics_single_link_horizontal() -> None:
     assert skeleton.links[1].ye == pytest.approx(0.0)
 
 
-def test_forward_kinematics_single_link_vertical() -> None:
-    """Test FK for a single link arm extended vertically upwards."""
+def test_forward_kinematics_single_link_90_degrees() -> None:
+    """Test FK for a single link arm rotated 90 degrees from the x-axis (pointing along +y)."""
     link_prop = LinkProp(length=1.0, m=1.0, i=1.0, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi)
     skeleton = Skeleton(link_props=[link_prop])
-    skeleton.q = np.array([np.pi / 2])  # Vertical upwards
+    skeleton.q = np.array([np.pi / 2])  # Rotated 90 degrees (points along +y)
 
     compute_forward_kinematics(skeleton)
 
@@ -76,11 +76,11 @@ def test_forward_kinematics_two_links_horizontal() -> None:
 
 
 def test_forward_kinematics_two_links_90_degrees() -> None:
-    """Test FK for a two-link arm, first link horizontal, second link vertical."""
+    """Test FK for a two-link arm, first link horizontal, second link perpendicular to it."""
     link_prop1 = LinkProp(length=1.0, m=1.0, i=1.0, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi)
     link_prop2 = LinkProp(length=1.0, m=1.0, i=1.0, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi)
     skeleton = Skeleton(link_props=[link_prop1, link_prop2])
-    skeleton.q = np.array([0.0, np.pi / 2])  # Link1 horizontal, Link2 vertical relative to Link1
+    skeleton.q = np.array([0.0, np.pi / 2])  # Link1 horizontal, Link2 perpendicular to Link1
 
     compute_forward_kinematics(skeleton)
 
