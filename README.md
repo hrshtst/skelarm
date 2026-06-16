@@ -54,9 +54,10 @@ A lightweight, physics-based dynamics simulator for a configurable planar robot 
 You can define robot configurations in TOML files. See `examples/simple_robot.toml`, `examples/four_dof_robot.toml`, or `examples/base_offset_robot.toml` (which sets a non-zero `base_length`).
 
 ```toml
+[skeleton]
 base_length = 0.0  # Optional fixed base link offsetting the first joint along +x
 
-[[link]]
+[[skeleton.link]]
 length = 1.0
 mass = 2.0
 inertia = 0.5
@@ -64,10 +65,12 @@ com = [0.5, 0.0]        # Center of mass [x, y] relative to joint
 limits = [-180.0, 180.0]  # Joint limits [min, max] in degrees
 q0 = 30.0               # Optional initial joint angle in degrees (default 0)
 
-[[link]]
+[[skeleton.link]]
 length = 0.8
 # ...
 ```
+
+Skeleton keys live under the `[skeleton]` table so the robot can later share a single combined file with `[task]` / `[controller]` sections for reproducible runs; `Skeleton.from_toml` reads only the `[skeleton]` section and ignores the rest. (Legacy flat configs with top-level `base_length` / `[[link]]` are still accepted.)
 
 Load it using `Skeleton.from_toml`:
 

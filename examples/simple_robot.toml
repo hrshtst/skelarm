@@ -1,6 +1,9 @@
-# Example robot configuration file for skelarm
+# Example robot configuration file for skelarm.
+#
+# Skeleton keys live under the [skeleton] table so a robot can later share a
+# combined file with [task] / [controller] sections (see base_offset_robot.toml).
 
-[[link]]
+[[skeleton.link]]
 length = 1.0
 mass = 1.0
 inertia = 0.1
@@ -8,7 +11,7 @@ com = [0.5, 0.0]        # Center of mass [x, y] relative to joint
 limits = [-180.0, 180.0]  # Joint limits [min, max] in degrees
 q0 = 45.0               # Optional initial joint angle in degrees (default 0)
 
-[[link]]
+[[skeleton.link]]
 length = 0.8
 mass = 0.8
 inertia = 0.05

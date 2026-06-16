@@ -130,3 +130,70 @@ def test_load_skeleton_with_base_length(tmp_path: Path) -> None:
     assert skeleton.num_joints == 1
     assert skeleton.base_length == pytest.approx(0.5)
     assert skeleton.links[0].prop.length == pytest.approx(0.5)
+
+
+def test_load_skeleton_from_nested_skeleton_section(tmp_path: Path) -> None:
+    """A ``[skeleton]`` section with ``[[skeleton.link]]`` is the canonical layout."""
+    toml_content = """
+    [skeleton]
+    base_length = 0.5
+
+    [[skeleton.link]]
+    length = 1.0
+    mass = 2.0
+    inertia = 0.5
+    com = [0.5, 0.0]
+    limits = [-180.0, 180.0]
+    q0 = 30.0
+
+    [[skeleton.link]]
+    length = 0.8
+    mass = 1.5
+    inertia = 0.3
+    com = [0.4, 0.0]
+    limits = [-90.0, 90.0]
+    """
+
+    config_file = tmp_path / "robot.toml"
+    config_file.write_text(toml_content, encoding="utf-8")
+
+    skeleton = Skeleton.from_toml(config_file)
+
+    expected_num_joints = 2
+    assert skeleton.num_joints == expected_num_joints
+    assert skeleton.base_length == pytest.approx(0.5)
+    assert skeleton.links[1].prop.length == pytest.approx(1.0)
+    assert skeleton.links[2].prop.length == pytest.approx(0.8)
+    assert skeleton.q == pytest.approx(np.array([np.deg2rad(30.0), 0.0]))
+
+
+def test_load_skeleton_ignores_sibling_sections_in_combined_file(tmp_path: Path) -> None:
+    """A combined file with ``[task]``/``[controller]`` siblings loads only ``[skeleton]``."""
+    toml_content = """
+    [skeleton]
+    base_length = 0.3
+
+    [[skeleton.link]]
+    length = 1.0
+    mass = 1.0
+    inertia = 0.1
+    com = [0.5, 0.0]
+    limits = [-180.0, 180.0]
+
+    [task]
+    type = "reach"
+    target = [1.2, 0.4]
+
+    [controller]
+    type = "pd"
+    kp = 10.0
+    kd = 1.0
+    """
+
+    config_file = tmp_path / "experiment.toml"
+    config_file.write_text(toml_content, encoding="utf-8")
+
+    skeleton = Skeleton.from_toml(config_file)
+
+    assert skeleton.num_joints == 1
+    assert skeleton.base_length == pytest.approx(0.3)

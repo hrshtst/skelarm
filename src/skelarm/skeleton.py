@@ -177,17 +177,31 @@ class Skeleton:
             from its optional ``q0`` key (in degrees, like the limits) and
             defaults to zero; the link positions are already consistent with
             that pose.
+
+        Notes
+        -----
+        The canonical layout nests skeleton keys under a ``[skeleton]`` table,
+        with links given as ``[[skeleton.link]]`` and an optional
+        ``base_length``. This lets a robot live alongside future ``[task]`` /
+        ``[controller]`` sections in a single combined file while still being
+        loadable on its own. Legacy flat configs (top-level ``base_length`` and
+        ``[[link]]``) remain supported as a fallback.
         """
         path = Path(file_path)
         with path.open("rb") as f:
             data = tomllib.load(f)
 
+        # The canonical layout nests skeleton keys under a ``[skeleton]`` table so
+        # robot, task, and controller configs can coexist in one combined file. Fall
+        # back to top-level keys for legacy (flat) configs.
+        section = data.get("skeleton", data)
+
         # Optional fixed base link length (offset from the origin to joint 1).
-        base_length = float(data.get("base_length", 0.0))
+        base_length = float(section.get("base_length", 0.0))
 
         link_props = []
         initial_angles = []
-        for link_data in data.get("link", []):
+        for link_data in section.get("link", []):
             # Extract properties from TOML data
             length = link_data["length"]
             mass = link_data["mass"]
