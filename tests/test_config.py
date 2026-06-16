@@ -197,3 +197,87 @@ def test_load_skeleton_ignores_sibling_sections_in_combined_file(tmp_path: Path)
 
     assert skeleton.num_joints == 1
     assert skeleton.base_length == pytest.approx(0.3)
+
+
+# === [initial] section: posture/velocity as a run condition ===
+
+
+def _two_link_skeleton_toml(initial_block: str = "", *, q0_lines: tuple[str, str] = ("", "")) -> str:
+    """Build a two-joint skeleton config with an optional ``[initial]`` block."""
+    return f"""
+    [skeleton]
+
+    [[skeleton.link]]
+    length = 1.0
+    mass = 1.0
+    inertia = 0.1
+    com = [0.5, 0.0]
+    limits = [-180.0, 180.0]
+    {q0_lines[0]}
+
+    [[skeleton.link]]
+    length = 0.8
+    mass = 0.8
+    inertia = 0.05
+    com = [0.4, 0.0]
+    limits = [-180.0, 180.0]
+    {q0_lines[1]}
+    {initial_block}
+    """
+
+
+def test_initial_section_sets_posture(tmp_path: Path) -> None:
+    """An ``[initial]`` section with ``q`` (degrees) sets the whole posture at once."""
+    toml_content = _two_link_skeleton_toml("[initial]\n    q = [30.0, -45.0]")
+    config_file = tmp_path / "robot.toml"
+    config_file.write_text(toml_content, encoding="utf-8")
+
+    skeleton = Skeleton.from_toml(config_file)
+
+    assert skeleton.q == pytest.approx(np.deg2rad([30.0, -45.0]))
+
+
+def test_initial_section_overrides_per_link_q0(tmp_path: Path) -> None:
+    """``[initial].q`` is a run condition that wins over per-link ``q0`` defaults."""
+    toml_content = _two_link_skeleton_toml(
+        "[initial]\n    q = [30.0, -45.0]",
+        q0_lines=("q0 = 10.0", "q0 = 20.0"),
+    )
+    config_file = tmp_path / "robot.toml"
+    config_file.write_text(toml_content, encoding="utf-8")
+
+    skeleton = Skeleton.from_toml(config_file)
+
+    assert skeleton.q == pytest.approx(np.deg2rad([30.0, -45.0]))
+
+
+def test_initial_section_sets_velocity(tmp_path: Path) -> None:
+    """``[initial].dq`` (deg/s) sets the initial joint velocities."""
+    toml_content = _two_link_skeleton_toml("[initial]\n    q = [10.0, 20.0]\n    dq = [5.0, -3.0]")
+    config_file = tmp_path / "robot.toml"
+    config_file.write_text(toml_content, encoding="utf-8")
+
+    skeleton = Skeleton.from_toml(config_file)
+
+    assert skeleton.q == pytest.approx(np.deg2rad([10.0, 20.0]))
+    assert skeleton.dq == pytest.approx(np.deg2rad([5.0, -3.0]))
+
+
+def test_initial_q_length_mismatch_raises(tmp_path: Path) -> None:
+    """A ``q`` whose length differs from the DOF count raises a clear error."""
+    toml_content = _two_link_skeleton_toml("[initial]\n    q = [30.0, -45.0, 10.0]")
+    config_file = tmp_path / "robot.toml"
+    config_file.write_text(toml_content, encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"\[initial\]\.q"):
+        Skeleton.from_toml(config_file)
+
+
+def test_initial_dq_length_mismatch_raises(tmp_path: Path) -> None:
+    """A ``dq`` whose length differs from the DOF count raises a clear error."""
+    toml_content = _two_link_skeleton_toml("[initial]\n    dq = [1.0]")
+    config_file = tmp_path / "robot.toml"
+    config_file.write_text(toml_content, encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"\[initial\]\.dq"):
+        Skeleton.from_toml(config_file)

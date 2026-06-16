@@ -63,14 +63,19 @@ mass = 2.0
 inertia = 0.5
 com = [0.5, 0.0]        # Center of mass [x, y] relative to joint
 limits = [-180.0, 180.0]  # Joint limits [min, max] in degrees
-q0 = 30.0               # Optional initial joint angle in degrees (default 0)
 
 [[skeleton.link]]
 length = 0.8
 # ...
+
+[initial]
+q = [30.0, 0.0]   # Initial joint angles (degrees), one per joint
+# dq = [0.0, 0.0]  # Optional initial joint velocities (deg/s)
 ```
 
 Skeleton keys live under the `[skeleton]` table so the robot can later share a single combined file with `[task]` / `[controller]` sections for reproducible runs; `Skeleton.from_toml` reads only the `[skeleton]` section and ignores the rest. (Legacy flat configs with top-level `base_length` / `[[link]]` are still accepted.)
+
+The initial state is a *run condition* in its own `[initial]` section, so you can compare the same robot from different starting postures by swapping just that block. `q` (degrees) and the optional `dq` (degrees/second) each take one value per joint, and a length mismatch with the robot's DOF raises an error. `[initial].q` supersedes the older per-link `q0` keys.
 
 Load it using `Skeleton.from_toml`:
 

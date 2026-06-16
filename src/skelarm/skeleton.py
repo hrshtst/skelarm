@@ -116,6 +116,38 @@ class Link:
         self.n: float = 0.0  # Moment exerted by parent link on current link
 
 
+def _initial_joint_vector(values: Sequence[float], num_joints: int, field: str) -> NDArray[np.float64]:
+    """Convert a degrees-valued ``[initial]`` entry to radians, validating its length.
+
+    Parameters
+    ----------
+    values : Sequence[float]
+        Per-joint values (in degrees) read from the TOML ``[initial]`` section.
+    num_joints : int
+        Number of actuated joints the skeleton expects.
+    field : str
+        Field name (``"q"`` or ``"dq"``) used to build the error message.
+
+    Returns
+    -------
+    NDArray[np.float64]
+        The values converted to radians.
+
+    Raises
+    ------
+    ValueError
+        If the number of supplied values does not match ``num_joints``.
+    """
+    array = np.deg2rad(np.asarray(values, dtype=np.float64))
+    if array.ndim != 1 or array.size != num_joints:
+        error_msg = (
+            f"[initial].{field} has {array.size} entries but the skeleton has "
+            f"{num_joints} joint(s); provide exactly one value per joint"
+        )
+        raise ValueError(error_msg)
+    return array
+
+
 class Skeleton:
     """Represents the entire robot arm (skeleton)."""
 
@@ -173,19 +205,29 @@ class Skeleton:
         Returns
         -------
         Skeleton
-            A new Skeleton instance. Each link's initial joint angle is taken
-            from its optional ``q0`` key (in degrees, like the limits) and
-            defaults to zero; the link positions are already consistent with
-            that pose.
+            A new Skeleton instance whose link positions are already consistent
+            with the initial pose.
+
+        Raises
+        ------
+        ValueError
+            If ``[initial].q`` or ``[initial].dq`` has a length other than the
+            number of actuated joints.
 
         Notes
         -----
         The canonical layout nests skeleton keys under a ``[skeleton]`` table,
         with links given as ``[[skeleton.link]]`` and an optional
-        ``base_length``. This lets a robot live alongside future ``[task]`` /
-        ``[controller]`` sections in a single combined file while still being
-        loadable on its own. Legacy flat configs (top-level ``base_length`` and
-        ``[[link]]``) remain supported as a fallback.
+        ``base_length``. This lets a robot live alongside ``[initial]`` (and
+        future ``[task]`` / ``[controller]``) sections in a single combined file
+        while still being loadable on its own. Legacy flat configs (top-level
+        ``base_length`` and ``[[link]]``) remain supported as a fallback.
+
+        The initial state is a *run condition*, configured in a top-level
+        ``[initial]`` section with ``q`` (degrees) and optional ``dq``
+        (degrees/second), one value per joint. ``[initial].q`` takes precedence
+        over the per-link ``q0`` keys (a soft-deprecated fallback that defaults
+        each joint to zero when neither is given).
         """
         path = Path(file_path)
         with path.open("rb") as f:
@@ -241,7 +283,18 @@ class Skeleton:
             )
 
         skeleton = cls(link_props, base_length=base_length)
-        skeleton.q = np.array(initial_angles, dtype=np.float64)
+
+        # Initial state is a *run condition*, kept in its own top-level
+        # ``[initial]`` section so the same robot can be compared under different
+        # postures. ``q`` (degrees) and ``dq`` (degrees/second) each take one
+        # value per joint and override the per-link ``q0`` defaults.
+        initial = data.get("initial", {})
+        q_init = np.array(initial_angles, dtype=np.float64)
+        if "q" in initial:
+            q_init = _initial_joint_vector(initial["q"], skeleton.num_joints, "q")
+        dq_init = _initial_joint_vector(initial["dq"], skeleton.num_joints, "dq") if "dq" in initial else None
+
+        skeleton.set_state(q=q_init, dq=dq_init)
         return skeleton
 
     @property
