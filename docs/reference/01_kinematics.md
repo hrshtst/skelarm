@@ -75,6 +75,11 @@ reach the same endpoint. A real solution exists only when the argument of
 $\arccos$ lies in $[-1, 1]$, i.e. when the target is within reach,
 $|l_1 - l_2| \le r \le l_1 + l_2$.
 
+![Two configurations of the planar two-joint arm reaching the same endpoint: an elbow-up and an elbow-down posture. Both share the base offset l0 and joint 1 at the origin, with link lengths l1 and l2 and joint angles q1, q2; the two postures correspond to the plus and minus choices of q2.](fig/elbow_up_and_down.png){ width="380" style="display: block; margin: 0 auto;" }
+
+*Elbow-up and elbow-down: the two sign choices of $q_2$ place the elbow on
+either side, while the endpoint (●) stays fixed.*
+
 ### First joint
 
 With $q_2$ known, the endpoint equations become linear in $\cos q_1$ and
