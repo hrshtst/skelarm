@@ -1,0 +1,21 @@
+# Example robot configuration with a non-zero fixed base link.
+#
+# `base_length` is an optional top-level key (default 0.0). It models a fixed
+# pedestal that offsets the first actuated joint to (base_length, 0) along +x.
+# It is stored as the zeroth link and is not actuated (no joint, mass, or limits).
+base_length = 0.5
+
+[[link]]
+length = 1.0
+mass = 1.0
+inertia = 0.1
+com = [0.5, 0.0]        # Center of mass [x, y] relative to joint
+limits = [-180.0, 180.0]  # Joint limits [min, max] in degrees
+q0 = 30.0               # Optional initial joint angle in degrees (default 0)
+
+[[link]]
+length = 0.8
+mass = 0.8
+inertia = 0.05
+com = [0.4, 0.0]
+limits = [-180.0, 180.0]

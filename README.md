@@ -51,7 +51,7 @@ A lightweight, physics-based dynamics simulator for a configurable planar robot 
 
 ### TOML Configuration
 
-You can define robot configurations in TOML files. See `examples/simple_robot.toml` or `examples/four_dof_robot.toml`.
+You can define robot configurations in TOML files. See `examples/simple_robot.toml`, `examples/four_dof_robot.toml`, or `examples/base_offset_robot.toml` (which sets a non-zero `base_length`).
 
 ```toml
 base_length = 0.0  # Optional fixed base link offsetting the first joint along +x
