@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import functools
 import math
 from typing import TYPE_CHECKING
 
-import numpy as np
 from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtGui import QBrush, QColor, QPainter, QPen
 from PyQt6.QtWidgets import (
@@ -142,7 +142,7 @@ class SkelarmViewer(QMainWindow):
             # Set initial value
             initial_deg = int(math.degrees(link.q))
             slider.setValue(initial_deg)
-            slider.valueChanged.connect(self.on_slider_change)
+            slider.valueChanged.connect(functools.partial(self._on_joint_change, i))
 
             row_layout.addLayout(header_layout)
             row_layout.addWidget(slider)
@@ -159,14 +159,22 @@ class SkelarmViewer(QMainWindow):
         controls_layout.addStretch()
         main_layout.addWidget(controls_panel, stretch=1)
 
-    def on_slider_change(self) -> None:
-        """Handle slider value changes."""
-        new_q = []
-        for i, slider in enumerate(self.sliders):
-            angle_deg = slider.value()
-            self.angle_labels[i].setText(f"{angle_deg}°")
-            new_q.append(math.radians(angle_deg))
+    def _on_joint_change(self, joint: int, angle_deg: int) -> None:
+        """Apply a single joint's slider value, leaving the other joints untouched.
 
+        Updating only the moved joint preserves the exact angles of the others
+        (the integer-degree sliders would otherwise snap them to whole degrees).
+
+        Parameters
+        ----------
+        joint : int
+            Index of the movable joint whose slider changed (0-based).
+        angle_deg : int
+            The slider's new value, in degrees.
+        """
+        self.angle_labels[joint].setText(f"{angle_deg}°")
+        q = self.skeleton.q
+        q[joint] = math.radians(angle_deg)
         # The eager q setter refreshes the forward kinematics.
-        self.skeleton.q = np.array(new_q)
+        self.skeleton.q = q
         self.canvas.update_skeleton()

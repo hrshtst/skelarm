@@ -73,3 +73,21 @@ def test_moving_slider_to_limit_does_not_trigger_clamp_warning(qapp) -> None:  #
     assert not [w for w in caught if "clamped" in str(w.message)]
     assert viewer.skeleton.q[0] == pytest.approx(math.radians(slider.maximum()))
     assert viewer.skeleton.q[0] <= qmax
+
+
+def test_moving_one_slider_leaves_other_joints_unchanged(qapp) -> None:  # noqa: ANN001, ARG001
+    """Adjusting one joint's slider must not snap the other joints to whole degrees."""
+    from skelarm.canvas import SkelarmViewer
+
+    link_props = [
+        LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+        LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+    ]
+    skeleton = Skeleton(link_props)
+    skeleton.q = np.array([0.2, 0.3])  # joint 2 carries sub-degree precision
+    viewer = SkelarmViewer(skeleton)
+
+    viewer.sliders[0].setValue(40)  # move only joint 1
+
+    assert viewer.skeleton.q[0] == pytest.approx(math.radians(40))
+    assert viewer.skeleton.q[1] == pytest.approx(0.3)  # joint 2 left exactly as it was
