@@ -8,25 +8,22 @@ control the joint angles of a planar robot arm using sliders.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 import numpy as np
 from PyQt6.QtWidgets import QApplication
 
-from skelarm import LinkProp, SkelarmViewer, Skeleton
+from skelarm import SkelarmViewer, Skeleton
 
 
 def main() -> None:
     """Run the interactive GUI."""
-    # 1. Define the robot arm (3-link example)
-    link_props = [
-        LinkProp(length=1.5, m=2.0, i=0.5, rgx=0.75, rgy=0.0, qmin=-np.pi, qmax=np.pi),
-        LinkProp(length=1.0, m=1.5, i=0.3, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi),
-        LinkProp(length=0.8, m=1.0, i=0.1, rgx=0.4, rgy=0.0, qmin=-np.pi, qmax=np.pi),
-    ]
-    skeleton = Skeleton(link_props)
+    # 1. Load the 4-DOF robot arm from its TOML configuration.
+    config_path = Path(__file__).parent / "four_dof_robot.toml"
+    skeleton = Skeleton.from_toml(config_path)
 
-    # 2. Set initial joint angles
-    skeleton.q = np.array([np.pi / 4, -np.pi / 4, np.pi / 4])
+    # 2. Set an initial pose within the robot's joint limits (~[20, 45, 60, 30] deg).
+    skeleton.q = np.array([np.pi / 9, np.pi / 4, np.pi / 3, np.pi / 6])
 
     # 3. Create the Qt Application
     app = QApplication(sys.argv)
