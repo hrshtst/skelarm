@@ -132,6 +132,27 @@ def test_load_skeleton_with_base_length(tmp_path: Path) -> None:
     assert skeleton.links[0].prop.length == pytest.approx(0.5)
 
 
+def test_omitted_limits_default_to_plus_minus_180_degrees(tmp_path: Path) -> None:
+    """A link without limits defaults to [-180, 180] degrees (an enforced full-revolution cap)."""
+    toml_content = """
+    [skeleton]
+
+    [[skeleton.link]]
+    length = 1.0
+    mass = 1.0
+    inertia = 0.1
+    com = [0.5, 0.0]
+    """
+
+    config_file = tmp_path / "robot.toml"
+    config_file.write_text(toml_content, encoding="utf-8")
+
+    skeleton = Skeleton.from_toml(config_file)
+
+    assert skeleton.links[1].prop.qmin == pytest.approx(-np.pi)
+    assert skeleton.links[1].prop.qmax == pytest.approx(np.pi)
+
+
 def test_load_skeleton_from_nested_skeleton_section(tmp_path: Path) -> None:
     """A ``[skeleton]`` section with ``[[skeleton.link]]`` is the canonical layout."""
     toml_content = """

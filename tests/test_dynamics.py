@@ -33,8 +33,10 @@ def link_props_strategy(draw: st.DrawFn, min_links: int = 1, max_links: int = 3)
         # Ensure COM is within the link's bounds and not too close to the joint center to avoid issues
         rgx = draw(st.floats(min_value=-length * 0.4, max_value=length * 0.4, allow_nan=False, allow_infinity=False))
         rgy = draw(st.floats(min_value=-0.05, max_value=0.05, allow_nan=False, allow_infinity=False))
-        qmin = draw(st.floats(min_value=-np.pi / 2, max_value=np.pi / 2 - 0.1, allow_nan=False, allow_infinity=False))
-        qmax = draw(st.floats(min_value=qmin + 0.1, max_value=np.pi / 2, allow_nan=False, allow_infinity=False))
+        # Limits wide enough to contain the q drawn below ([-pi/2, pi/2]); dynamics is
+        # exercised without joint-limit clamping at this stage.
+        qmin = draw(st.floats(min_value=-np.pi, max_value=-np.pi / 2, allow_nan=False, allow_infinity=False))
+        qmax = draw(st.floats(min_value=np.pi / 2, max_value=np.pi, allow_nan=False, allow_infinity=False))
         link_props.append(LinkProp(length=length, m=mass, i=inertia, rgx=rgx, rgy=rgy, qmin=qmin, qmax=qmax))
     return link_props
 

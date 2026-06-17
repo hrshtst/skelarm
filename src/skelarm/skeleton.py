@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tomllib
+import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -228,6 +229,12 @@ class Skeleton:
         (degrees/second), one value per joint. ``[initial].q`` takes precedence
         over the per-link ``q0`` keys (a soft-deprecated fallback that defaults
         each joint to zero when neither is given).
+
+        Each link's joint limits come from its ``limits = [min, max]`` (or
+        ``qmin`` / ``qmax``) keys, in degrees. A link that omits them defaults to
+        ``[-180, 180]`` degrees. Limits are enforced: setting joint angles
+        clamps them into this range (with a warning), so an unspecified joint is
+        capped at one full revolution rather than left unbounded.
         """
         path = Path(file_path)
         with path.open("rb") as f:
@@ -304,13 +311,44 @@ class Skeleton:
 
     @q.setter
     def q(self, q_values: NDArray[np.float64]) -> None:
-        """Set joint angles and refresh the derived link states."""
+        """Set joint angles (clamped to each joint's limits) and refresh the derived link states."""
         if len(q_values) != self.num_joints:
             error_msg = f"Expected {self.num_joints} joint angles, but got {len(q_values)}"
             raise ValueError(error_msg)
+        q_values = self._clamp_to_joint_limits(q_values)
         for link, value in zip(self.links[1:], q_values, strict=True):
             link.q = value
         compute_forward_kinematics(self)
+
+    def _clamp_to_joint_limits(self, q_values: NDArray[np.float64]) -> NDArray[np.float64]:
+        """Clamp joint angles to each movable link's ``[qmin, qmax]``, warning when any are out of range.
+
+        Joint limits are enforced on the kinematics-facing angle setters (this method
+        backs both the ``q`` setter and :meth:`set_state`). The recursive dynamics
+        solvers write ``link.q`` directly and are intentionally left unconstrained.
+
+        Parameters
+        ----------
+        q_values : NDArray[np.float64]
+            Requested joint angles, one per movable link (radians).
+
+        Returns
+        -------
+        NDArray[np.float64]
+            The angles clipped into each joint's limit range.
+        """
+        lower = np.array([link.prop.qmin for link in self.links[1:]], dtype=np.float64)
+        upper = np.array([link.prop.qmax for link in self.links[1:]], dtype=np.float64)
+        clamped = np.clip(np.asarray(q_values, dtype=np.float64), lower, upper)
+
+        out_of_range = np.nonzero(clamped != q_values)[0]
+        if out_of_range.size > 0:
+            details = ", ".join(
+                f"joint {i + 1}: {np.rad2deg(q_values[i]):.4g} deg -> {np.rad2deg(clamped[i]):.4g} deg"
+                for i in out_of_range
+            )
+            warnings.warn(f"Joint angle(s) outside limits were clamped ({details}).", stacklevel=3)
+        return clamped
 
     @property
     def dq(self) -> NDArray[np.float64]:
@@ -353,7 +391,9 @@ class Skeleton:
         Unlike assigning ``q``, ``dq``, and ``ddq`` separately (each of which
         re-runs forward kinematics), this writes all provided values first and
         refreshes the derived link states with a single forward-kinematics
-        pass. Arguments left as ``None`` keep their current values.
+        pass. Arguments left as ``None`` keep their current values. ``q`` is
+        clamped to each joint's ``[qmin, qmax]`` limits (with a warning), like
+        the ``q`` setter.
 
         Parameters
         ----------
@@ -378,7 +418,7 @@ class Skeleton:
                 raise ValueError(error_msg)
 
         if q is not None:
-            for link, value in zip(self.links[1:], q, strict=True):
+            for link, value in zip(self.links[1:], self._clamp_to_joint_limits(q), strict=True):
                 link.q = value
         if dq is not None:
             for link, value in zip(self.links[1:], dq, strict=True):

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -109,3 +111,66 @@ def test_link_does_not_mutate_input_dict() -> None:
     assert link.prop.length == 1.0
     # ...but the caller's dict is left untouched.
     assert properties == {"l": 1.0, "m": 2.0, "i": 0.5, "rgx": 0.5, "rgy": 0.0, "qmin": -1.0, "qmax": 1.0}
+
+
+# === Joint-limit enforcement on the angle setters (the FK-driving path) ===
+
+
+def test_setting_q_beyond_limits_clamps_and_warns() -> None:
+    """Assigning an angle past qmax clamps it to the limit and warns."""
+    link_prop = LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi / 2, qmax=np.pi / 2)
+    skeleton = Skeleton(link_props=[link_prop])
+
+    with pytest.warns(UserWarning, match="clamped"):
+        skeleton.q = np.array([np.pi])
+
+    assert skeleton.q == pytest.approx(np.array([np.pi / 2]))
+
+
+def test_setting_q_below_lower_limit_clamps() -> None:
+    """Assigning an angle below qmin clamps it to the lower limit."""
+    link_prop = LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi / 2, qmax=np.pi / 2)
+    skeleton = Skeleton(link_props=[link_prop])
+
+    with pytest.warns(UserWarning, match="clamped"):
+        skeleton.q = np.array([-np.pi])
+
+    assert skeleton.q == pytest.approx(np.array([-np.pi / 2]))
+
+
+def test_setting_q_within_limits_does_not_warn() -> None:
+    """Angles inside the limits are stored unchanged and raise no warning."""
+    link_prop = LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi / 2, qmax=np.pi / 2)
+    skeleton = Skeleton(link_props=[link_prop])
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        skeleton.q = np.array([np.pi / 4])
+
+    assert skeleton.q == pytest.approx(np.array([np.pi / 4]))
+
+
+def test_clamping_is_per_joint() -> None:
+    """Each joint is clamped to its own limits, with both reported in one warning."""
+    link_props = [
+        LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi / 2, qmax=np.pi / 2),
+        LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi / 4, qmax=np.pi / 4),
+    ]
+    skeleton = Skeleton(link_props)
+
+    with pytest.warns(UserWarning, match="clamped"):
+        skeleton.q = np.array([np.pi, -np.pi])
+
+    assert skeleton.q == pytest.approx(np.array([np.pi / 2, -np.pi / 4]))
+
+
+def test_set_state_clamps_q_beyond_limits_and_warns() -> None:
+    """set_state enforces joint limits on q just like the q setter."""
+    link_prop = LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi / 2, qmax=np.pi / 2)
+    skeleton = Skeleton(link_props=[link_prop])
+
+    with pytest.warns(UserWarning, match="clamped"):
+        skeleton.set_state(q=np.array([np.pi]), dq=np.array([1.0]))
+
+    assert skeleton.q == pytest.approx(np.array([np.pi / 2]))
+    assert skeleton.dq == pytest.approx(np.array([1.0]))
