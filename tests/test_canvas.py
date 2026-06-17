@@ -146,3 +146,16 @@ def test_fit_scale_falls_back_for_degenerate_input() -> None:
 
     assert _fit_scale(0.0, 400, 400) == _DEFAULT_SCALE  # arm has no reach
     assert _fit_scale(2.0, 0, 0) == _DEFAULT_SCALE  # widget not laid out yet
+
+
+def test_initial_label_shows_rounded_angle_matching_slider(qapp) -> None:  # noqa: ANN001, ARG001
+    """The initial joint label is the rounded angle and matches the slider value."""
+    from skelarm.canvas import SkelarmViewer
+
+    link_props = [LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi)]
+    skeleton = Skeleton(link_props)
+    skeleton.q = np.array([np.radians(44.7)])  # rounds up to 45, not truncated to 44
+    viewer = SkelarmViewer(skeleton)
+
+    assert viewer.sliders[0].value() == round(44.7)
+    assert viewer.angle_labels[0].text() == f"{viewer.sliders[0].value()}°"

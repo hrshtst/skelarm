@@ -56,7 +56,8 @@ class SkelarmCanvas(QWidget):
     _BASE_RADIUS_PX = 10
     _JOINT_RADIUS_PX = 6
     _LINK_WIDTH_PX = 6
-    _LINK_COLOR = QColor(0, 100, 200)  # blue
+    _LINK_COLOR = QColor(0, 100, 200)  # blue (movable links)
+    _BASE_LINK_COLOR = QColor(150, 150, 150)  # gray (fixed base link)
     _JOINT_COLOR = QColor(200, 0, 0)  # red
 
     def __init__(self, skeleton: Skeleton, parent: QWidget | None = None) -> None:
@@ -88,33 +89,30 @@ class SkelarmCanvas(QWidget):
         base_screen = self._world_to_screen(0, 0, center_x, center_y)
         painter.drawEllipse(base_screen, self._BASE_RADIUS_PX, self._BASE_RADIUS_PX)
 
-        # Draw Links
+        # Pens for the fixed base link (gray) and the movable links (blue).
+        pen_base = QPen(self._BASE_LINK_COLOR)
+        pen_base.setWidth(self._LINK_WIDTH_PX)
+        pen_base.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen_link = QPen(self._LINK_COLOR)
         pen_link.setWidth(self._LINK_WIDTH_PX)
         pen_link.setCapStyle(Qt.PenCapStyle.RoundCap)
-        painter.setPen(pen_link)
 
-        # Draw Joints
         brush_joint = QBrush(self._JOINT_COLOR)
 
-        # Iterate through links
-        # Note: We assume compute_forward_kinematics has been called externally
-        # or we could call it here, but typically the state is updated elsewhere.
-
-        for link in self.skeleton.links:
+        # Note: we assume compute_forward_kinematics has already run, so the link
+        # positions are current. The base link (links[0]) is fixed; draw it gray.
+        for i, link in enumerate(self.skeleton.links):
             p1 = self._world_to_screen(link.x, link.y, center_x, center_y)
             p2 = self._world_to_screen(link.xe, link.ye, center_x, center_y)
 
-            # Draw link segment
+            # Draw the link segment.
+            painter.setPen(pen_base if i == 0 else pen_link)
             painter.drawLine(p1, p2)
 
-            # Draw joint at the end of the link (tip or next joint)
+            # Draw the joint at the end of the link (tip or next joint).
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(brush_joint)
             painter.drawEllipse(p2, self._JOINT_RADIUS_PX, self._JOINT_RADIUS_PX)
-
-            # Reset pen for next link
-            painter.setPen(pen_link)
 
     def _world_to_screen(self, wx: float, wy: float, cx: float, cy: float) -> QPointF:
         """Convert world coordinates (meters) to screen coordinates (pixels)."""
@@ -165,7 +163,7 @@ class SkelarmViewer(QMainWindow):
 
             header_layout = QHBoxLayout()
             label = QLabel(f"Joint {i + 1}")
-            value_label = QLabel("0.0°")
+            value_label = QLabel()
             header_layout.addWidget(label)
             header_layout.addStretch()
             header_layout.addWidget(value_label)
@@ -178,9 +176,8 @@ class SkelarmViewer(QMainWindow):
             lower_deg = math.ceil(math.degrees(link.prop.qmin))
             upper_deg = math.floor(math.degrees(link.prop.qmax))
             slider.setRange(lower_deg, max(lower_deg, upper_deg))
-            # Set initial value
-            initial_deg = int(math.degrees(link.q))
-            slider.setValue(initial_deg)
+            # Set the initial value (Qt clamps it to the range above).
+            slider.setValue(round(math.degrees(link.q)))
             slider.valueChanged.connect(functools.partial(self._on_joint_change, i))
 
             row_layout.addLayout(header_layout)
@@ -192,8 +189,8 @@ class SkelarmViewer(QMainWindow):
             self.sliders.append(slider)
             self.angle_labels.append(value_label)
 
-            # Initialize label text
-            value_label.setText(f"{initial_deg}°")
+            # Label the (range-clamped) slider value so the two always agree.
+            value_label.setText(f"{slider.value()}°")
 
         controls_layout.addStretch()
         main_layout.addWidget(controls_panel, stretch=1)
