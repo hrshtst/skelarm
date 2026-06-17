@@ -64,7 +64,7 @@ def draw_skeleton(
     # size, so the circles are never partially covered by a link segment.
     joint_x = [skeleton.links[0].x, *(link.xe for link in skeleton.links)]
     joint_y = [skeleton.links[0].y, *(link.ye for link in skeleton.links)]
-    ax.plot(joint_x, joint_y, linestyle="none", marker="o", markersize=5, color=color, zorder=2)
+    ax.plot(joint_x, joint_y, linestyle="none", marker="o", markersize=4, color=color, zorder=2)
 
     # Fit the view to the data with a margin and equal aspect, rather than forcing
     # a symmetric box centred on the origin. Autoscaling stays enabled so any other

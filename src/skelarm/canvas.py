@@ -53,7 +53,7 @@ def _fit_scale(reach: float, width: int, height: int) -> float:
 class SkelarmCanvas(QWidget):
     """A widget to draw the robot arm skeleton."""
 
-    _JOINT_RADIUS_PX = 6  # also used for the origin, so the two match in size
+    _JOINT_RADIUS_PX = 5  # also used for the origin, so the two match in size
     _LINK_WIDTH_PX = 4
     _LINK_COLOR = QColor(0, 100, 200)  # blue (movable links)
     _BASE_LINK_COLOR = QColor(150, 150, 150)  # gray (fixed base link)
