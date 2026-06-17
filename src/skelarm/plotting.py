@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     import matplotlib.axes
     from numpy.typing import NDArray
 
-from skelarm.skeleton import Skeleton
+    from skelarm.skeleton import Skeleton
 
 
 def draw_skeleton(
@@ -45,9 +45,6 @@ def draw_skeleton(
         Axes title. Pass ``None`` to leave the existing title untouched so the
         skeleton can share an Axes with another plot (e.g. a trajectory).
     """
-    if not skeleton.links:
-        return
-
     # Draw each link from its start joint (x, y) to its tip (xe, ye). The fixed
     # base link (links[0]) is drawn in base_color; the movable links use color.
     # The legend label (if any) goes on the first movable link so its swatch
