@@ -32,14 +32,14 @@ def main() -> None:
     # 4. Create a figure and axes for plotting
     _fig, ax = plt.subplots(figsize=(8, 8))
 
-    # 5. Draw the skeleton
-    draw_skeleton(ax, skeleton, color="green")
+    # 5. Draw the skeleton (let the trajectory call below own the shared title)
+    draw_skeleton(ax, skeleton, color="green", label="Arm", title=None)
 
     # 6. Generate a dummy trajectory for demonstration
     time = np.linspace(0, 2 * np.pi, 100)
     trajectory_x = np.sin(time) + 1.5
     trajectory_y = np.cos(time) + 0.5
-    plot_trajectory(ax, trajectory_x, trajectory_y)
+    plot_trajectory(ax, trajectory_x, trajectory_y, title="Robot Arm and Tip Trajectory")
 
     # 7. Show the plot
     plt.show()

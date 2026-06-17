@@ -71,3 +71,46 @@ def test_degenerate_skeleton_has_valid_limits() -> None:
 
     assert xlim[0] < xlim[1]
     assert ylim[0] < ylim[1]
+
+
+def test_plot_trajectory_custom_label_and_title() -> None:
+    """plot_trajectory honors a caller-supplied legend label and title."""
+    fig, ax = plt.subplots()
+    try:
+        plot_trajectory(ax, np.array([0.0, 1.0]), np.array([0.0, 1.0]), label="path", title="My Title")
+        legend = ax.get_legend()
+        assert legend is not None
+        labels = [t.get_text() for t in legend.get_texts()]
+        title = ax.get_title()
+    finally:
+        plt.close(fig)
+
+    assert labels == ["path"]
+    assert title == "My Title"
+
+
+def test_draw_skeleton_label_adds_single_legend_entry() -> None:
+    """A labeled skeleton contributes exactly one legend entry, not one per link."""
+    fig, ax = plt.subplots()
+    try:
+        draw_skeleton(ax, _arm(num_links=2), label="Arm")
+        legend = ax.get_legend()
+        assert legend is not None
+        labels = [t.get_text() for t in legend.get_texts()]
+    finally:
+        plt.close(fig)
+
+    assert labels == ["Arm"]
+
+
+def test_titles_compose_without_clobbering() -> None:
+    """Passing title=None to one helper lets the other own the axes title."""
+    fig, ax = plt.subplots()
+    try:
+        draw_skeleton(ax, _arm(num_links=1), title=None)
+        plot_trajectory(ax, np.array([0.0, 1.0]), np.array([0.0, 1.0]), title="Arm and path")
+        title = ax.get_title()
+    finally:
+        plt.close(fig)
+
+    assert title == "Arm and path"
