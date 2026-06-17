@@ -7,7 +7,7 @@ import math
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QPointF, QSignalBlocker, Qt
-from PyQt6.QtGui import QBrush, QColor, QPainter, QPen
+from PyQt6.QtGui import QBrush, QColor, QPainter, QPaintEvent, QPen
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -53,6 +53,12 @@ def _fit_scale(reach: float, width: int, height: int) -> float:
 class SkelarmCanvas(QWidget):
     """A widget to draw the robot arm skeleton."""
 
+    _BASE_RADIUS_PX = 10
+    _JOINT_RADIUS_PX = 6
+    _LINK_WIDTH_PX = 6
+    _LINK_COLOR = QColor(0, 100, 200)  # blue
+    _JOINT_COLOR = QColor(200, 0, 0)  # red
+
     def __init__(self, skeleton: Skeleton, parent: QWidget | None = None) -> None:
         """Initialize the canvas."""
         super().__init__(parent)
@@ -64,7 +70,7 @@ class SkelarmCanvas(QWidget):
         p.setColor(self.backgroundRole(), QColor("white"))
         self.setPalette(p)
 
-    def paintEvent(self, a0) -> None:  # noqa: ANN001, N802, ARG002
+    def paintEvent(self, a0: QPaintEvent | None) -> None:  # noqa: N802, ARG002
         """Paint the robot arm."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -79,25 +85,25 @@ class SkelarmCanvas(QWidget):
 
         # Draw Base
         painter.setBrush(QBrush(Qt.GlobalColor.black))
-        base_screen = self.world_to_screen(0, 0, center_x, center_y)
-        painter.drawEllipse(base_screen, 10, 10)
+        base_screen = self._world_to_screen(0, 0, center_x, center_y)
+        painter.drawEllipse(base_screen, self._BASE_RADIUS_PX, self._BASE_RADIUS_PX)
 
         # Draw Links
-        pen_link = QPen(QColor(0, 100, 200))  # Blue-ish
-        pen_link.setWidth(6)
+        pen_link = QPen(self._LINK_COLOR)
+        pen_link.setWidth(self._LINK_WIDTH_PX)
         pen_link.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(pen_link)
 
         # Draw Joints
-        brush_joint = QBrush(QColor(200, 0, 0))  # Red
+        brush_joint = QBrush(self._JOINT_COLOR)
 
         # Iterate through links
         # Note: We assume compute_forward_kinematics has been called externally
         # or we could call it here, but typically the state is updated elsewhere.
 
         for link in self.skeleton.links:
-            p1 = self.world_to_screen(link.x, link.y, center_x, center_y)
-            p2 = self.world_to_screen(link.xe, link.ye, center_x, center_y)
+            p1 = self._world_to_screen(link.x, link.y, center_x, center_y)
+            p2 = self._world_to_screen(link.xe, link.ye, center_x, center_y)
 
             # Draw link segment
             painter.drawLine(p1, p2)
@@ -105,12 +111,12 @@ class SkelarmCanvas(QWidget):
             # Draw joint at the end of the link (tip or next joint)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(brush_joint)
-            painter.drawEllipse(p2, 6, 6)
+            painter.drawEllipse(p2, self._JOINT_RADIUS_PX, self._JOINT_RADIUS_PX)
 
             # Reset pen for next link
             painter.setPen(pen_link)
 
-    def world_to_screen(self, wx: float, wy: float, cx: float, cy: float) -> QPointF:
+    def _world_to_screen(self, wx: float, wy: float, cx: float, cy: float) -> QPointF:
         """Convert world coordinates (meters) to screen coordinates (pixels)."""
         sx = cx + wx * self.scale_factor
         # Invert Y because screen Y is down
