@@ -53,9 +53,8 @@ def _fit_scale(reach: float, width: int, height: int) -> float:
 class SkelarmCanvas(QWidget):
     """A widget to draw the robot arm skeleton."""
 
-    _BASE_RADIUS_PX = 10
-    _JOINT_RADIUS_PX = 6
-    _LINK_WIDTH_PX = 6
+    _JOINT_RADIUS_PX = 6  # also used for the origin, so the two match in size
+    _LINK_WIDTH_PX = 4
     _LINK_COLOR = QColor(0, 100, 200)  # blue (movable links)
     _BASE_LINK_COLOR = QColor(150, 150, 150)  # gray (fixed base link)
     _JOINT_COLOR = QColor(200, 0, 0)  # red
@@ -84,11 +83,6 @@ class SkelarmCanvas(QWidget):
         center_x = self.width() / 2
         center_y = self.height() / 2
 
-        # Draw Base
-        painter.setBrush(QBrush(Qt.GlobalColor.black))
-        base_screen = self._world_to_screen(0, 0, center_x, center_y)
-        painter.drawEllipse(base_screen, self._BASE_RADIUS_PX, self._BASE_RADIUS_PX)
-
         # Pens for the fixed base link (gray) and the movable links (blue).
         pen_base = QPen(self._BASE_LINK_COLOR)
         pen_base.setWidth(self._LINK_WIDTH_PX)
@@ -97,21 +91,23 @@ class SkelarmCanvas(QWidget):
         pen_link.setWidth(self._LINK_WIDTH_PX)
         pen_link.setCapStyle(Qt.PenCapStyle.RoundCap)
 
-        brush_joint = QBrush(self._JOINT_COLOR)
-
-        # Note: we assume compute_forward_kinematics has already run, so the link
-        # positions are current. The base link (links[0]) is fixed; draw it gray.
+        # We assume compute_forward_kinematics has already run, so positions are
+        # current. Draw all link segments first (base gray, movable blue) so the
+        # origin and joint circles below are rendered on top of the links.
         for i, link in enumerate(self.skeleton.links):
             p1 = self._world_to_screen(link.x, link.y, center_x, center_y)
             p2 = self._world_to_screen(link.xe, link.ye, center_x, center_y)
-
-            # Draw the link segment.
             painter.setPen(pen_base if i == 0 else pen_link)
             painter.drawLine(p1, p2)
 
-            # Draw the joint at the end of the link (tip or next joint).
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(brush_joint)
+        # Draw the origin (black) and every joint (red) on top, all the same size.
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(Qt.GlobalColor.black))
+        origin = self._world_to_screen(0, 0, center_x, center_y)
+        painter.drawEllipse(origin, self._JOINT_RADIUS_PX, self._JOINT_RADIUS_PX)
+        painter.setBrush(QBrush(self._JOINT_COLOR))
+        for link in self.skeleton.links:
+            p2 = self._world_to_screen(link.xe, link.ye, center_x, center_y)
             painter.drawEllipse(p2, self._JOINT_RADIUS_PX, self._JOINT_RADIUS_PX)
 
     def _world_to_screen(self, wx: float, wy: float, cx: float, cy: float) -> QPointF:

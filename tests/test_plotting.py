@@ -117,6 +117,24 @@ def test_base_link_drawn_distinctly_from_movable_links() -> None:
     assert movable_color == "blue"
 
 
+def test_joints_render_above_link_lines() -> None:
+    """Joint/origin markers sit in a dedicated layer above the (markerless) link lines."""
+    fig, ax = plt.subplots()
+    try:
+        draw_skeleton(ax, _arm(num_links=2, base_length=1.0))
+        link_lines = [ln for ln in ax.lines if ln.get_linestyle() == "-"]
+        marker_layers = [ln for ln in ax.lines if ln.get_linestyle() == "None"]
+    finally:
+        plt.close(fig)
+
+    assert len(marker_layers) == 1
+    marker_layer = marker_layers[0]
+    assert marker_layer.get_marker() == "o"
+    # The markers are drawn above every link line, and the lines carry no markers.
+    assert all(marker_layer.get_zorder() > ln.get_zorder() for ln in link_lines)
+    assert all(ln.get_marker() in ("", "None") for ln in link_lines)
+
+
 def test_titles_compose_without_clobbering() -> None:
     """Passing title=None to one helper lets the other own the axes title."""
     fig, ax = plt.subplots()

@@ -17,7 +17,7 @@ def draw_skeleton(
     ax: matplotlib.axes.Axes,
     skeleton: Skeleton,
     color: str = "blue",
-    linewidth: float = 2.0,
+    linewidth: float = 1.5,
     *,
     base_color: str = "gray",
     label: str | None = None,
@@ -45,9 +45,9 @@ def draw_skeleton(
         Axes title. Pass ``None`` to leave the existing title untouched so the
         skeleton can share an Axes with another plot (e.g. a trajectory).
     """
-    # Draw each link from its start joint (x, y) to its tip (xe, ye). The fixed
-    # base link (links[0]) is drawn in base_color; the movable links use color.
-    # The legend label (if any) goes on the first movable link so its swatch
+    # Draw each link from its start joint (x, y) to its tip (xe, ye) as a line only;
+    # the fixed base link (links[0]) is drawn in base_color, the movable links use
+    # color. The legend label (if any) goes on the first movable link so its swatch
     # matches color rather than the base color.
     label_index = 1 if len(skeleton.links) > 1 else None
     for i, link in enumerate(skeleton.links):
@@ -56,10 +56,15 @@ def draw_skeleton(
             [link.y, link.ye],
             color=base_color if i == 0 else color,
             linewidth=linewidth,
-            marker="o",
-            markersize=5,
             label=label if i == label_index else None,
+            zorder=1,
         )
+
+    # Draw the origin and every joint as markers on top of the links, all the same
+    # size, so the circles are never partially covered by a link segment.
+    joint_x = [skeleton.links[0].x, *(link.xe for link in skeleton.links)]
+    joint_y = [skeleton.links[0].y, *(link.ye for link in skeleton.links)]
+    ax.plot(joint_x, joint_y, linestyle="none", marker="o", markersize=5, color=color, zorder=2)
 
     # Fit the view to the data with a margin and equal aspect, rather than forcing
     # a symmetric box centred on the origin. Autoscaling stays enabled so any other
