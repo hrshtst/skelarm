@@ -9,6 +9,7 @@ os.environ.setdefault("MPLBACKEND", "Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pytest
 
 from skelarm.plotting import draw_skeleton, plot_trajectory
 from skelarm.skeleton import LinkProp, Skeleton
@@ -149,6 +150,43 @@ def test_colors_match_the_gui_canvas() -> None:
     assert link_colors[0] == _BASE_LINK_COLOR  # base link gray
     assert link_colors[1] == _LINK_COLOR  # movable links blue
     assert marker_colors == {_JOINT_COLOR, _ORIGIN_COLOR}  # green joints, black origin
+
+
+def test_show_com_draws_larger_markers_at_link_coms() -> None:
+    """show_com adds a green marker, larger than the joints, at each movable link's COM."""
+    from skelarm.plotting import _COM_COLOR, _COM_MARKER_SIZE, _JOINT_MARKER_SIZE
+
+    skeleton = _arm(num_links=2, base_length=1.0)
+    skeleton.q = np.array([0.3, 0.4])
+
+    fig, ax = plt.subplots()
+    try:
+        draw_skeleton(ax, skeleton, show_com=True)
+        com_layers = [ln for ln in ax.lines if ln.get_linestyle() == "None" and ln.get_markersize() == _COM_MARKER_SIZE]
+        assert len(com_layers) == 1
+        com = com_layers[0]
+        com_x, com_y = com.get_data()
+    finally:
+        plt.close(fig)
+
+    assert com.get_color() == _COM_COLOR
+    assert com.get_markersize() > _JOINT_MARKER_SIZE
+    assert list(np.asarray(com_x)) == pytest.approx([link.xg for link in skeleton.links[1:]])
+    assert list(np.asarray(com_y)) == pytest.approx([link.yg for link in skeleton.links[1:]])
+
+
+def test_com_not_drawn_by_default() -> None:
+    """Without show_com, no COM markers are drawn."""
+    from skelarm.plotting import _COM_MARKER_SIZE
+
+    fig, ax = plt.subplots()
+    try:
+        draw_skeleton(ax, _arm(num_links=2, base_length=1.0))
+        com_layers = [ln for ln in ax.lines if ln.get_linestyle() == "None" and ln.get_markersize() == _COM_MARKER_SIZE]
+    finally:
+        plt.close(fig)
+
+    assert com_layers == []
 
 
 def test_titles_compose_without_clobbering() -> None:

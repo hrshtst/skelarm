@@ -17,6 +17,10 @@ _LINK_COLOR = "#0064c8"  # blue, movable links
 _BASE_LINK_COLOR = "#969696"  # gray, fixed base link
 _JOINT_COLOR = "#00aa00"  # green, joints
 _ORIGIN_COLOR = "black"  # origin
+_COM_COLOR = "#c80000"  # red, centers of mass
+
+_JOINT_MARKER_SIZE = 4
+_COM_MARKER_SIZE = 6  # a bit larger than the joints
 
 
 def draw_skeleton(
@@ -27,6 +31,8 @@ def draw_skeleton(
     *,
     base_color: str = _BASE_LINK_COLOR,
     joint_color: str = _JOINT_COLOR,
+    show_com: bool = False,
+    com_color: str = _COM_COLOR,
     label: str | None = None,
     title: str | None = "Robot Arm Skeleton",
 ) -> None:
@@ -48,6 +54,11 @@ def draw_skeleton(
     joint_color : str, optional
         Color of the joint markers (defaults to the GUI's green). The origin is
         always drawn black, matching the GUI.
+    show_com : bool, optional
+        When ``True``, draw each movable link's center of mass as a marker that is
+        a bit larger than the joints.
+    com_color : str, optional
+        Color of the center-of-mass markers (defaults to red).
     label : str | None, optional
         Legend label for the arm. When given, a single legend entry is added and
         the legend is shown; when ``None`` (default) no label or legend is added.
@@ -75,8 +86,22 @@ def draw_skeleton(
     origin_x, origin_y = skeleton.links[0].x, skeleton.links[0].y
     joint_x = [link.xe for link in skeleton.links]
     joint_y = [link.ye for link in skeleton.links]
-    ax.plot([origin_x], [origin_y], linestyle="none", marker="o", markersize=4, color=_ORIGIN_COLOR, zorder=2)
-    ax.plot(joint_x, joint_y, linestyle="none", marker="o", markersize=4, color=joint_color, zorder=2)
+    ax.plot(
+        [origin_x],
+        [origin_y],
+        linestyle="none",
+        marker="o",
+        markersize=_JOINT_MARKER_SIZE,
+        color=_ORIGIN_COLOR,
+        zorder=2,
+    )
+    ax.plot(joint_x, joint_y, linestyle="none", marker="o", markersize=_JOINT_MARKER_SIZE, color=joint_color, zorder=2)
+
+    # Optionally mark each movable link's center of mass, a bit larger than joints.
+    if show_com:
+        com_x = [link.xg for link in skeleton.links[1:]]
+        com_y = [link.yg for link in skeleton.links[1:]]
+        ax.plot(com_x, com_y, linestyle="none", marker="o", markersize=_COM_MARKER_SIZE, color=com_color, zorder=3)
 
     # Fit the view to the data with a margin and equal aspect, rather than forcing
     # a symmetric box centred on the origin. Autoscaling stays enabled so any other
