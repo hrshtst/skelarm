@@ -19,6 +19,7 @@ def draw_skeleton(
     color: str = "blue",
     linewidth: float = 2.0,
     *,
+    base_color: str = "gray",
     label: str | None = None,
     title: str | None = "Robot Arm Skeleton",
 ) -> None:
@@ -31,9 +32,12 @@ def draw_skeleton(
     skeleton : Skeleton
         The Skeleton object containing the robot arm's links.
     color : str, optional
-        Color of the robot arm links.
+        Color of the movable robot arm links.
     linewidth : float, optional
         Width of the lines representing the links.
+    base_color : str, optional
+        Color of the fixed base link (``links[0]``), drawn distinctly from the
+        movable links.
     label : str | None, optional
         Legend label for the arm. When given, a single legend entry is added and
         the legend is shown; when ``None`` (default) no label or legend is added.
@@ -44,17 +48,20 @@ def draw_skeleton(
     if not skeleton.links:
         return
 
-    # Draw each link as a line from its start joint (x, y) to its tip (xe, ye).
-    # Only the first segment carries the label, so the legend gets one arm entry.
+    # Draw each link from its start joint (x, y) to its tip (xe, ye). The fixed
+    # base link (links[0]) is drawn in base_color; the movable links use color.
+    # The legend label (if any) goes on the first movable link so its swatch
+    # matches color rather than the base color.
+    label_index = 1 if len(skeleton.links) > 1 else None
     for i, link in enumerate(skeleton.links):
         ax.plot(
             [link.x, link.xe],
             [link.y, link.ye],
-            color=color,
+            color=base_color if i == 0 else color,
             linewidth=linewidth,
             marker="o",
             markersize=5,
-            label=label if i == 0 else None,
+            label=label if i == label_index else None,
         )
 
     # Fit the view to the data with a margin and equal aspect, rather than forcing
@@ -67,7 +74,7 @@ def draw_skeleton(
     ax.autoscale(enable=True)
     ax.set_xlabel("X Position")
     ax.set_ylabel("Y Position")
-    if label is not None:
+    if label is not None and label_index is not None:
         ax.legend()
     if title is not None:
         ax.set_title(title)

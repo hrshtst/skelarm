@@ -103,6 +103,20 @@ def test_draw_skeleton_label_adds_single_legend_entry() -> None:
     assert labels == ["Arm"]
 
 
+def test_base_link_drawn_distinctly_from_movable_links() -> None:
+    """The fixed base link is drawn in a distinct color from the movable links."""
+    fig, ax = plt.subplots()
+    try:
+        draw_skeleton(ax, _arm(num_links=1, base_length=1.0), color="blue")
+        base_color = ax.lines[0].get_color()
+        movable_color = ax.lines[1].get_color()
+    finally:
+        plt.close(fig)
+
+    assert base_color == "gray"
+    assert movable_color == "blue"
+
+
 def test_titles_compose_without_clobbering() -> None:
     """Passing title=None to one helper lets the other own the axes title."""
     fig, ax = plt.subplots()
