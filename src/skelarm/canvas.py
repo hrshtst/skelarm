@@ -57,7 +57,7 @@ class SkelarmCanvas(QWidget):
     _LINK_WIDTH_PX = 4
     _LINK_COLOR = QColor(0, 100, 200)  # blue (movable links)
     _BASE_LINK_COLOR = QColor(150, 150, 150)  # gray (fixed base link)
-    _JOINT_COLOR = QColor(200, 0, 0)  # red
+    _JOINT_COLOR = QColor(0, 170, 0)  # green
 
     def __init__(self, skeleton: Skeleton, parent: QWidget | None = None) -> None:
         """Initialize the canvas."""
