@@ -34,15 +34,14 @@ def draw_skeleton(ax: matplotlib.axes.Axes, skeleton: Skeleton, color: str = "bl
     for link in skeleton.links:
         ax.plot([link.x, link.xe], [link.y, link.ye], color=color, linewidth=linewidth, marker="o", markersize=5)
 
-    # Scale the axes to fit the base (0, 0) and every joint and tip position.
-    coords = [0.0]
-    for link in skeleton.links:
-        coords.extend((link.x, link.y, link.xe, link.ye))
-    max_range = max(abs(c) for c in coords) * 1.1
-
-    ax.set_xlim(-max_range, max_range)
-    ax.set_ylim(-max_range, max_range)
+    # Fit the view to the data with a margin and equal aspect, rather than forcing
+    # a symmetric box centred on the origin. Autoscaling stays enabled so any other
+    # artists (e.g. an overlaid trajectory) are included instead of clipped, and a
+    # zero-extent arm still gets a valid, non-degenerate range.
     ax.set_aspect("equal", adjustable="box")
+    ax.margins(0.1)
+    ax.relim()
+    ax.autoscale(enable=True)
     ax.set_xlabel("X Position")
     ax.set_ylabel("Y Position")
     ax.set_title("Robot Arm Skeleton")
