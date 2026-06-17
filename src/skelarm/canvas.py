@@ -20,6 +20,35 @@ from PyQt6.QtWidgets import (
 if TYPE_CHECKING:
     from skelarm.skeleton import Skeleton
 
+_MARGIN_PX = 20.0  # Empty border kept between the arm and the widget edge.
+_DEFAULT_SCALE = 100.0  # Pixels per metre, used before the reach/size are known.
+
+
+def _fit_scale(reach: float, width: int, height: int) -> float:
+    """Compute a pixels-per-metre scale that fits an arm of ``reach`` in the widget.
+
+    The arm is drawn from the centre of the widget and can extend up to ``reach``
+    metres in any direction, so the scale is set from the smaller half-dimension
+    (minus a margin) to guarantee the fully-extended arm stays visible.
+
+    Parameters
+    ----------
+    reach : float
+        Maximum distance the arm can extend from the origin (sum of link lengths).
+    width, height : int
+        Current widget size in pixels.
+
+    Returns
+    -------
+    float
+        Scale in pixels per metre, falling back to :data:`_DEFAULT_SCALE` when the
+        reach or widget size is non-positive.
+    """
+    half = min(width, height) / 2 - _MARGIN_PX
+    if reach <= 0 or half <= 0:
+        return _DEFAULT_SCALE
+    return half / reach
+
 
 class SkelarmCanvas(QWidget):
     """A widget to draw the robot arm skeleton."""
@@ -28,7 +57,7 @@ class SkelarmCanvas(QWidget):
         """Initialize the canvas."""
         super().__init__(parent)
         self.skeleton = skeleton
-        self.scale_factor = 100.0  # Pixels per meter
+        self.scale_factor = _DEFAULT_SCALE  # Pixels per metre; re-fit on each paint.
         # Set background color to white
         self.setAutoFillBackground(True)
         p = self.palette()
@@ -39,6 +68,10 @@ class SkelarmCanvas(QWidget):
         """Paint the robot arm."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Auto-fit the drawing to the current widget size and the arm's reach.
+        reach = sum(link.prop.length for link in self.skeleton.links)
+        self.scale_factor = _fit_scale(reach, self.width(), self.height())
 
         # Center of the widget
         center_x = self.width() / 2

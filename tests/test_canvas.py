@@ -125,3 +125,24 @@ def test_refresh_from_skeleton_does_not_feed_back_into_state(qapp) -> None:  # n
 
     assert viewer.skeleton.q == pytest.approx(exact)  # blocked signals, no round-trip clobber
     assert viewer.sliders[0].value() == round(set_deg)
+
+
+def test_fit_scale_fits_arm_within_widget() -> None:
+    """The fitted scale keeps a fully-extended arm inside the widget, up to a margin."""
+    from skelarm.canvas import _MARGIN_PX, _fit_scale
+
+    width = 400
+    reach = 2.0
+    scale = _fit_scale(reach, width, width)
+
+    half = width / 2
+    assert reach * scale <= half  # fully-extended arm fits within half the smaller dimension
+    assert reach * scale == pytest.approx(half - _MARGIN_PX)  # tight to the margin
+
+
+def test_fit_scale_falls_back_for_degenerate_input() -> None:
+    """A non-positive reach or widget size falls back to the default scale."""
+    from skelarm.canvas import _DEFAULT_SCALE, _fit_scale
+
+    assert _fit_scale(0.0, 400, 400) == _DEFAULT_SCALE  # arm has no reach
+    assert _fit_scale(2.0, 0, 0) == _DEFAULT_SCALE  # widget not laid out yet
