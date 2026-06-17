@@ -132,8 +132,13 @@ class SkelarmViewer(QMainWindow):
             header_layout.addWidget(value_label)
 
             slider = QSlider(Qt.Orientation.Horizontal)
-            # Range comes from the link's joint limits (stored in radians).
-            slider.setRange(round(math.degrees(link.prop.qmin)), round(math.degrees(link.prop.qmax)))
+            # Range comes from the link's joint limits (radians). Round *inward*
+            # (ceil the lower bound, floor the upper) so the integer-degree slider
+            # can never request an angle past the enforced limits and trip a clamp
+            # warning; max(...) guards a degenerate sub-degree range.
+            lower_deg = math.ceil(math.degrees(link.prop.qmin))
+            upper_deg = math.floor(math.degrees(link.prop.qmax))
+            slider.setRange(lower_deg, max(lower_deg, upper_deg))
             # Set initial value
             initial_deg = int(math.degrees(link.q))
             slider.setValue(initial_deg)
