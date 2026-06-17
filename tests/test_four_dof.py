@@ -22,32 +22,31 @@ def test_four_dof_loading(four_dof_skeleton: Skeleton) -> None:
     """Test that the 4-DOF robot loads correctly."""
     expected_joints = 4
     expected_total_links = 5  # base + 4 movable
-    expected_last_length = 0.4
 
     assert four_dof_skeleton.num_joints == expected_joints
     assert four_dof_skeleton.num_links == expected_total_links
-    assert four_dof_skeleton.links[1].prop.length == 1.0
-    assert four_dof_skeleton.links[4].prop.length == expected_last_length
+    assert four_dof_skeleton.base_length == pytest.approx(0.05)
+    assert four_dof_skeleton.links[1].prop.length == pytest.approx(0.1)
+    assert four_dof_skeleton.links[4].prop.length == pytest.approx(0.15)
 
 
 def test_four_dof_fk(four_dof_skeleton: Skeleton) -> None:
     """Test Forward Kinematics for the 4-DOF robot."""
-    # Fully extended configuration
+    base_length = 0.05
+    reach = 0.1 + 0.25 + 0.25 + 0.15  # sum of the movable link lengths
+
+    # Fully extended along +x: tip is base offset plus the link lengths.
     four_dof_skeleton.q = np.zeros(4)
     compute_forward_kinematics(four_dof_skeleton)
-
-    # Tip position should be sum of lengths
-    expected_x = 1.0 + 0.8 + 0.6 + 0.4
-    assert four_dof_skeleton.links[-1].xe == pytest.approx(expected_x)
+    assert four_dof_skeleton.links[-1].xe == pytest.approx(base_length + reach)
     assert four_dof_skeleton.links[-1].ye == pytest.approx(0.0)
 
-    # 90 degrees at first joint
-    four_dof_skeleton.q = np.array([np.pi / 2, 0.0, 0.0, 0.0])
+    # 90 degrees at the second joint (within its [0, 120] limit): the links beyond
+    # the first point straight up, while the base and first link stay along +x.
+    four_dof_skeleton.q = np.array([0.0, np.pi / 2, 0.0, 0.0])
     compute_forward_kinematics(four_dof_skeleton)
-
-    # Tip should be at (0, total_length)
-    assert four_dof_skeleton.links[-1].xe == pytest.approx(0.0, abs=1e-9)
-    assert four_dof_skeleton.links[-1].ye == pytest.approx(expected_x)
+    assert four_dof_skeleton.links[-1].xe == pytest.approx(base_length + 0.1)
+    assert four_dof_skeleton.links[-1].ye == pytest.approx(0.25 + 0.25 + 0.15)
 
 
 def test_four_dof_dynamics_static(four_dof_skeleton: Skeleton) -> None:

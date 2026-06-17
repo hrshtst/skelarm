@@ -17,8 +17,8 @@ def main() -> None:
     skeleton = Skeleton.from_toml(config_path)
     print(f"Loaded {skeleton.num_joints}-DOF robot from {config_path.name}")
 
-    # 2. Set initial state (arbitrary pose, e.g., [0, pi/6, -pi/6, pi/3])
-    skeleton.q = np.array([0.0, np.pi / 6, -np.pi / 6, np.pi / 3])
+    # 2. Set initial state (an arbitrary pose within the robot's joint limits)
+    skeleton.q = np.array([0.0, np.pi / 6, np.pi / 6, np.pi / 3])
     skeleton.dq = np.zeros(skeleton.num_joints)
 
     print(f"Initial q: {skeleton.q}")
