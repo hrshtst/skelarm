@@ -33,7 +33,7 @@ def main() -> None:
     _fig, ax = plt.subplots(figsize=(8, 8))
 
     # 5. Draw the skeleton (let the trajectory call below own the shared title)
-    draw_skeleton(ax, skeleton, color="green", label="Arm", title=None)
+    draw_skeleton(ax, skeleton, label="Arm", title=None)
 
     # 6. Generate a dummy trajectory for demonstration
     time = np.linspace(0, 2 * np.pi, 100)

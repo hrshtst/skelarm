@@ -107,7 +107,7 @@ def test_base_link_drawn_distinctly_from_movable_links() -> None:
     """The fixed base link is drawn in a distinct color from the movable links."""
     fig, ax = plt.subplots()
     try:
-        draw_skeleton(ax, _arm(num_links=1, base_length=1.0), color="blue")
+        draw_skeleton(ax, _arm(num_links=1, base_length=1.0), color="blue", base_color="gray")
         base_color = ax.lines[0].get_color()
         movable_color = ax.lines[1].get_color()
     finally:
@@ -118,7 +118,7 @@ def test_base_link_drawn_distinctly_from_movable_links() -> None:
 
 
 def test_joints_render_above_link_lines() -> None:
-    """Joint/origin markers sit in a dedicated layer above the (markerless) link lines."""
+    """Joint/origin markers sit in dedicated layers above the (markerless) link lines."""
     fig, ax = plt.subplots()
     try:
         draw_skeleton(ax, _arm(num_links=2, base_length=1.0))
@@ -127,12 +127,28 @@ def test_joints_render_above_link_lines() -> None:
     finally:
         plt.close(fig)
 
-    assert len(marker_layers) == 1
-    marker_layer = marker_layers[0]
-    assert marker_layer.get_marker() == "o"
-    # The markers are drawn above every link line, and the lines carry no markers.
-    assert all(marker_layer.get_zorder() > ln.get_zorder() for ln in link_lines)
+    assert marker_layers  # at least one marker layer
+    assert all(ml.get_marker() == "o" for ml in marker_layers)
+    # Every marker layer is drawn above every link line, and the lines carry no markers.
+    assert all(ml.get_zorder() > ln.get_zorder() for ml in marker_layers for ln in link_lines)
     assert all(ln.get_marker() in ("", "None") for ln in link_lines)
+
+
+def test_colors_match_the_gui_canvas() -> None:
+    """Default link/joint/origin colors mirror the GUI canvas."""
+    from skelarm.plotting import _BASE_LINK_COLOR, _JOINT_COLOR, _LINK_COLOR, _ORIGIN_COLOR
+
+    fig, ax = plt.subplots()
+    try:
+        draw_skeleton(ax, _arm(num_links=2, base_length=1.0))
+        link_colors = [ln.get_color() for ln in ax.lines if ln.get_linestyle() == "-"]
+        marker_colors = {ln.get_color() for ln in ax.lines if ln.get_linestyle() == "None"}
+    finally:
+        plt.close(fig)
+
+    assert link_colors[0] == _BASE_LINK_COLOR  # base link gray
+    assert link_colors[1] == _LINK_COLOR  # movable links blue
+    assert marker_colors == {_JOINT_COLOR, _ORIGIN_COLOR}  # green joints, black origin
 
 
 def test_titles_compose_without_clobbering() -> None:
