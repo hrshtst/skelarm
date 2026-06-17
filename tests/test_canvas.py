@@ -40,6 +40,20 @@ def test_sliders_respect_joint_limits(qapp) -> None:  # noqa: ANN001, ARG001
     assert (viewer.sliders[1].minimum(), viewer.sliders[1].maximum()) == (-45, 45)
 
 
+def test_com_checkbox_toggles_canvas_flag(qapp) -> None:  # noqa: ANN001, ARG001
+    """The 'show center of mass' checkbox flips the canvas overlay flag and repaints."""
+    from skelarm.canvas import SkelarmViewer
+
+    link_props = [LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi)]
+    viewer = SkelarmViewer(Skeleton(link_props))
+
+    assert viewer.canvas.show_com is False  # off by default
+    viewer.com_checkbox.setChecked(True)
+    assert viewer.canvas.show_com is True
+    viewer.com_checkbox.setChecked(False)
+    assert viewer.canvas.show_com is False
+
+
 def test_slider_range_rounds_inward_to_stay_within_limits(qapp) -> None:  # noqa: ANN001, ARG001
     """Fractional limits must round inward so the slider can't exceed the enforced range."""
     from skelarm.canvas import SkelarmViewer

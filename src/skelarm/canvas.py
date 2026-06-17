@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from PyQt6.QtCore import QPointF, QSignalBlocker, Qt
 from PyQt6.QtGui import QBrush, QColor, QPainter, QPaintEvent, QPen
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -54,16 +55,19 @@ class SkelarmCanvas(QWidget):
     """A widget to draw the robot arm skeleton."""
 
     _JOINT_RADIUS_PX = 5  # also used for the origin, so the two match in size
+    _COM_RADIUS_PX = 7  # a bit larger than the joints
     _LINK_WIDTH_PX = 4
     _LINK_COLOR = QColor(0, 100, 200)  # blue (movable links)
     _BASE_LINK_COLOR = QColor(150, 150, 150)  # gray (fixed base link)
     _JOINT_COLOR = QColor(0, 170, 0)  # green
+    _COM_COLOR = QColor(200, 0, 0)  # red (centers of mass)
 
     def __init__(self, skeleton: Skeleton, parent: QWidget | None = None) -> None:
         """Initialize the canvas."""
         super().__init__(parent)
         self.skeleton = skeleton
         self.scale_factor = _DEFAULT_SCALE  # Pixels per metre; re-fit on each paint.
+        self.show_com = False  # whether to overlay each link's center of mass
         # Set background color to white
         self.setAutoFillBackground(True)
         p = self.palette()
@@ -100,7 +104,7 @@ class SkelarmCanvas(QWidget):
             painter.setPen(pen_base if i == 0 else pen_link)
             painter.drawLine(p1, p2)
 
-        # Draw the origin (black) and every joint (red) on top, all the same size.
+        # Draw the origin (black) and every joint (green) on top, all the same size.
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(Qt.GlobalColor.black))
         origin = self._world_to_screen(0, 0, center_x, center_y)
@@ -109,6 +113,13 @@ class SkelarmCanvas(QWidget):
         for link in self.skeleton.links:
             p2 = self._world_to_screen(link.xe, link.ye, center_x, center_y)
             painter.drawEllipse(p2, self._JOINT_RADIUS_PX, self._JOINT_RADIUS_PX)
+
+        # Optionally overlay each movable link's center of mass (red, a bit larger).
+        if self.show_com:
+            painter.setBrush(QBrush(self._COM_COLOR))
+            for link in self.skeleton.links[1:]:
+                com = self._world_to_screen(link.xg, link.yg, center_x, center_y)
+                painter.drawEllipse(com, self._COM_RADIUS_PX, self._COM_RADIUS_PX)
 
     def _world_to_screen(self, wx: float, wy: float, cx: float, cy: float) -> QPointF:
         """Convert world coordinates (meters) to screen coordinates (pixels)."""
@@ -188,8 +199,18 @@ class SkelarmViewer(QMainWindow):
             # Label the (range-clamped) slider value so the two always agree.
             value_label.setText(f"{slider.value()}°")
 
+        # Toggle for overlaying each link's center of mass on the canvas.
+        self.com_checkbox = QCheckBox("Show center of mass")
+        self.com_checkbox.toggled.connect(self._on_show_com_toggled)
+        controls_layout.addWidget(self.com_checkbox)
+
         controls_layout.addStretch()
         main_layout.addWidget(controls_panel, stretch=1)
+
+    def _on_show_com_toggled(self) -> None:
+        """Toggle the center-of-mass overlay on the canvas and repaint."""
+        self.canvas.show_com = self.com_checkbox.isChecked()
+        self.canvas.update_skeleton()
 
     def _on_joint_change(self, joint: int, angle_deg: int) -> None:
         """Apply a single joint's slider value, leaving the other joints untouched.
