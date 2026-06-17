@@ -6,7 +6,7 @@ import functools
 import math
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtCore import QPointF, QSignalBlocker, Qt
 from PyQt6.QtGui import QBrush, QColor, QPainter, QPen
 from PyQt6.QtWidgets import (
     QHBoxLayout,
@@ -177,4 +177,19 @@ class SkelarmViewer(QMainWindow):
         q[joint] = math.radians(angle_deg)
         # The eager q setter refreshes the forward kinematics.
         self.skeleton.q = q
+        self.canvas.update_skeleton()
+
+    def refresh_from_skeleton(self) -> None:
+        """Sync the sliders, labels, and canvas to the current skeleton state.
+
+        Call this after the joint angles change outside the GUI (for example,
+        driven by a controller or simulation) so the controls reflect the model.
+        Slider signals are blocked during the update so the rounded display
+        values are not fed back into the skeleton.
+        """
+        for slider, label, angle in zip(self.sliders, self.angle_labels, self.skeleton.q, strict=True):
+            with QSignalBlocker(slider):  # don't feed the rounded value back into the skeleton
+                slider.setValue(round(math.degrees(angle)))
+            # Read back the (range-clamped) slider value so the label always matches it.
+            label.setText(f"{slider.value()}°")
         self.canvas.update_skeleton()
