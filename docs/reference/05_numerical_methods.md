@@ -1,10 +1,11 @@
 # Numerical Methods
 
-Two numerical building blocks turn the dynamics equations into a running
-simulation: a **linear solver** that extracts the joint acceleration from the
-equation of motion at each instant, and an **ODE integrator** that advances the
-state through time. `skelarm` leans on mature library routines for both, but the
-classic methods behind them are worth seeing.
+Three numerical building blocks support the kinematics and dynamics chapters: a
+**linear solver** that extracts the joint acceleration from the equation of
+motion, a **least-squares solver** that underlies numerical inverse kinematics,
+and an **ODE integrator** that advances the state through time. `skelarm` leans
+on mature library routines for these operations, but the classic methods behind
+them are worth seeing.
 
 ## 1. Linear equation solver
 
@@ -32,7 +33,90 @@ is large — for numerical stability. The equation of motion's $H$ is regular,
 symmetric, and positive definite, so even a naive pivot-free elimination is safe
 here.
 
-## 2. Time integration
+## 2. Least-squares and damping
+
+Numerical inverse kinematics rarely leaves a square, exactly solvable system.
+Instead, it often asks for the joint step $\Delta q$ that best satisfies a
+linearized residual equation
+
+$$
+J \Delta q \approx e.
+$$
+
+The least-squares form is
+
+$$
+\Delta q = \arg\min_{\Delta q} \frac{1}{2}\lVert e - J\Delta q\rVert^2.
+$$
+
+When $J$ has full column rank, setting the gradient to zero gives the **normal
+equation**
+
+$$
+J^{T}J\Delta q = J^{T}e.
+$$
+
+For a redundant planar arm, $J$ has more columns than rows. The minimum-norm step
+can instead be written with the right pseudoinverse,
+
+$$
+\Delta q = J^{T}(JJ^{T})^{-1}e,
+$$
+
+as long as $JJ^{T}$ is regular. This is efficient for a two-dimensional endpoint
+task because it solves a $2 \times 2$ system, but it becomes unstable when the
+Jacobian approaches a singular posture.
+
+The standard stabilization is **Tikhonov regularization**, also called **damped
+least squares** in inverse kinematics:
+
+$$
+\Delta q =
+\arg\min_{\Delta q}
+\left(
+\frac{1}{2}\lVert e - J\Delta q\rVert^2
++
+\frac{1}{2}\mu\lVert\Delta q\rVert^2
+\right),
+\qquad \mu > 0.
+$$
+
+Its normal equation is
+
+$$
+(J^{T}J + \mu I)\Delta q = J^{T}e.
+$$
+
+Equivalently, for the endpoint task,
+
+$$
+\Delta q = J^{T}(JJ^{T}+\mu I)^{-1}e.
+$$
+
+The damping term keeps the matrix invertible and bounds the step near
+singularities. A larger $\mu$ is safer but slower; a smaller $\mu$ is more
+accurate when the Jacobian is well-conditioned but can amplify numerical noise.
+
+!!! note "Implementation note"
+    The normal equations are useful for deriving the methods, but they square the
+    condition number of the Jacobian. Implementation code should prefer library
+    solvers over manually inverting matrices: `numpy.linalg.solve` for the small
+    positive-definite damped systems, `numpy.linalg.lstsq` or
+    `numpy.linalg.pinv` for baseline least-squares behavior, and SciPy options
+    such as `scipy.linalg.solve`, `scipy.linalg.lstsq`, or
+    `scipy.optimize.least_squares` when richer solver controls are needed.
+
+The [Numerical Inverse Kinematics](06_numerical_inverse_kinematics.md) chapter
+extends this idea to weighted nonlinear least squares. In that setting,
+Levenberg-Marquardt repeatedly solves
+
+$$
+(J^{T}W_eJ + W_n)\Delta q = J^{T}W_e e,
+$$
+
+where $W_e$ weights task residuals and $W_n$ damps joint motion.
+
+## 3. Time integration
 
 Simulating motion means integrating the joint acceleration twice, to velocity and
 then position. Stacking the state as $X = [q^{T}, \dot{q}^{T}]^{T}$ recasts the
