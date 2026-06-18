@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -238,3 +239,190 @@ def compute_endpoint_acceleration(skeleton: Skeleton) -> NDArray[np.float64]:
     jacobian = compute_jacobian(skeleton)
     basis = compute_coriolis_basis(skeleton)
     return (jacobian @ skeleton.ddq + basis @ skeleton.dq).astype(np.float64)
+
+
+# === Numerical inverse kinematics ===
+
+
+@dataclass
+class IKResult:
+    """Outcome of a numerical inverse-kinematics solve.
+
+    Attributes
+    ----------
+    q : NDArray[np.float64]
+        Final joint angles (radians), one per movable joint.
+    position : NDArray[np.float64]
+        Final endpoint position ``[x, y]``.
+    residual : NDArray[np.float64]
+        Final residual ``target - position``.
+    residual_norm : float
+        Euclidean norm of ``residual``.
+    iterations : int
+        Number of iterations performed.
+    status : str
+        Why the solver stopped: ``"converged"``, ``"stalled"``,
+        ``"max_iterations"``, or ``"singular"``.
+    joint_limits_hit : bool
+        Whether any proposed step was clamped to a joint limit.
+    success : bool
+        ``True`` when ``residual_norm`` is within the position tolerance.
+    """
+
+    q: NDArray[np.float64]
+    position: NDArray[np.float64]
+    residual: NDArray[np.float64]
+    residual_norm: float
+    iterations: int
+    status: str
+    joint_limits_hit: bool
+    success: bool
+
+
+def _ik_step(
+    method: str,
+    jacobian: NDArray[np.float64],
+    error: NDArray[np.float64],
+    damping: float,
+) -> NDArray[np.float64]:
+    """Compute one joint-space step ``delta q`` for the selected IK method.
+
+    The endpoint task weight ``W_e`` is the identity, so the gradient is
+    ``g = J^T e`` and the Levenberg-Marquardt system is ``(J^T J + W_n) dq = g``.
+
+    Parameters
+    ----------
+    method : str
+        Step rule. Currently ``"lm"`` (``W_n = damping * I``) and ``"lm_sugihara"``
+        (``W_n = (E_k + damping) * I`` with residual energy ``E_k``).
+    jacobian : NDArray[np.float64]
+        The ``2 x num_joints`` endpoint Jacobian at the current pose.
+    error : NDArray[np.float64]
+        The endpoint residual ``target - position``.
+    damping : float
+        Damping term: ``mu`` for ``"lm"`` or the bias ``w_bar`` for ``"lm_sugihara"``.
+
+    Returns
+    -------
+    NDArray[np.float64]
+        The joint-space step ``delta q``.
+
+    Raises
+    ------
+    ValueError
+        If ``method`` is not a recognized step rule.
+    """
+    num_joints = jacobian.shape[1]
+    gradient = jacobian.T @ error
+    if method == "lm":
+        weight = damping
+    elif method == "lm_sugihara":
+        residual_energy = 0.5 * float(error @ error)
+        weight = residual_energy + damping
+    else:
+        error_msg = f"Unknown inverse-kinematics method: {method!r}"
+        raise ValueError(error_msg)
+    hessian = jacobian.T @ jacobian + weight * np.eye(num_joints)
+    return np.linalg.solve(hessian, gradient).astype(np.float64)
+
+
+def compute_inverse_kinematics(
+    skeleton: Skeleton,
+    target: NDArray[np.float64] | tuple[float, float],
+    *,
+    method: str = "lm_sugihara",
+    q0: NDArray[np.float64] | None = None,
+    max_iterations: int = 100,
+    position_tolerance: float = 1e-6,
+    step_tolerance: float = 1e-9,
+    damping: float = 1e-3,
+    step_scale: float = 1.0,
+) -> IKResult:
+    """Solve endpoint position inverse kinematics by iterative refinement.
+
+    Starting from a seed pose, the solver repeatedly linearizes the endpoint
+    residual ``e = target - p(q)`` and takes a damped step until the residual is
+    within tolerance, the step stalls, or the iteration limit is reached. The
+    skeleton is driven to the final pose as a side effect. Each proposed step is
+    clamped to the joint limits, so the returned pose is always feasible.
+
+    Parameters
+    ----------
+    skeleton : Skeleton
+        The arm to solve for. Its joint state is updated to the result pose.
+    target : NDArray[np.float64] | tuple[float, float]
+        Desired endpoint position ``[x, y]``.
+    method : str, optional
+        Step rule; ``"lm_sugihara"`` (the recommended default) or ``"lm"``.
+    q0 : NDArray[np.float64] | None, optional
+        Seed joint angles. Defaults to the skeleton's current pose.
+    max_iterations : int, optional
+        Maximum number of iterations.
+    position_tolerance : float, optional
+        Success threshold on the residual norm.
+    step_tolerance : float, optional
+        Stalls when the (clamped) joint step norm falls to or below this value.
+    damping : float, optional
+        Damping term passed to the step rule (``w_bar`` for ``"lm_sugihara"``).
+    step_scale : float, optional
+        Scale ``alpha`` applied to each step, in ``(0, 1]``.
+
+    Returns
+    -------
+    IKResult
+        The final pose, endpoint, residual, iteration count, and status.
+    """
+    target_xy = np.asarray(target, dtype=np.float64)
+    lower = np.array([link.prop.qmin for link in skeleton.links[1:]], dtype=np.float64)
+    upper = np.array([link.prop.qmax for link in skeleton.links[1:]], dtype=np.float64)
+
+    q = skeleton.q if q0 is None else np.asarray(q0, dtype=np.float64)
+    q = np.clip(q, lower, upper)
+    skeleton.q = q  # eager setter runs forward kinematics; q is within limits
+
+    joint_limits_hit = False
+    status = "max_iterations"
+    iterations = 0
+    while iterations < max_iterations:
+        iterations += 1
+        tip = skeleton.links[-1]
+        position = np.array([tip.xe, tip.ye], dtype=np.float64)
+        error = target_xy - position
+        if float(np.linalg.norm(error)) <= position_tolerance:
+            status = "converged"
+            break
+
+        jacobian = compute_jacobian(skeleton)
+        try:
+            delta = _ik_step(method, jacobian, error, damping)
+        except np.linalg.LinAlgError:
+            status = "singular"
+            break
+
+        q_proposed = q + step_scale * delta
+        q_next = np.clip(q_proposed, lower, upper)
+        if not np.array_equal(q_next, q_proposed):
+            joint_limits_hit = True
+        if float(np.linalg.norm(q_next - q)) <= step_tolerance:
+            status = "stalled"
+            q = q_next
+            skeleton.q = q
+            break
+
+        q = q_next
+        skeleton.q = q
+
+    tip = skeleton.links[-1]
+    position = np.array([tip.xe, tip.ye], dtype=np.float64)
+    residual = target_xy - position
+    residual_norm = float(np.linalg.norm(residual))
+    return IKResult(
+        q=q.copy(),
+        position=position,
+        residual=residual,
+        residual_norm=residual_norm,
+        iterations=iterations,
+        status=status,
+        joint_limits_hit=joint_limits_hit,
+        success=residual_norm <= position_tolerance,
+    )
