@@ -21,9 +21,72 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QCheckBox, QComboBox, QLabel, QPushButton
 
 from skelarm import SkelarmViewer, Skeleton
+
+
+class KinematicsInspector(SkelarmViewer):
+    """A SkelarmViewer with extra inspection controls.
+
+    Adds a center-of-mass overlay toggle, an IK-method selector, a reset-pose
+    button, and a live status readout (endpoint position and the latest IK
+    result) on top of the minimal slider/canvas viewer.
+    """
+
+    def __init__(self, skeleton: Skeleton) -> None:
+        """Build the inspector controls on top of the base viewer."""
+        super().__init__(skeleton)
+        self._initial_q = skeleton.q.copy()  # pose to restore on reset
+
+        self.com_checkbox = QCheckBox("Show center of mass")
+        self.com_checkbox.toggled.connect(self._on_show_com_toggled)
+        self.add_control(self.com_checkbox)
+
+        # Newton-Raphson needs a square Jacobian, so only offer it for a 2-joint arm.
+        self.add_control(QLabel("IK method"))
+        self.method_combo = QComboBox()
+        methods = ["lm_sugihara", "lm", "sr_inverse", "pseudoinverse"]
+        if skeleton.num_joints == 2:  # noqa: PLR2004
+            methods.append("nr")
+        self.method_combo.addItems(methods)
+        self.method_combo.currentTextChanged.connect(self._on_method_changed)
+        self.add_control(self.method_combo)
+
+        self.reset_button = QPushButton("Reset pose")
+        self.reset_button.clicked.connect(self._on_reset)
+        self.add_control(self.reset_button)
+
+        self.status_label = QLabel()
+        self.status_label.setWordWrap(True)
+        self.add_control(self.status_label)
+
+        self.pose_updated.connect(self._update_status)
+        self._update_status()
+
+    def _on_show_com_toggled(self) -> None:
+        """Toggle the center-of-mass overlay on the canvas and repaint."""
+        self.canvas.show_com = self.com_checkbox.isChecked()
+        self.canvas.update_skeleton()
+
+    def _on_method_changed(self, method: str) -> None:
+        """Route the selected IK method to the canvas solver."""
+        self.canvas.ik_method = method
+
+    def _on_reset(self) -> None:
+        """Restore the initial pose and clear any IK target."""
+        self.skeleton.q = self._initial_q.copy()
+        self.canvas.clear_ik_target()
+        self.refresh_from_skeleton()
+
+    def _update_status(self) -> None:
+        """Refresh the status label with the endpoint position and latest IK result."""
+        tip = self.skeleton.links[-1]
+        text = f"Tip: ({tip.xe:.3f}, {tip.ye:.3f}) m"
+        result = self.canvas.last_ik_result
+        if result is not None:
+            text += f"\nIK: {result.status}, residual={result.residual_norm:.3g}"
+        self.status_label.setText(text)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -95,7 +158,7 @@ def main() -> None:
         parser.error(str(exc))
 
     app = QApplication(sys.argv)
-    viewer = SkelarmViewer(skeleton)
+    viewer = KinematicsInspector(skeleton)
 
     if args.method is not None:
         available = [viewer.method_combo.itemText(i) for i in range(viewer.method_combo.count())]

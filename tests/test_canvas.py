@@ -40,20 +40,6 @@ def test_sliders_respect_joint_limits(qapp) -> None:  # noqa: ANN001, ARG001
     assert (viewer.sliders[1].minimum(), viewer.sliders[1].maximum()) == (-45, 45)
 
 
-def test_com_checkbox_toggles_canvas_flag(qapp) -> None:  # noqa: ANN001, ARG001
-    """The 'show center of mass' checkbox flips the canvas overlay flag and repaints."""
-    from skelarm.canvas import SkelarmViewer
-
-    link_props = [LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi)]
-    viewer = SkelarmViewer(Skeleton(link_props))
-
-    assert viewer.canvas.show_com is False  # off by default
-    viewer.com_checkbox.setChecked(True)
-    assert viewer.canvas.show_com is True
-    viewer.com_checkbox.setChecked(False)
-    assert viewer.canvas.show_com is False
-
-
 def test_slider_range_rounds_inward_to_stay_within_limits(qapp) -> None:  # noqa: ANN001, ARG001
     """Fractional limits must round inward so the slider can't exceed the enforced range."""
     from skelarm.canvas import SkelarmViewer
@@ -235,17 +221,6 @@ def test_unreachable_click_records_stalled_result(qapp) -> None:  # noqa: ANN001
     assert result.status == "stalled"
 
 
-def test_status_label_reports_ik_result(qapp) -> None:  # noqa: ANN001, ARG001
-    """The viewer's status label shows the endpoint and IK status after a solve."""
-    viewer = _two_link_viewer()
-
-    viewer.canvas.solve_to_world(0.5, 1.2)
-
-    text = viewer.status_label.text()
-    assert "Tip:" in text
-    assert "converged" in text
-
-
 def test_manual_pose_clears_ik_status(qapp) -> None:  # noqa: ANN001, ARG001
     """Posing a joint by hand clears the stale IK target/result."""
     viewer = _two_link_viewer()
@@ -307,53 +282,3 @@ def test_left_drag_solves_ik(qapp) -> None:  # noqa: ANN001, ARG001
 
     tip = canvas.skeleton.links[-1]
     assert np.array([tip.xe, tip.ye]) == pytest.approx(np.array(target), abs=1e-3)
-
-
-def _redundant_viewer():  # noqa: ANN202
-    """A redundant (3-joint) viewer."""
-    from skelarm.canvas import SkelarmViewer
-
-    link_props = [LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi) for _ in range(3)]
-    return SkelarmViewer(Skeleton(link_props))
-
-
-def _combo_methods(viewer) -> list[str]:  # noqa: ANN001
-    """List the IK methods offered by the viewer's method combo box."""
-    return [viewer.method_combo.itemText(i) for i in range(viewer.method_combo.count())]
-
-
-def test_reset_button_restores_initial_pose(qapp) -> None:  # noqa: ANN001, ARG001
-    """The reset button returns the arm to its initial pose and clears IK state."""
-    viewer = _two_link_viewer()
-    initial = viewer.skeleton.q.copy()
-
-    viewer.canvas.solve_to_world(0.5, 1.2)
-    assert not np.allclose(viewer.skeleton.q, initial)
-
-    viewer.reset_button.click()
-
-    assert np.allclose(viewer.skeleton.q, initial)
-    assert viewer.canvas.last_ik_result is None
-
-
-def test_method_combo_excludes_nr_for_redundant_arm(qapp) -> None:  # noqa: ANN001, ARG001
-    """Newton-Raphson (square-only) is not offered for a redundant arm."""
-    methods = _combo_methods(_redundant_viewer())
-    assert "nr" not in methods
-    assert "lm_sugihara" in methods
-
-
-def test_method_combo_includes_nr_for_two_dof(qapp) -> None:  # noqa: ANN001, ARG001
-    """Newton-Raphson is offered for a square (two-joint) arm."""
-    assert "nr" in _combo_methods(_two_link_viewer())
-
-
-def test_selecting_method_routes_to_solver(qapp) -> None:  # noqa: ANN001, ARG001
-    """Choosing a method routes it to the canvas solver, which runs and records a result."""
-    viewer = _two_link_viewer()
-
-    viewer.method_combo.setCurrentText("sr_inverse")
-    assert viewer.canvas.ik_method == "sr_inverse"
-
-    viewer.canvas.solve_to_world(0.5, 1.2)
-    assert viewer.canvas.last_ik_result is not None

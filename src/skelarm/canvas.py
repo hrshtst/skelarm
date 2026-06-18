@@ -9,12 +9,9 @@ from typing import TYPE_CHECKING
 from PyQt6.QtCore import QPointF, QSignalBlocker, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QMouseEvent, QPainter, QPaintEvent, QPen
 from PyQt6.QtWidgets import (
-    QCheckBox,
-    QComboBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
-    QPushButton,
     QSlider,
     QVBoxLayout,
     QWidget,
@@ -204,13 +201,20 @@ class SkelarmCanvas(QWidget):
 
 
 class SkelarmViewer(QMainWindow):
-    """Main window for the Skelarm visualizer."""
+    """A minimal viewer: the arm canvas plus one slider per joint.
+
+    Drag a slider to set a joint angle (forward kinematics), or click and drag in
+    the canvas to move the tip (inverse kinematics). Subclasses can add extra
+    controls with :meth:`add_control` and react to pose changes via the
+    :attr:`pose_updated` signal.
+    """
+
+    pose_updated = pyqtSignal()  # emitted after any FK (slider) or IK (canvas) pose change
 
     def __init__(self, skeleton: Skeleton) -> None:
         """Initialize the viewer."""
         super().__init__()
         self.skeleton = skeleton
-        self._initial_q = skeleton.q.copy()  # pose to restore on reset
 
         self.canvas = SkelarmCanvas(skeleton)
 
@@ -229,6 +233,7 @@ class SkelarmViewer(QMainWindow):
         # Controls panel
         controls_panel = QWidget()
         controls_layout = QVBoxLayout(controls_panel)
+        self.controls_layout = controls_layout  # exposed so subclasses can add_control
 
         controls_label = QLabel("<b>Joint Controls</b>")
         controls_layout.addWidget(controls_label)
@@ -274,50 +279,12 @@ class SkelarmViewer(QMainWindow):
             # Label the (range-clamped) slider value so the two always agree.
             value_label.setText(f"{slider.value()}°")
 
-        # Toggle for overlaying each link's center of mass on the canvas.
-        self.com_checkbox = QCheckBox("Show center of mass")
-        self.com_checkbox.toggled.connect(self._on_show_com_toggled)
-        controls_layout.addWidget(self.com_checkbox)
-
-        # IK solver method. Newton-Raphson needs a square Jacobian, so only offer it
-        # for a two-joint arm.
-        controls_layout.addWidget(QLabel("IK method"))
-        self.method_combo = QComboBox()
-        methods = ["lm_sugihara", "lm", "sr_inverse", "pseudoinverse"]
-        if skeleton.num_joints == 2:  # noqa: PLR2004
-            methods.append("nr")
-        self.method_combo.addItems(methods)
-        self.method_combo.currentTextChanged.connect(self._on_method_changed)
-        controls_layout.addWidget(self.method_combo)
-
-        # Reset the arm to the pose it was loaded with.
-        self.reset_button = QPushButton("Reset pose")
-        self.reset_button.clicked.connect(self._on_reset)
-        controls_layout.addWidget(self.reset_button)
-
-        # Live status: endpoint position and the latest IK result.
-        self.status_label = QLabel()
-        self.status_label.setWordWrap(True)
-        controls_layout.addWidget(self.status_label)
-
         controls_layout.addStretch()
         main_layout.addWidget(controls_panel, stretch=1)
-        self._update_status()
 
-    def _on_show_com_toggled(self) -> None:
-        """Toggle the center-of-mass overlay on the canvas and repaint."""
-        self.canvas.show_com = self.com_checkbox.isChecked()
-        self.canvas.update_skeleton()
-
-    def _on_method_changed(self, method: str) -> None:
-        """Route the selected IK method to the canvas solver."""
-        self.canvas.ik_method = method
-
-    def _on_reset(self) -> None:
-        """Restore the initial pose and clear any IK target."""
-        self.skeleton.q = self._initial_q.copy()
-        self.canvas.clear_ik_target()
-        self.refresh_from_skeleton()
+    def add_control(self, widget: QWidget) -> None:
+        """Add an extra control widget above the trailing stretch (for subclasses)."""
+        self.controls_layout.insertWidget(self.controls_layout.count() - 1, widget)
 
     def _on_joint_change(self, joint: int, angle_deg: int) -> None:
         """Apply a single joint's slider value, leaving the other joints untouched.
@@ -339,7 +306,7 @@ class SkelarmViewer(QMainWindow):
         self.skeleton.q = q
         # Manual posing invalidates any prior IK target marker/result.
         self.canvas.clear_ik_target()
-        self._update_status()
+        self.pose_updated.emit()
 
     def refresh_from_skeleton(self) -> None:
         """Sync the sliders, labels, and canvas to the current skeleton state.
@@ -355,13 +322,4 @@ class SkelarmViewer(QMainWindow):
             # Read back the (range-clamped) slider value so the label always matches it.
             label.setText(f"{slider.value()}°")
         self.canvas.update_skeleton()
-        self._update_status()
-
-    def _update_status(self) -> None:
-        """Refresh the status label with the endpoint position and latest IK result."""
-        tip = self.skeleton.links[-1]
-        text = f"Tip: ({tip.xe:.3f}, {tip.ye:.3f}) m"
-        result = self.canvas.last_ik_result
-        if result is not None:
-            text += f"\nIK: {result.status}, residual={result.residual_norm:.3g}"
-        self.status_label.setText(text)
+        self.pose_updated.emit()
