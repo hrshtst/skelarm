@@ -6,8 +6,8 @@ import functools
 import math
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QPointF, QSignalBlocker, Qt
-from PyQt6.QtGui import QBrush, QColor, QPainter, QPaintEvent, QPen
+from PyQt6.QtCore import QPointF, QSignalBlocker, Qt, pyqtSignal
+from PyQt6.QtGui import QBrush, QColor, QMouseEvent, QPainter, QPaintEvent, QPen
 from PyQt6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
@@ -17,6 +17,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from skelarm.kinematics import compute_inverse_kinematics
 
 if TYPE_CHECKING:
     from skelarm.skeleton import Skeleton
@@ -53,6 +55,10 @@ def _fit_scale(reach: float, width: int, height: int) -> float:
 
 class SkelarmCanvas(QWidget):
     """A widget to draw the robot arm skeleton."""
+
+    # Emitted after the pose changes from an in-canvas IK solve, so the viewer can
+    # refresh its sliders.
+    pose_changed = pyqtSignal()
 
     _JOINT_RADIUS_PX = 5  # also used for the origin, so the two match in size
     _COM_RADIUS_PX = 7  # a bit larger than the joints
@@ -132,6 +138,40 @@ class SkelarmCanvas(QWidget):
         """Trigger a repaint."""
         self.update()
 
+    def _world_from_screen(self, screen_pos: QPointF) -> tuple[float, float]:
+        """Convert a widget pixel position to world coordinates (metres)."""
+        center_x = self.width() / 2
+        center_y = self.height() / 2
+        # Inverse of _world_to_screen (screen Y is down).
+        return (
+            (screen_pos.x() - center_x) / self.scale_factor,
+            (center_y - screen_pos.y()) / self.scale_factor,
+        )
+
+    def solve_to_world(self, x: float, y: float) -> None:
+        """Solve inverse kinematics so the endpoint reaches world point ``(x, y)``.
+
+        Updates the skeleton in place, emits :attr:`pose_changed`, and repaints.
+
+        Parameters
+        ----------
+        x, y : float
+            Target endpoint position in world coordinates (metres).
+        """
+        compute_inverse_kinematics(self.skeleton, (x, y))
+        self.pose_changed.emit()
+        self.update()
+
+    def mousePressEvent(self, a0: QMouseEvent | None) -> None:  # noqa: N802
+        """Solve IK toward the point clicked with the left mouse button."""
+        if a0 is not None and a0.button() == Qt.MouseButton.LeftButton:
+            self.solve_to_world(*self._world_from_screen(a0.position()))
+
+    def mouseMoveEvent(self, a0: QMouseEvent | None) -> None:  # noqa: N802
+        """Continuously solve IK while dragging with the left mouse button held."""
+        if a0 is not None and a0.buttons() & Qt.MouseButton.LeftButton:
+            self.solve_to_world(*self._world_from_screen(a0.position()))
+
 
 class SkelarmViewer(QMainWindow):
     """Main window for the Skelarm visualizer."""
@@ -151,8 +191,9 @@ class SkelarmViewer(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
 
-        # Add canvas
+        # Add canvas. Clicking/dragging in it solves IK; refresh the sliders to match.
         main_layout.addWidget(self.canvas, stretch=3)
+        self.canvas.pose_changed.connect(self.refresh_from_skeleton)
 
         # Controls panel
         controls_panel = QWidget()
@@ -160,6 +201,9 @@ class SkelarmViewer(QMainWindow):
 
         controls_label = QLabel("<b>Joint Controls</b>")
         controls_layout.addWidget(controls_label)
+        hint_label = QLabel("Click or drag in the canvas to move the tip (IK).")
+        hint_label.setWordWrap(True)
+        controls_layout.addWidget(hint_label)
 
         self.sliders: list[QSlider] = []
         self.angle_labels: list[QLabel] = []

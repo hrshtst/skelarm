@@ -1,8 +1,9 @@
 """
 Interactive GUI example for skelarm.
 
-This script launches a PyQt6 application that allows users to interactively
-control the joint angles of a planar robot arm using sliders.
+This script launches a PyQt6 application where you can pose a planar robot arm two
+ways: drag the joint sliders, or click (and drag) in the canvas to move the tip to
+that point via inverse kinematics.
 """
 
 from __future__ import annotations

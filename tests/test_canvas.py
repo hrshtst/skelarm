@@ -173,3 +173,90 @@ def test_initial_label_shows_rounded_angle_matching_slider(qapp) -> None:  # noq
 
     assert viewer.sliders[0].value() == round(44.7)
     assert viewer.angle_labels[0].text() == f"{viewer.sliders[0].value()}°"
+
+
+# === interactive inverse kinematics ===
+
+
+def _two_link_viewer():  # noqa: ANN202
+    """A two-link viewer seeded at a non-singular pose for IK interaction tests."""
+    from skelarm.canvas import SkelarmViewer
+
+    link_props = [
+        LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+        LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+    ]
+    skeleton = Skeleton(link_props)
+    skeleton.q = np.array([0.3, 0.3])  # bent (non-singular) seed
+    return SkelarmViewer(skeleton)
+
+
+def test_solve_to_world_moves_endpoint(qapp) -> None:  # noqa: ANN001, ARG001
+    """solve_to_world drives the endpoint to a reachable world point."""
+    viewer = _two_link_viewer()
+
+    viewer.canvas.solve_to_world(0.5, 1.2)
+
+    tip = viewer.canvas.skeleton.links[-1]
+    assert np.array([tip.xe, tip.ye]) == pytest.approx(np.array([0.5, 1.2]), abs=1e-4)
+
+
+def test_solve_to_world_updates_sliders(qapp) -> None:  # noqa: ANN001, ARG001
+    """An IK solve refreshes the joint sliders to match the new pose."""
+    viewer = _two_link_viewer()
+
+    viewer.canvas.solve_to_world(0.5, 1.2)
+
+    for slider, angle in zip(viewer.sliders, viewer.canvas.skeleton.q, strict=True):
+        assert slider.value() == round(math.degrees(angle))
+
+
+def test_left_click_solves_ik_at_clicked_point(qapp) -> None:  # noqa: ANN001, ARG001
+    """A left click maps the pixel to a world point and solves IK to reach it."""
+    from PyQt6.QtCore import QEvent, QPointF, Qt
+    from PyQt6.QtGui import QMouseEvent
+
+    viewer = _two_link_viewer()
+    canvas = viewer.canvas
+    canvas.resize(400, 400)
+
+    # Build the pixel that maps back to world (0.5, 1.2) under the canvas mapping.
+    target = (0.5, 1.2)
+    px = canvas.width() / 2 + target[0] * canvas.scale_factor
+    py = canvas.height() / 2 - target[1] * canvas.scale_factor
+    event = QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        QPointF(px, py),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    canvas.mousePressEvent(event)
+
+    tip = canvas.skeleton.links[-1]
+    assert np.array([tip.xe, tip.ye]) == pytest.approx(np.array(target), abs=1e-3)
+
+
+def test_left_drag_solves_ik(qapp) -> None:  # noqa: ANN001, ARG001
+    """Moving the mouse with the left button held solves IK toward the cursor."""
+    from PyQt6.QtCore import QEvent, QPointF, Qt
+    from PyQt6.QtGui import QMouseEvent
+
+    viewer = _two_link_viewer()
+    canvas = viewer.canvas
+    canvas.resize(400, 400)
+
+    target = (0.8, 0.9)
+    px = canvas.width() / 2 + target[0] * canvas.scale_factor
+    py = canvas.height() / 2 - target[1] * canvas.scale_factor
+    event = QMouseEvent(
+        QEvent.Type.MouseMove,
+        QPointF(px, py),
+        Qt.MouseButton.NoButton,
+        Qt.MouseButton.LeftButton,  # left button held during the move
+        Qt.KeyboardModifier.NoModifier,
+    )
+    canvas.mouseMoveEvent(event)
+
+    tip = canvas.skeleton.links[-1]
+    assert np.array([tip.xe, tip.ye]) == pytest.approx(np.array(target), abs=1e-3)
