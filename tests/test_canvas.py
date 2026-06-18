@@ -307,3 +307,53 @@ def test_left_drag_solves_ik(qapp) -> None:  # noqa: ANN001, ARG001
 
     tip = canvas.skeleton.links[-1]
     assert np.array([tip.xe, tip.ye]) == pytest.approx(np.array(target), abs=1e-3)
+
+
+def _redundant_viewer():  # noqa: ANN202
+    """A redundant (3-joint) viewer."""
+    from skelarm.canvas import SkelarmViewer
+
+    link_props = [LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi) for _ in range(3)]
+    return SkelarmViewer(Skeleton(link_props))
+
+
+def _combo_methods(viewer) -> list[str]:  # noqa: ANN001
+    """List the IK methods offered by the viewer's method combo box."""
+    return [viewer.method_combo.itemText(i) for i in range(viewer.method_combo.count())]
+
+
+def test_reset_button_restores_initial_pose(qapp) -> None:  # noqa: ANN001, ARG001
+    """The reset button returns the arm to its initial pose and clears IK state."""
+    viewer = _two_link_viewer()
+    initial = viewer.skeleton.q.copy()
+
+    viewer.canvas.solve_to_world(0.5, 1.2)
+    assert not np.allclose(viewer.skeleton.q, initial)
+
+    viewer.reset_button.click()
+
+    assert np.allclose(viewer.skeleton.q, initial)
+    assert viewer.canvas.last_ik_result is None
+
+
+def test_method_combo_excludes_nr_for_redundant_arm(qapp) -> None:  # noqa: ANN001, ARG001
+    """Newton-Raphson (square-only) is not offered for a redundant arm."""
+    methods = _combo_methods(_redundant_viewer())
+    assert "nr" not in methods
+    assert "lm_sugihara" in methods
+
+
+def test_method_combo_includes_nr_for_two_dof(qapp) -> None:  # noqa: ANN001, ARG001
+    """Newton-Raphson is offered for a square (two-joint) arm."""
+    assert "nr" in _combo_methods(_two_link_viewer())
+
+
+def test_selecting_method_routes_to_solver(qapp) -> None:  # noqa: ANN001, ARG001
+    """Choosing a method routes it to the canvas solver, which runs and records a result."""
+    viewer = _two_link_viewer()
+
+    viewer.method_combo.setCurrentText("sr_inverse")
+    assert viewer.canvas.ik_method == "sr_inverse"
+
+    viewer.canvas.solve_to_world(0.5, 1.2)
+    assert viewer.canvas.last_ik_result is not None

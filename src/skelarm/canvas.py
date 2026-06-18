@@ -10,9 +10,11 @@ from PyQt6.QtCore import QPointF, QSignalBlocker, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QMouseEvent, QPainter, QPaintEvent, QPen
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QPushButton,
     QSlider,
     QVBoxLayout,
     QWidget,
@@ -77,6 +79,7 @@ class SkelarmCanvas(QWidget):
         self.skeleton = skeleton
         self.scale_factor = _DEFAULT_SCALE  # Pixels per metre; re-fit on each paint.
         self.show_com = False  # whether to overlay each link's center of mass
+        self.ik_method = "lm_sugihara"  # solver method used by solve_to_world
         self.last_ik_result: IKResult | None = None  # outcome of the latest IK solve
         self._ik_target: tuple[float, float] | None = None  # latest IK click target
         # Set background color to white
@@ -178,7 +181,7 @@ class SkelarmCanvas(QWidget):
         x, y : float
             Target endpoint position in world coordinates (metres).
         """
-        self.last_ik_result = compute_inverse_kinematics(self.skeleton, (x, y))
+        self.last_ik_result = compute_inverse_kinematics(self.skeleton, (x, y), method=self.ik_method)
         self._ik_target = (x, y)
         self.pose_changed.emit()
         self.update()
@@ -207,6 +210,7 @@ class SkelarmViewer(QMainWindow):
         """Initialize the viewer."""
         super().__init__()
         self.skeleton = skeleton
+        self._initial_q = skeleton.q.copy()  # pose to restore on reset
 
         self.canvas = SkelarmCanvas(skeleton)
 
@@ -275,6 +279,22 @@ class SkelarmViewer(QMainWindow):
         self.com_checkbox.toggled.connect(self._on_show_com_toggled)
         controls_layout.addWidget(self.com_checkbox)
 
+        # IK solver method. Newton-Raphson needs a square Jacobian, so only offer it
+        # for a two-joint arm.
+        controls_layout.addWidget(QLabel("IK method"))
+        self.method_combo = QComboBox()
+        methods = ["lm_sugihara", "lm", "sr_inverse", "pseudoinverse"]
+        if skeleton.num_joints == 2:  # noqa: PLR2004
+            methods.append("nr")
+        self.method_combo.addItems(methods)
+        self.method_combo.currentTextChanged.connect(self._on_method_changed)
+        controls_layout.addWidget(self.method_combo)
+
+        # Reset the arm to the pose it was loaded with.
+        self.reset_button = QPushButton("Reset pose")
+        self.reset_button.clicked.connect(self._on_reset)
+        controls_layout.addWidget(self.reset_button)
+
         # Live status: endpoint position and the latest IK result.
         self.status_label = QLabel()
         self.status_label.setWordWrap(True)
@@ -288,6 +308,16 @@ class SkelarmViewer(QMainWindow):
         """Toggle the center-of-mass overlay on the canvas and repaint."""
         self.canvas.show_com = self.com_checkbox.isChecked()
         self.canvas.update_skeleton()
+
+    def _on_method_changed(self, method: str) -> None:
+        """Route the selected IK method to the canvas solver."""
+        self.canvas.ik_method = method
+
+    def _on_reset(self) -> None:
+        """Restore the initial pose and clear any IK target."""
+        self.skeleton.q = self._initial_q.copy()
+        self.canvas.clear_ik_target()
+        self.refresh_from_skeleton()
 
     def _on_joint_change(self, joint: int, angle_deg: int) -> None:
         """Apply a single joint's slider value, leaving the other joints untouched.
