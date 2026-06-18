@@ -211,6 +211,53 @@ def test_solve_to_world_updates_sliders(qapp) -> None:  # noqa: ANN001, ARG001
         assert slider.value() == round(math.degrees(angle))
 
 
+def test_solve_to_world_records_ik_result(qapp) -> None:  # noqa: ANN001, ARG001
+    """A reachable click records a successful IKResult on the canvas."""
+    viewer = _two_link_viewer()
+
+    viewer.canvas.solve_to_world(0.5, 1.2)
+
+    result = viewer.canvas.last_ik_result
+    assert result is not None
+    assert result.success
+    assert result.status == "converged"
+
+
+def test_unreachable_click_records_stalled_result(qapp) -> None:  # noqa: ANN001, ARG001
+    """An out-of-reach click records an unsuccessful, stalled IKResult."""
+    viewer = _two_link_viewer()
+
+    viewer.canvas.solve_to_world(5.0, 0.0)  # beyond the reach of 2.0
+
+    result = viewer.canvas.last_ik_result
+    assert result is not None
+    assert not result.success
+    assert result.status == "stalled"
+
+
+def test_status_label_reports_ik_result(qapp) -> None:  # noqa: ANN001, ARG001
+    """The viewer's status label shows the endpoint and IK status after a solve."""
+    viewer = _two_link_viewer()
+
+    viewer.canvas.solve_to_world(0.5, 1.2)
+
+    text = viewer.status_label.text()
+    assert "Tip:" in text
+    assert "converged" in text
+
+
+def test_manual_pose_clears_ik_status(qapp) -> None:  # noqa: ANN001, ARG001
+    """Posing a joint by hand clears the stale IK target/result."""
+    viewer = _two_link_viewer()
+    viewer.canvas.solve_to_world(0.5, 1.2)
+    assert viewer.canvas.last_ik_result is not None
+
+    slider = viewer.sliders[0]
+    slider.setValue(slider.value() + 10)  # manual forward-kinematics pose change
+
+    assert viewer.canvas.last_ik_result is None
+
+
 def test_left_click_solves_ik_at_clicked_point(qapp) -> None:  # noqa: ANN001, ARG001
     """A left click maps the pixel to a world point and solves IK to reach it."""
     from PyQt6.QtCore import QEvent, QPointF, Qt

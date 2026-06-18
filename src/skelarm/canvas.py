@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
 from skelarm.kinematics import compute_inverse_kinematics
 
 if TYPE_CHECKING:
+    from skelarm.kinematics import IKResult
     from skelarm.skeleton import Skeleton
 
 _MARGIN_PX = 20.0  # Empty border kept between the arm and the widget edge.
@@ -67,6 +68,8 @@ class SkelarmCanvas(QWidget):
     _BASE_LINK_COLOR = QColor(150, 150, 150)  # gray (fixed base link)
     _JOINT_COLOR = QColor(0, 170, 0)  # green
     _COM_COLOR = QColor(200, 0, 0)  # red (centers of mass)
+    _TARGET_COLOR = QColor(230, 120, 0)  # orange (IK target)
+    _TARGET_RADIUS_PX = 7
 
     def __init__(self, skeleton: Skeleton, parent: QWidget | None = None) -> None:
         """Initialize the canvas."""
@@ -74,6 +77,8 @@ class SkelarmCanvas(QWidget):
         self.skeleton = skeleton
         self.scale_factor = _DEFAULT_SCALE  # Pixels per metre; re-fit on each paint.
         self.show_com = False  # whether to overlay each link's center of mass
+        self.last_ik_result: IKResult | None = None  # outcome of the latest IK solve
+        self._ik_target: tuple[float, float] | None = None  # latest IK click target
         # Set background color to white
         self.setAutoFillBackground(True)
         p = self.palette()
@@ -127,6 +132,21 @@ class SkelarmCanvas(QWidget):
                 com = self._world_to_screen(link.xg, link.yg, center_x, center_y)
                 painter.drawEllipse(com, self._COM_RADIUS_PX, self._COM_RADIUS_PX)
 
+        # Show the latest IK click target: a hollow orange ring, plus a dashed line
+        # to the tip so an unreachable target's residual gap is visible.
+        if self._ik_target is not None:
+            tip = self.skeleton.links[-1]
+            tip_screen = self._world_to_screen(tip.xe, tip.ye, center_x, center_y)
+            target_screen = self._world_to_screen(self._ik_target[0], self._ik_target[1], center_x, center_y)
+            pen = QPen(self._TARGET_COLOR)
+            pen.setStyle(Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.setBrush(QBrush())  # hollow
+            painter.drawLine(tip_screen, target_screen)
+            pen.setStyle(Qt.PenStyle.SolidLine)
+            painter.setPen(pen)
+            painter.drawEllipse(target_screen, self._TARGET_RADIUS_PX, self._TARGET_RADIUS_PX)
+
     def _world_to_screen(self, wx: float, wy: float, cx: float, cy: float) -> QPointF:
         """Convert world coordinates (meters) to screen coordinates (pixels)."""
         sx = cx + wx * self.scale_factor
@@ -158,8 +178,15 @@ class SkelarmCanvas(QWidget):
         x, y : float
             Target endpoint position in world coordinates (metres).
         """
-        compute_inverse_kinematics(self.skeleton, (x, y))
+        self.last_ik_result = compute_inverse_kinematics(self.skeleton, (x, y))
+        self._ik_target = (x, y)
         self.pose_changed.emit()
+        self.update()
+
+    def clear_ik_target(self) -> None:
+        """Forget the last IK target and result (e.g. after manual posing)."""
+        self.last_ik_result = None
+        self._ik_target = None
         self.update()
 
     def mousePressEvent(self, a0: QMouseEvent | None) -> None:  # noqa: N802
@@ -248,8 +275,14 @@ class SkelarmViewer(QMainWindow):
         self.com_checkbox.toggled.connect(self._on_show_com_toggled)
         controls_layout.addWidget(self.com_checkbox)
 
+        # Live status: endpoint position and the latest IK result.
+        self.status_label = QLabel()
+        self.status_label.setWordWrap(True)
+        controls_layout.addWidget(self.status_label)
+
         controls_layout.addStretch()
         main_layout.addWidget(controls_panel, stretch=1)
+        self._update_status()
 
     def _on_show_com_toggled(self) -> None:
         """Toggle the center-of-mass overlay on the canvas and repaint."""
@@ -274,7 +307,9 @@ class SkelarmViewer(QMainWindow):
         q[joint] = math.radians(angle_deg)
         # The eager q setter refreshes the forward kinematics.
         self.skeleton.q = q
-        self.canvas.update_skeleton()
+        # Manual posing invalidates any prior IK target marker/result.
+        self.canvas.clear_ik_target()
+        self._update_status()
 
     def refresh_from_skeleton(self) -> None:
         """Sync the sliders, labels, and canvas to the current skeleton state.
@@ -290,3 +325,13 @@ class SkelarmViewer(QMainWindow):
             # Read back the (range-clamped) slider value so the label always matches it.
             label.setText(f"{slider.value()}°")
         self.canvas.update_skeleton()
+        self._update_status()
+
+    def _update_status(self) -> None:
+        """Refresh the status label with the endpoint position and latest IK result."""
+        tip = self.skeleton.links[-1]
+        text = f"Tip: ({tip.xe:.3f}, {tip.ye:.3f}) m"
+        result = self.canvas.last_ik_result
+        if result is not None:
+            text += f"\nIK: {result.status}, residual={result.residual_norm:.3g}"
+        self.status_label.setText(text)
