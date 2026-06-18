@@ -8,10 +8,10 @@ kinematics).
 
 Usage::
 
-    uv run python tools/interactive_kinematics.py path/to/robot.toml
-    uv run python tools/interactive_kinematics.py robot.toml --method sr_inverse --show-com
-    uv run python tools/interactive_kinematics.py robot.toml --pose 20,45,60,30
-    uv run python tools/interactive_kinematics.py robot.toml --initial pose.toml
+    uv run python tools/kinematics_inspector.py path/to/robot.toml
+    uv run python tools/kinematics_inspector.py robot.toml --method sr_inverse --show-com
+    uv run python tools/kinematics_inspector.py robot.toml --pose 20,45,60,30
+    uv run python tools/kinematics_inspector.py robot.toml --initial pose.toml
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Tests for the interactive kinematics tool's command-line handling."""
+"""Tests for the kinematics inspector tool (CLI and the inspector viewer)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from skelarm.skeleton import LinkProp, Skeleton
-from tools.interactive_kinematics import KinematicsInspector, build_parser, load_skeleton
+from tools.kinematics_inspector import KinematicsInspector, build_parser, load_skeleton
 
 pytestmark = pytest.mark.integration
 

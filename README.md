@@ -105,7 +105,7 @@ uv run python examples/interactive_kinematics.py
 To inspect an arbitrary robot, use the generalized tool in `tools/`, which takes a config path:
 
 ```bash
-uv run python tools/interactive_kinematics.py examples/four_dof_robot.toml
+uv run python tools/kinematics_inspector.py examples/four_dof_robot.toml
 ```
 
 It also accepts `--method <ik-method>`, `--show-com`, and an initial pose via `--pose 20,45,60,30` (degrees) or `--initial pose.toml` (a TOML file with an `[initial]` table).
