@@ -108,6 +108,8 @@ To inspect an arbitrary robot, use the generalized tool in `tools/`, which takes
 uv run python tools/interactive_kinematics.py examples/four_dof_robot.toml
 ```
 
+It also accepts `--method <ik-method>`, `--show-com`, and an initial pose via `--pose 20,45,60,30` (degrees) or `--initial pose.toml` (a TOML file with an `[initial]` table).
+
 ### Basic Kinematics & Plotting
 
 Run a script that defines a robot, computes its kinematics, and plots it using Matplotlib:

@@ -243,6 +243,7 @@ check_untyped_defs = true       # Type-checks the interior of functions without 
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]  # so tests can import the tools/ and examples/ packages
 python_files = ["test_*.py", "*_test.py"]
 addopts = ["-ra", "--strict-markers", "--strict-config"]
 markers = [
