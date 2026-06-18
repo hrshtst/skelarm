@@ -7,8 +7,8 @@ become **singular**, and targets may be outside the workspace. Numerical inverse
 kinematics (IK) handles all three cases by iterating from a seed configuration and
 driving the endpoint residual down.
 
-This chapter is the implementation basis for a future numerical IK helper in
-`skelarm`. It uses the endpoint Jacobian from
+This chapter is the basis for the numerical IK helper
+`compute_inverse_kinematics` in `skelarm`. It uses the endpoint Jacobian from
 [Differential Kinematics](02_differential_kinematics.md) and follows the
 Levenberg-Marquardt damping argument in Sugihara (2009),
 ["Solvability-unconcerned inverse kinematics based on Levenberg-Marquardt method
@@ -61,8 +61,8 @@ $$
 q_{k+1} = q_k + \alpha_k \Delta q_k,
 $$
 
-with a step scale $\alpha_k \in (0, 1]$. A first implementation can use
-$\alpha_k = 1$ and add line search later if needed.
+with a step scale $\alpha_k \in (0, 1]$. The solver uses $\alpha_k = 1$ by
+default (the `step_scale` option); line search can be added later if needed.
 
 ## 2. Newton-Raphson method
 
@@ -247,9 +247,9 @@ $$
 \overline{W}_n = \bar{w} I_n.
 $$
 
-Sugihara reported $\bar{w}=10^{-3}$ as a robust value in his experiments, but
-`skelarm` should expose this as a solver option because joint units, link scales,
-and task weights affect the numerical scale.
+Sugihara reported $\bar{w}=10^{-3}$ as a robust value in his experiments, and
+`skelarm` exposes it as the `damping` option (default $10^{-3}$) because joint
+units, link scales, and task weights affect the numerical scale.
 
 The conditioning argument is easiest to see from the singular value decomposition
 of the weighted Jacobian. For the redundant case, use a full right-singular-vector
@@ -307,16 +307,16 @@ minimizes the weighted residual while keeping joint deviations small.
 
 Sugihara notes that a line search is the formal way to strengthen global
 convergence. His experiments found the residual-based damping reliable even
-without one. For `skelarm`, the first implementation can start without line
-search, but the solver should record enough status information to add it later.
+without one. `skelarm`'s solver omits line search for now and instead reports
+enough status information (iteration count, residual, status) to add it later.
 
-## 7. Recommended `skelarm` solver behavior
+## 7. The `skelarm` solver
 
-A future `compute_inverse_kinematics` helper should be explicit about which step
-rule it uses. The recommended default is Sugihara-style LM because it handles the
-largest set of practical cases.
+`skelarm` implements this as `compute_inverse_kinematics`, which takes a `method`
+argument selecting the step rule. The default is `"lm_sugihara"` (Sugihara-style
+LM) because it handles the largest set of practical cases.
 
-Suggested method names:
+Available methods:
 
 | Method | Step equation | Use |
 | --- | --- | --- |
@@ -326,7 +326,7 @@ Suggested method names:
 | `"lm"` | $(J^{T}W_eJ+W_n)\Delta q=J^{T}W_e e$ | General weighted LM |
 | `"lm_sugihara"` | LM with $W_n=E_kI+\overline{W}_n$ | Recommended default |
 
-The loop should be:
+The solver loop is:
 
 1. Copy or set the seed $q_0$.
 2. Run `compute_forward_kinematics(skeleton)`.
@@ -341,26 +341,28 @@ The loop should be:
 10. Clamp or reject values outside each joint's `[qmin, qmax]`.
 11. Repeat until success, stagnation, or `max_iterations`.
 
-The result should report at least:
+The solver returns an `IKResult` with:
 
-- final `q`;
-- final endpoint position;
-- final residual vector and residual norm;
-- number of iterations;
-- status such as `"converged"`, `"unreachable_or_stalled"`, `"singular"`, or
+- `q` — final joint angles;
+- `position` — final endpoint position;
+- `residual` and `residual_norm` — final residual vector and its norm;
+- `iterations` — number of iterations performed;
+- `status` — one of `"converged"`, `"stalled"`, `"singular"`, or
   `"max_iterations"`;
-- whether joint limits were encountered.
+- `joint_limits_hit` — whether any step was clamped to a joint limit;
+- `success` — whether the residual reached the position tolerance.
 
 ## 8. Joint limits and unreachable targets
 
-Joint limits make the optimization constrained. A simple first implementation can
-apply the existing joint clamping after each proposed step, but clamping changes
-the actual step and can cause stagnation at a limit. The solver should therefore
-check the residual after clamping and report failure or partial success instead
-of looping indefinitely.
+Joint limits make the optimization constrained. The solver clamps each proposed
+step into `[qmin, qmax]` (with `np.clip`) and records `joint_limits_hit`. Because
+clamping changes the actual step and can cause stagnation at a limit, the solver
+checks the post-clamp step size and reports `"stalled"` instead of looping
+indefinitely. This is a *projected* iteration, not an active-set method, so it
+can stop at a slightly suboptimal pose when a limit is active.
 
-For unreachable targets, success should not mean "zero residual." It should mean
-one of:
+For unreachable targets, `success` does not mean "zero residual." It means one
+of:
 
 - the target was reached within $\varepsilon_e$;
 - the solver found a stationary residual minimum, reported with a nonzero
@@ -370,17 +372,16 @@ Sugihara-style LM is useful here because the damping grows with residual energy
 instead of relying on the caller to know in advance whether the target is inside
 the workspace.
 
-## 9. Testing targets for implementation
+## 9. Tests
 
-The implementation should be developed with red-green-refactor tests. Useful
-tests include:
+The solver was developed test-first; `tests/test_inverse_kinematics.py` covers:
 
-- a two-joint reachable target matches the analytic IK endpoint within tolerance;
-- a redundant arm reaches the same endpoint from different seeds with small
-  residuals;
-- a fully stretched or nearly singular seed does not produce an enormous step
-  when using SR inverse or LM;
-- an unreachable target terminates with a nonzero residual and a clear status;
-- joint limits are respected after every accepted step;
+- a two-joint reachable target is reached within tolerance;
+- redundant arms (3, 4, and 6 DOF) reach the same endpoint from different seeds
+  with small residuals;
+- a fully stretched (singular-Jacobian) seed still converges with the SR inverse
+  and LM, while the undamped pseudoinverse reports `"singular"`;
+- an unreachable target terminates with a nonzero residual and `"stalled"`;
+- joint limits are respected after every accepted step (`joint_limits_hit`);
 - for targets generated from random valid configurations, `FK(IK(FK(q)))`
   returns the original endpoint within tolerance.
