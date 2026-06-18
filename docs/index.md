@@ -102,6 +102,12 @@ Launch the PyQt6 GUI to pose a robot arm with the joint sliders (forward kinemat
 uv run python examples/interactive_kinematics.py
 ```
 
+To inspect an arbitrary robot, use the generalized tool in `tools/`, which takes a config path:
+
+```bash
+uv run python tools/interactive_kinematics.py examples/four_dof_robot.toml
+```
+
 ### Basic Kinematics & Plotting
 
 Run a script that defines a robot, computes its kinematics, and plots it using Matplotlib:
