@@ -7,7 +7,62 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from skelarm.skeleton import Skeleton
+from skelarm.skeleton import LinkProp, Skeleton
+
+
+def _two_joint_skeleton() -> Skeleton:
+    """A two-joint arm with full (+/-180 deg) limits for initial-state tests."""
+    return Skeleton(
+        [
+            LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+            LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+        ]
+    )
+
+
+def test_apply_initial_toml_sets_pose(tmp_path: Path) -> None:
+    """apply_initial_toml reads [initial].q (degrees) from a file and sets the pose."""
+    skeleton = _two_joint_skeleton()
+    config = tmp_path / "init.toml"
+    config.write_text("[initial]\nq = [30.0, -45.0]\n", encoding="utf-8")
+
+    skeleton.apply_initial_toml(config)
+
+    assert skeleton.q == pytest.approx(np.deg2rad([30.0, -45.0]))
+
+
+def test_apply_initial_toml_sets_velocity(tmp_path: Path) -> None:
+    """apply_initial_toml applies [initial].dq (degrees/second) when present."""
+    skeleton = _two_joint_skeleton()
+    config = tmp_path / "init.toml"
+    config.write_text("[initial]\nq = [10.0, 20.0]\ndq = [5.0, -3.0]\n", encoding="utf-8")
+
+    skeleton.apply_initial_toml(config)
+
+    assert skeleton.q == pytest.approx(np.deg2rad([10.0, 20.0]))
+    assert skeleton.dq == pytest.approx(np.deg2rad([5.0, -3.0]))
+
+
+def test_apply_initial_toml_without_initial_keeps_pose(tmp_path: Path) -> None:
+    """A file with no [initial] table leaves the current pose unchanged."""
+    skeleton = _two_joint_skeleton()
+    skeleton.q = np.deg2rad([15.0, 25.0])
+    config = tmp_path / "other.toml"
+    config.write_text('[task]\ntype = "reach"\n', encoding="utf-8")
+
+    skeleton.apply_initial_toml(config)
+
+    assert skeleton.q == pytest.approx(np.deg2rad([15.0, 25.0]))
+
+
+def test_apply_initial_toml_length_mismatch_raises(tmp_path: Path) -> None:
+    """A [initial].q whose length differs from the DOF count raises a clear error."""
+    skeleton = _two_joint_skeleton()
+    config = tmp_path / "init.toml"
+    config.write_text("[initial]\nq = [30.0, -45.0, 10.0]\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"\[initial\]\.q"):
+        skeleton.apply_initial_toml(config)
 
 
 def test_load_skeleton_from_toml(tmp_path: Path) -> None:

@@ -149,6 +149,32 @@ def _initial_joint_vector(values: Sequence[float], num_joints: int, field: str) 
     return array
 
 
+def _apply_initial(skeleton: Skeleton, data: dict[str, Any], default_q: NDArray[np.float64]) -> None:
+    """Apply a TOML ``[initial]`` section (degrees) to ``skeleton``.
+
+    ``q`` overrides ``default_q`` when present; ``dq`` is applied when present and
+    otherwise the current velocity is kept. Lengths must match the joint count.
+
+    Parameters
+    ----------
+    skeleton : Skeleton
+        The skeleton to update in place.
+    data : dict[str, Any]
+        Parsed TOML data; only its ``[initial]`` table is read.
+    default_q : NDArray[np.float64]
+        Joint angles (radians) to use when ``[initial].q`` is absent.
+
+    Raises
+    ------
+    ValueError
+        If ``[initial].q`` or ``[initial].dq`` has a length other than the joint count.
+    """
+    initial = data.get("initial", {})
+    q_init = _initial_joint_vector(initial["q"], skeleton.num_joints, "q") if "q" in initial else default_q
+    dq_init = _initial_joint_vector(initial["dq"], skeleton.num_joints, "dq") if "dq" in initial else None
+    skeleton.set_state(q=q_init, dq=dq_init)
+
+
 class Skeleton:
     """Represents the entire robot arm (skeleton)."""
 
@@ -295,14 +321,32 @@ class Skeleton:
         # ``[initial]`` section so the same robot can be compared under different
         # postures. ``q`` (degrees) and ``dq`` (degrees/second) each take one
         # value per joint and override the per-link ``q0`` defaults.
-        initial = data.get("initial", {})
-        q_init = np.array(initial_angles, dtype=np.float64)
-        if "q" in initial:
-            q_init = _initial_joint_vector(initial["q"], skeleton.num_joints, "q")
-        dq_init = _initial_joint_vector(initial["dq"], skeleton.num_joints, "dq") if "dq" in initial else None
-
-        skeleton.set_state(q=q_init, dq=dq_init)
+        _apply_initial(skeleton, data, default_q=np.array(initial_angles, dtype=np.float64))
         return skeleton
+
+    def apply_initial_toml(self, file_path: str | Path) -> None:
+        """Apply the ``[initial]`` table from a TOML file to this skeleton.
+
+        Reads ``q`` (degrees) and optional ``dq`` (degrees/second) — one value per
+        joint — from the file's ``[initial]`` section and sets the joint state. This
+        lets a separate posture file be applied to an already-loaded robot. Joints
+        are left unchanged when ``q`` (or ``dq``) is absent.
+
+        Parameters
+        ----------
+        file_path : str | Path
+            Path to a TOML file containing an ``[initial]`` table.
+
+        Raises
+        ------
+        ValueError
+            If ``[initial].q`` or ``[initial].dq`` has a length other than the
+            number of actuated joints.
+        """
+        path = Path(file_path)
+        with path.open("rb") as f:
+            data = tomllib.load(f)
+        _apply_initial(self, data, default_q=self.q)
 
     @property
     def q(self) -> NDArray[np.float64]:
