@@ -110,6 +110,77 @@ def test_joint_limits_respected() -> None:
     assert np.all(result.q <= upper + 1e-9)
 
 
+# === reference step methods ===
+
+
+def test_newton_raphson_reaches_square_target() -> None:
+    """Newton-Raphson reaches a reachable target for a square (two-joint) arm.
+
+    Newton-Raphson only converges from a seed in the solution's basin, so the seed
+    is taken close to the pose that generated the target.
+    """
+    skeleton = _arm(2)
+    skeleton.q = np.array([0.4, 0.8])
+    tip = skeleton.links[-1]
+    target = np.array([tip.xe, tip.ye])
+
+    result = compute_inverse_kinematics(skeleton, target, method="nr", q0=np.array([0.5, 0.9]))
+
+    assert result.success
+    assert result.residual_norm == pytest.approx(0.0, abs=1e-6)
+
+
+def test_newton_raphson_requires_square_jacobian() -> None:
+    """Newton-Raphson rejects a redundant (non-square) arm."""
+    skeleton = _arm(3)
+    with pytest.raises(ValueError, match="square"):
+        compute_inverse_kinematics(skeleton, np.array([1.5, 0.8]), method="nr")
+
+
+@pytest.mark.parametrize("method", ["pseudoinverse", "sr_inverse", "lm", "lm_sugihara"])
+@pytest.mark.parametrize("num_links", [3, 4, 6])
+def test_redundant_capable_methods_reach_non_singular_target(method: str, num_links: int) -> None:
+    """Every redundancy-capable method reaches a reachable target on a well-conditioned arm."""
+    skeleton = _arm(num_links)
+    target = np.array([1.5, 1.0])
+
+    result = compute_inverse_kinematics(skeleton, target, method=method, q0=np.full(num_links, 0.3))
+
+    assert result.success
+    tip = skeleton.links[-1]
+    assert np.array([tip.xe, tip.ye]) == pytest.approx(target, abs=1e-5)
+
+
+def test_pseudoinverse_reports_singular_at_stretched_seed() -> None:
+    """The undamped pseudoinverse reports a singular Jacobian at a fully-stretched seed."""
+    skeleton = _arm(2)
+
+    result = compute_inverse_kinematics(skeleton, np.array([1.8, 0.3]), method="pseudoinverse", q0=np.zeros(2))
+
+    assert result.status == "singular"
+    assert not result.success
+
+
+def test_sr_inverse_reaches_target() -> None:
+    """The singularity-robust inverse reaches a reachable target."""
+    skeleton = _arm(2)
+    target = np.array([0.5, 1.2])
+
+    result = compute_inverse_kinematics(skeleton, target, method="sr_inverse", q0=np.array([0.5, 0.5]))
+
+    assert result.success
+    assert result.residual_norm == pytest.approx(0.0, abs=1e-6)
+
+
+def test_sr_inverse_handles_singular_seed() -> None:
+    """Damping lets the SR inverse converge from a singular (stretched) seed."""
+    skeleton = _arm(2)
+
+    result = compute_inverse_kinematics(skeleton, np.array([1.8, 0.3]), method="sr_inverse", q0=np.zeros(2))
+
+    assert result.success
+
+
 @settings(deadline=None, max_examples=50)
 @given(
     q1=st.floats(min_value=-2.0, max_value=2.0),

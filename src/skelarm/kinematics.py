@@ -293,14 +293,20 @@ def _ik_step(
     Parameters
     ----------
     method : str
-        Step rule. Currently ``"lm"`` (``W_n = damping * I``) and ``"lm_sugihara"``
-        (``W_n = (E_k + damping) * I`` with residual energy ``E_k``).
+        Step rule, one of:
+
+        - ``"nr"``: Newton-Raphson, ``J dq = e`` (requires a square Jacobian).
+        - ``"pseudoinverse"``: ``dq = J^T (J J^T)^{-1} e`` (undamped).
+        - ``"sr_inverse"``: ``dq = J^T (J J^T + mu I)^{-1} e``.
+        - ``"lm"``: ``(J^T J + mu I) dq = J^T e``.
+        - ``"lm_sugihara"``: LM with ``W_n = (E_k + mu) I``, ``E_k = 1/2 e^T e``.
     jacobian : NDArray[np.float64]
         The ``2 x num_joints`` endpoint Jacobian at the current pose.
     error : NDArray[np.float64]
         The endpoint residual ``target - position``.
     damping : float
-        Damping term: ``mu`` for ``"lm"`` or the bias ``w_bar`` for ``"lm_sugihara"``.
+        Damping term ``mu`` (the bias ``w_bar`` for ``"lm_sugihara"``); unused by
+        ``"nr"`` and ``"pseudoinverse"``.
 
     Returns
     -------
@@ -310,9 +316,27 @@ def _ik_step(
     Raises
     ------
     ValueError
-        If ``method`` is not a recognized step rule.
+        If ``method`` is not a recognized step rule, or if ``"nr"`` is used with a
+        non-square Jacobian.
+    numpy.linalg.LinAlgError
+        If the (undamped) ``"nr"`` or ``"pseudoinverse"`` system is singular.
     """
     num_joints = jacobian.shape[1]
+    task_dim = error.shape[0]
+
+    if method == "nr":
+        if jacobian.shape[0] != num_joints:
+            error_msg = "The 'nr' method requires a square Jacobian (num_joints == 2 for endpoint IK)."
+            raise ValueError(error_msg)
+        return np.linalg.solve(jacobian, error).astype(np.float64)
+    if method == "pseudoinverse":
+        task_step = np.linalg.solve(jacobian @ jacobian.T, error)
+        return (jacobian.T @ task_step).astype(np.float64)
+    if method == "sr_inverse":
+        task_step = np.linalg.solve(jacobian @ jacobian.T + damping * np.eye(task_dim), error)
+        return (jacobian.T @ task_step).astype(np.float64)
+
+    # Levenberg-Marquardt family: joint-space damped normal equation.
     gradient = jacobian.T @ error
     if method == "lm":
         weight = damping
@@ -353,7 +377,8 @@ def compute_inverse_kinematics(
     target : NDArray[np.float64] | tuple[float, float]
         Desired endpoint position ``[x, y]``.
     method : str, optional
-        Step rule; ``"lm_sugihara"`` (the recommended default) or ``"lm"``.
+        Step rule: ``"lm_sugihara"`` (recommended default), ``"lm"``,
+        ``"sr_inverse"``, ``"pseudoinverse"``, or ``"nr"``.
     q0 : NDArray[np.float64] | None, optional
         Seed joint angles. Defaults to the skeleton's current pose.
     max_iterations : int, optional
