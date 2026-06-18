@@ -32,9 +32,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("config", type=Path, help="path to the robot TOML config to load")
     parser.add_argument("--method", default=None, help="IK solver method (e.g. lm_sugihara, sr_inverse)")
     parser.add_argument("--show-com", action="store_true", help="overlay each link's center of mass at startup")
-    pose_group = parser.add_mutually_exclusive_group()
-    pose_group.add_argument("--pose", default=None, help="initial joint angles in degrees, e.g. 20,45,60,30")
-    pose_group.add_argument("--initial", type=Path, default=None, help="TOML file with an [initial] table to apply")
+    parser.add_argument("--initial", type=Path, default=None, help="TOML file with an [initial] table to apply")
+    parser.add_argument(
+        "--pose",
+        default=None,
+        help="initial joint angles in degrees, e.g. 20,45,60,30 (overrides --initial)",
+    )
     return parser
 
 
@@ -64,18 +67,20 @@ def load_skeleton(args: argparse.Namespace) -> Skeleton:
         raise FileNotFoundError(msg)
     skeleton = Skeleton.from_toml(config)
 
+    # Pose precedence (each overwrites the previous): zeros -> per-link q0 ->
+    # config [initial] (handled by from_toml) -> --initial file -> --pose.
+    if args.initial is not None:
+        initial: Path = args.initial
+        if not initial.exists():
+            msg = f"initial file not found: {initial}"
+            raise FileNotFoundError(msg)
+        skeleton.apply_initial_toml(initial)
     if args.pose is not None:
         pose = np.deg2rad([float(value) for value in args.pose.split(",")])
         if len(pose) != skeleton.num_joints:
             msg = f"--pose has {len(pose)} values but the arm has {skeleton.num_joints} joints"
             raise ValueError(msg)
         skeleton.q = pose
-    elif args.initial is not None:
-        initial: Path = args.initial
-        if not initial.exists():
-            msg = f"initial file not found: {initial}"
-            raise FileNotFoundError(msg)
-        skeleton.apply_initial_toml(initial)
 
     return skeleton
 
