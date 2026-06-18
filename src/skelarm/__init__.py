@@ -13,16 +13,19 @@ from .dynamics import (
     simulate_robot,
 )
 from .kinematics import (
+    IKResult,
     compute_coriolis_basis,
     compute_endpoint_acceleration,
     compute_endpoint_velocity,
     compute_forward_kinematics,
+    compute_inverse_kinematics,
     compute_jacobian,
 )
 from .plotting import draw_skeleton, plot_trajectory
 from .skeleton import Link, LinkProp, Skeleton
 
 __all__ = [
+    "IKResult",
     "Link",
     "LinkProp",
     "SkelarmCanvas",
@@ -35,6 +38,7 @@ __all__ = [
     "compute_forward_dynamics",
     "compute_forward_kinematics",
     "compute_inverse_dynamics",
+    "compute_inverse_kinematics",
     "compute_jacobian",
     "compute_kinetic_energy",
     "compute_kinetic_energy_rate",

@@ -110,6 +110,14 @@ Run a script that defines a robot, computes its kinematics, and plots it using M
 uv run python examples/basic_plotting.py
 ```
 
+### Inverse Kinematics
+
+Solve endpoint inverse kinematics (default: Sugihara-style Levenberg-Marquardt) and plot the solved pose:
+
+```bash
+uv run python examples/inverse_kinematics.py
+```
+
 ### Dynamics Simulation
 
 You can use the library to simulate robot motion. See `src/skelarm/dynamics.py` and `tests/test_dynamics.py` for API usage.
