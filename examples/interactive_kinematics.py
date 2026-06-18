@@ -1,9 +1,9 @@
 """
-Interactive GUI example for skelarm.
+Interactive kinematics example for skelarm.
 
 This script launches a PyQt6 application where you can pose a planar robot arm two
-ways: drag the joint sliders, or click (and drag) in the canvas to move the tip to
-that point via inverse kinematics.
+ways: drag the joint sliders to set joint angles (forward kinematics), or click
+(and drag) in the canvas to move the tip to that point (inverse kinematics).
 """
 
 from __future__ import annotations

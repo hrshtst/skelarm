@@ -15,7 +15,7 @@ A lightweight, physics-based dynamics simulator for a configurable planar robot 
     *   **Note:** Gravity is explicitly ignored as the robot operates on a horizontal plane.
 *   **Visualization:**
     *   Static plotting with `matplotlib`.
-    *   Interactive GUI visualizer with `PyQt6` and joint sliders.
+    *   Interactive `PyQt6` GUI: pose by joint sliders (FK) or click/drag the tip (IK).
 *   **Quality Assurance:** Fully typed, tested with `pytest` and `hypothesis`, and linted with `ruff`.
 
 ## Getting Started
@@ -94,12 +94,12 @@ Run a dynamic simulation of a 4-DOF robot loaded from a TOML file:
 uv run python examples/simulate_four_dof.py
 ```
 
-### Interactive Visualizer
+### Interactive Kinematics (FK & IK)
 
-Launch the PyQt6 GUI to manipulate a 3-link robot arm with sliders:
+Launch the PyQt6 GUI to pose a robot arm with the joint sliders (forward kinematics) or by clicking/dragging in the canvas to move the tip (inverse kinematics):
 
 ```bash
-uv run python examples/interactive_gui.py
+uv run python examples/interactive_kinematics.py
 ```
 
 ### Basic Kinematics & Plotting
