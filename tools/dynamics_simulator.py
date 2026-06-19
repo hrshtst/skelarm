@@ -32,7 +32,6 @@ from skelarm import (
     compute_endpoint_velocity,
     compute_kinetic_energy,
 )
-from tools.kinematics_inspector import load_skeleton
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -177,6 +176,50 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--no-plot", action="store_true", help="do not plot the tip trajectory when the GUI closes")
     return parser
+
+
+def load_skeleton(args: argparse.Namespace) -> Skeleton:
+    """Load the skeleton from ``args.config`` and apply any ``--pose`` / ``--initial``.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed command-line arguments.
+
+    Returns
+    -------
+    Skeleton
+        The loaded skeleton with the requested initial pose applied.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the config (or ``--initial`` file) does not exist.
+    ValueError
+        If ``--pose`` has a different number of values than the robot's joints.
+    """
+    config: Path = args.config
+    if not config.exists():
+        msg = f"config file not found: {config}"
+        raise FileNotFoundError(msg)
+    skeleton = Skeleton.from_toml(config)
+
+    # Pose precedence (each overwrites the previous): zeros -> per-link q0 ->
+    # config [initial] (handled by from_toml) -> --initial file -> --pose.
+    if args.initial is not None:
+        initial: Path = args.initial
+        if not initial.exists():
+            msg = f"initial file not found: {initial}"
+            raise FileNotFoundError(msg)
+        skeleton.apply_initial_toml(initial)
+    if args.pose is not None:
+        pose = np.deg2rad([float(value) for value in args.pose.split(",")])
+        if len(pose) != skeleton.num_joints:
+            msg = f"--pose has {len(pose)} values but the arm has {skeleton.num_joints} joints"
+            raise ValueError(msg)
+        skeleton.q = pose
+
+    return skeleton
 
 
 def main() -> None:

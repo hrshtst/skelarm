@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -45,6 +48,24 @@ def test_parser_parses_stiffness_and_flags() -> None:
     assert args.stiffness == pytest.approx(0.25)
     assert args.show_com is True
     assert args.no_plot is True
+
+
+def test_runs_as_a_standalone_script() -> None:
+    """Running the file directly (script mode) must resolve all of its imports.
+
+    Regression test: ``python tools/dynamics_simulator.py`` only puts the script's
+    own directory on ``sys.path`` (not the repo root), so an import of the ``tools``
+    package fails even though it resolves fine under pytest's ``pythonpath``.
+    """
+    script = Path(__file__).resolve().parents[1] / "tools" / "dynamics_simulator.py"
+    result = subprocess.run(  # noqa: S603  # trusted: our own interpreter and script path
+        [sys.executable, str(script), "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "dynamics" in result.stdout.lower()
 
 
 def test_stiffness_option_overrides_default(qapp) -> None:  # noqa: ANN001, ARG001
