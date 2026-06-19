@@ -52,6 +52,14 @@ F_d = K_{\mathrm{task}}(p^\ast-p) - D_{\mathrm{task}}\dot{p},
 \tau = J^{T}F_d - C_q\dot{q}.
 $$
 
+This is the basic structure of the virtual spring-damper hypothesis proposed for
+human-like reaching with redundant arms:
+
+- Arimoto and Sekimoto (2006),
+  ["Human-like Movements of Robotic Arms with Redundant DOFs: Virtual
+  Spring-Damper Hypothesis to Tackle the Bernstein
+  Problem"](https://doi.org/10.1109/ROBOT.2006.1641977).
+
 Here $K_{\mathrm{task}}$ is task-space stiffness, $D_{\mathrm{task}}$ is
 task-space damping, and $C_q$ is joint damping. This does not require a target
 arrival time, and the Jacobian transpose maps the virtual endpoint force into
@@ -65,8 +73,9 @@ large initial acceleration rather than a human-like bell-shaped speed profile.
 
 ## 3. Time-varying stiffness and virtual damping
 
-Sekimoto and Arimoto studied an earlier virtual spring-damper approach on a
-redundant industrial arm:
+Sekimoto and Arimoto later studied the virtual spring-damper approach on a
+redundant industrial arm and introduced an explicitly time-varying endpoint
+stiffness:
 
 - Sekimoto and Arimoto (2006),
   ["Experimental Study on Reaching Movements of Robot Arms with Redundant DOFs
