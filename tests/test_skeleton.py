@@ -174,3 +174,30 @@ def test_set_state_clamps_q_beyond_limits_and_warns() -> None:
 
     assert skeleton.q == pytest.approx(np.array([np.pi / 2]))
     assert skeleton.dq == pytest.approx(np.array([1.0]))
+
+
+def test_to_dict_from_dict_round_trips_the_robot() -> None:
+    """to_dict/from_dict reproduce the link properties and base length exactly."""
+    link_props = [
+        LinkProp(length=0.3, m=1.0, i=0.01, rgx=0.15, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+        LinkProp(length=0.2, m=0.5, i=0.005, rgx=0.1, rgy=0.02, qmin=-np.pi / 2, qmax=np.pi / 2),
+    ]
+    skeleton = Skeleton(link_props, base_length=0.05)
+
+    restored = Skeleton.from_dict(skeleton.to_dict())
+
+    assert restored.base_length == pytest.approx(skeleton.base_length)
+    assert restored.num_joints == skeleton.num_joints
+    for original, copy in zip(skeleton.links[1:], restored.links[1:], strict=True):
+        assert copy.prop == original.prop
+
+
+def test_to_dict_has_config_friendly_structure() -> None:
+    """to_dict exposes base_length and one entry per actuated link."""
+    link_props = [LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi)]
+    data = Skeleton(link_props, base_length=0.5).to_dict()
+
+    assert data["base_length"] == pytest.approx(0.5)
+    assert len(data["links"]) == 1
+    assert data["links"][0]["length"] == pytest.approx(1.0)
+    assert data["links"][0]["qmin"] == pytest.approx(-np.pi)

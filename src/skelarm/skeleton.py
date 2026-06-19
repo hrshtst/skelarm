@@ -5,7 +5,7 @@ from __future__ import annotations
 import tomllib
 import warnings
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -323,6 +323,43 @@ class Skeleton:
         # value per joint and override the per-link ``q0`` defaults.
         _apply_initial(skeleton, data, default_q=np.array(initial_angles, dtype=np.float64))
         return skeleton
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the robot geometry to a plain, JSON/TOML-friendly dictionary.
+
+        Captures the fixed ``base_length`` and one entry per actuated link with the
+        native :class:`LinkProp` fields (lengths in meters, ``qmin`` / ``qmax`` in
+        radians), so :meth:`from_dict` reproduces the robot exactly. The joint state
+        (``q`` / ``dq``) is a separate run condition and is not included.
+
+        Returns
+        -------
+        dict[str, Any]
+            ``{"base_length": float, "links": [<link prop dict>, ...]}``.
+        """
+        return {
+            "base_length": self.base_length,
+            "links": [asdict(link.prop) for link in self.links[1:]],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Skeleton:
+        """Reconstruct a Skeleton from a :meth:`to_dict` mapping.
+
+        Parameters
+        ----------
+        data : dict[str, Any]
+            A mapping with an optional ``base_length`` and a ``links`` list of
+            :class:`LinkProp` field dictionaries.
+
+        Returns
+        -------
+        Skeleton
+            A new Skeleton whose link positions match the zero pose.
+        """
+        base_length = float(data.get("base_length", 0.0))
+        link_props = [LinkProp(**link) for link in data["links"]]
+        return cls(link_props, base_length=base_length)
 
     def apply_initial_toml(self, file_path: str | Path) -> None:
         """Apply the ``[initial]`` table from a TOML file to this skeleton.
