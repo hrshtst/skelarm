@@ -63,7 +63,72 @@ $K_{\mathrm{task}}(p^\ast-p_0)$ is immediately large. Seto and Sugihara describe
 this as the reason conventional virtual spring-damper reaching can produce a
 large initial acceleration rather than a human-like bell-shaped speed profile.
 
-## 3. Online reference shaping
+## 3. Time-varying stiffness and virtual damping
+
+Sekimoto and Arimoto studied an earlier virtual spring-damper approach on a
+redundant industrial arm:
+
+- Sekimoto and Arimoto (2006),
+  ["Experimental Study on Reaching Movements of Robot Arms with Redundant DOFs
+  Based upon Virtual Spring-Damper
+  Hypothesis"](https://doi.org/10.1109/IROS.2006.282375).
+
+The paper uses the term "time-variable stiffness." In this document,
+**time-varying stiffness** is used because it is the more common control
+terminology: the spring stiffness is an explicit function of time during the
+reach.
+
+With the same sign convention as `skelarm`, the planar form is
+
+$$
+\tau =
+- C_q\dot{q}
++ J^{T}
+\left(
+k(t)(p^\ast-p) - \zeta_1 k_0\dot{p}
+\right).
+$$
+
+Here $C_q$ is joint damping, $k(t)$ is the scalar endpoint stiffness, $k_0$ is
+its saturated value, and $\zeta_1 k_0$ is the task-space virtual damping gain.
+Sekimoto and Arimoto used a gamma-distribution-shaped stiffness schedule,
+
+$$
+k(t) =
+k_0
+\left[
+1 -
+\left(
+1 + \alpha t + \frac{\alpha^2 t^2}{2}
+\right)e^{-\alpha t}
+\right],
+$$
+
+which starts near zero and gradually approaches $k_0$. The effect is different
+from a constant target spring:
+
+- the initial torque is small because $k(0)=0$;
+- the spring force becomes stronger in the middle and final phases, improving
+  convergence to the target;
+- the endpoint speed tends to become bell-shaped rather than peaking
+  immediately;
+- task-space virtual damping makes endpoint paths straighter, especially for
+  redundant arms.
+
+For `skelarm`, this controller is a useful intermediate implementation between a
+constant virtual spring and the later online reference-shaping methods. It does
+not require IK, a Jacobian inverse, or a planned joint trajectory. Unlike the
+Seto-Sugihara online shaper below, however, $k(t)$ is tied to elapsed time from
+movement onset. If the endpoint is blocked, the stiffness continues to grow even
+though the arm has not progressed, so contact behavior may still need force
+limits, reset logic, or the online feedback shaping described next.
+
+Because `skelarm` assumes planar motion without gravity by default, the gravity
+compensation term used in the 3-D PA-10 experiments should be omitted unless the
+dynamics model is extended. Viscosity compensation from the paper is also not a
+first implementation requirement unless explicit joint friction is added.
+
+## 4. Online reference shaping
 
 Seto and Sugihara's reaching-control papers address the initial-acceleration and
 external-force problems by replacing the fixed spring equilibrium $p^\ast$ with a
@@ -112,7 +177,7 @@ This fixed-$r$ controller is the core idea of the IROS 2009 paper. It produces
 smoother reaching than a direct target spring and makes the behavior more pliant
 under endpoint constraints.
 
-## 4. Position-dependent shaping ratio
+## 5. Position-dependent shaping ratio
 
 The Humanoids 2009 paper makes $r$ position dependent so the controller starts
 gently and converges faster near the target. Define
@@ -145,7 +210,7 @@ before using it in the reference shaper. The formula can slightly exceed one
 near $d=0$ for nonzero $a$, while `skelarm` should keep the interpolation
 semantics explicit.
 
-## 5. Implementation notes for `skelarm`
+## 6. Implementation notes for `skelarm`
 
 The controller can be implemented as an endpoint-force controller:
 
@@ -168,6 +233,8 @@ Suggested first tests:
 
 - a direct target spring has larger initial endpoint acceleration than shaped
   reaching for the same target;
+- time-varying stiffness starts with near-zero spring torque and converges to
+  the saturated stiffness $k_0$;
 - fixed-$r$ shaping reaches the target with a bell-shaped endpoint speed profile
   in an undisturbed simulation;
 - position-dependent $r(d)$ converges faster than a conservative fixed small
