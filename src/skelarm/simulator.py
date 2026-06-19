@@ -131,6 +131,8 @@ class SkelarmSimulator(QMainWindow):
         self._stiffness = stiffness
         self._lower = np.array([link.prop.qmin for link in skeleton.links[1:]], dtype=np.float64)
         self._upper = np.array([link.prop.qmax for link in skeleton.links[1:]], dtype=np.float64)
+        self._initial_q = skeleton.q.copy()  # restored by reset()
+        self._initial_dq = skeleton.dq.copy()
 
         self.canvas = SimulatorCanvas(skeleton)
         self.setWindowTitle("Skelarm Simulator")
@@ -143,6 +145,7 @@ class SkelarmSimulator(QMainWindow):
 
         panel = QWidget()
         controls = QVBoxLayout(panel)
+        self.controls_layout = controls  # exposed so subclasses can add_control
         controls.addWidget(QLabel("<b>Simulation</b>"))
         hint = QLabel("Press and drag in the canvas to pull the tip with a force.")
         hint.setWordWrap(True)
@@ -183,6 +186,42 @@ class SkelarmSimulator(QMainWindow):
         """Toggle the center-of-mass overlay on the canvas."""
         self.canvas.show_com = self.com_checkbox.isChecked()
         self.canvas.update()
+
+    def add_control(self, widget: QWidget) -> None:
+        """Add an extra control widget above the trailing stretch (for subclasses)."""
+        self.controls_layout.insertWidget(self.controls_layout.count() - 1, widget)
+
+    @property
+    def stiffness(self) -> float:
+        """Force per meter of tip-to-cursor distance for the interactive drag."""
+        return self._stiffness
+
+    @stiffness.setter
+    def stiffness(self, value: float) -> None:
+        self._stiffness = float(value)
+
+    @property
+    def running(self) -> bool:
+        """Whether the simulation loop is currently advancing."""
+        return self._timer.isActive()
+
+    def pause(self) -> None:
+        """Stop advancing the simulation (the state is frozen until :meth:`resume`)."""
+        self._timer.stop()
+
+    def resume(self) -> None:
+        """Resume advancing the simulation after a :meth:`pause`."""
+        if not self._timer.isActive():
+            self._timer.start(_TIMER_MS)
+
+    def reset(self) -> None:
+        """Restore the initial pose and velocity and zero the clock."""
+        for link, q_value, dq_value in zip(self.skeleton.links[1:], self._initial_q, self._initial_dq, strict=True):
+            link.q = float(q_value)
+            link.dq = float(dq_value)
+        compute_forward_kinematics(self.skeleton)
+        self.time = 0.0
+        self._update_displays()
 
     def step(self) -> None:
         """Advance the dynamics by one render tick under zero-torque control + tip force."""

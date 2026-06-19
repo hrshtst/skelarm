@@ -128,3 +128,47 @@ def test_step_respects_joint_limits(qapp) -> None:  # noqa: ANN001, ARG001
 
     assert np.all(sim.skeleton.q >= -limit - 1e-9)
     assert np.all(sim.skeleton.q <= limit + 1e-9)
+
+
+def test_add_control_inserts_widget_before_the_stretch(qapp) -> None:  # noqa: ANN001, ARG001
+    """Subclasses can append controls, which land just above the trailing stretch."""
+    from PyQt6.QtWidgets import QLabel
+
+    sim = _simulator()
+    widget = QLabel("extra")
+    sim.add_control(widget)
+    layout = sim.controls_layout
+    assert layout.indexOf(widget) == layout.count() - 2  # last item before the stretch
+
+
+def test_stiffness_property_round_trips(qapp) -> None:  # noqa: ANN001, ARG001
+    """The drag stiffness is publicly readable and writable."""
+    sim = _simulator()
+    sim.stiffness = 3.5
+    assert sim.stiffness == pytest.approx(3.5)
+
+
+def test_pause_and_resume_toggle_the_loop(qapp) -> None:  # noqa: ANN001, ARG001
+    """The simulation runs after construction; pause/resume flip the running state."""
+    sim = _simulator()
+    assert sim.running is True
+    sim.pause()
+    assert sim.running is False
+    sim.resume()
+    assert sim.running is True
+
+
+def test_reset_restores_initial_pose_velocity_and_clock(qapp) -> None:  # noqa: ANN001, ARG001
+    """Reset returns the arm to its initial pose, zeros velocity, and zeros the clock."""
+    sim = _simulator()
+    q0 = sim.skeleton.q.copy()
+    tip = sim.skeleton.links[-1]
+    _press(sim.canvas, (tip.xe - 0.3, tip.ye + 0.2))
+    for _ in range(10):
+        sim.step()
+    assert not np.allclose(sim.skeleton.q, q0)  # the arm moved
+
+    sim.reset()
+    assert sim.skeleton.q == pytest.approx(q0)
+    assert sim.skeleton.dq == pytest.approx(np.zeros_like(sim.skeleton.dq))
+    assert sim.time == pytest.approx(0.0)
