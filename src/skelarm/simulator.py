@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
 from skelarm.canvas import SkelarmCanvas
 from skelarm.dynamics import compute_forward_dynamics
 from skelarm.kinematics import compute_forward_kinematics, compute_jacobian
+from skelarm.recording import StateLog
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -138,6 +139,8 @@ class SkelarmSimulator(QMainWindow):
         self._upper = np.array([link.prop.qmax for link in skeleton.links[1:]], dtype=np.float64)
         self._initial_q = skeleton.q.copy()  # restored by reset()
         self._initial_dq = skeleton.dq.copy()
+        self.state_log: StateLog | None = None  # set by start_recording()
+        self._recording = False
 
         self.canvas = SimulatorCanvas(skeleton)
         self.setWindowTitle("Skelarm Simulator")
@@ -228,6 +231,34 @@ class SkelarmSimulator(QMainWindow):
         if not self._timer.isActive():
             self._timer.start(_TIMER_MS)
 
+    @property
+    def is_recording(self) -> bool:
+        """Whether each step is being appended to :attr:`state_log`."""
+        return self._recording
+
+    def start_recording(self) -> None:
+        """Begin a fresh state log, capturing the current frame as the first sample."""
+        joints = [f"j{i + 1}" for i in range(self.skeleton.num_joints)]
+        channel_meta = {
+            "q": {"unit": "rad", "label": "joint angle", "columns": joints},
+            "dq": {"unit": "rad/s", "label": "joint velocity", "columns": joints},
+            "tau": {"unit": "N*m", "label": "applied joint torque", "columns": joints},
+            "ext_force": {"unit": "N", "label": "external tip force", "columns": ["fx", "fy"]},
+        }
+        self.state_log = StateLog(self.skeleton, producer="skelarm_simulator", channel_meta=channel_meta)
+        self.state_log.record(
+            self.time,
+            q=self.skeleton.q,
+            dq=self.skeleton.dq,
+            tau=np.zeros(self.skeleton.num_joints),
+            ext_force=self.canvas.external_force(self._stiffness),
+        )
+        self._recording = True
+
+    def stop_recording(self) -> None:
+        """Stop appending frames to the state log (the log itself is kept)."""
+        self._recording = False
+
     def reset(self) -> None:
         """Restore the initial pose and velocity and zero the clock."""
         for link, q_value, dq_value in zip(self.skeleton.links[1:], self._initial_q, self._initial_dq, strict=True):
@@ -235,6 +266,8 @@ class SkelarmSimulator(QMainWindow):
             link.dq = float(dq_value)
         compute_forward_kinematics(self.skeleton)
         self.time = 0.0
+        if self._recording:
+            self.start_recording()  # restart the log for the fresh run
         self._update_displays()
 
     def step(self) -> None:
@@ -258,6 +291,14 @@ class SkelarmSimulator(QMainWindow):
                 link.dq = float(dq_value)
             compute_forward_kinematics(self.skeleton)
             self.time += dt
+        if self._recording and self.state_log is not None:
+            self.state_log.record(
+                self.time,
+                q=self.skeleton.q,
+                dq=self.skeleton.dq,
+                tau=tau,
+                ext_force=self.canvas.external_force(self._stiffness),
+            )
         self._update_displays()
 
     def _update_displays(self) -> None:

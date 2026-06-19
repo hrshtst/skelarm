@@ -206,3 +206,53 @@ def test_zero_friction_retains_more_energy_than_positive_friction(qapp) -> None:
         return compute_kinetic_energy(sim.skeleton)
 
     assert final_energy(0.5) < final_energy(0.0)
+
+
+def test_recording_is_off_by_default(qapp) -> None:  # noqa: ANN001, ARG001
+    """No state log is created unless recording is explicitly started."""
+    sim = _simulator()
+    assert sim.is_recording is False
+    assert sim.state_log is None
+    sim.step()
+    assert sim.state_log is None
+
+
+def test_start_recording_captures_initial_frame_and_each_step(qapp) -> None:  # noqa: ANN001, ARG001
+    """Recording seeds an initial frame and appends one frame per step."""
+    sim = _simulator()
+    sim.start_recording()
+    assert sim.is_recording is True
+    assert sim.state_log is not None
+    assert len(sim.state_log) == 1  # initial frame
+    steps = 3
+    for _ in range(steps):
+        sim.step()
+    assert len(sim.state_log) == steps + 1
+    assert set(sim.state_log.channel_names) == {"q", "dq", "tau", "ext_force"}
+    assert sim.state_log.channel("q").shape == (steps + 1, 2)
+
+
+def test_stop_recording_halts_capture(qapp) -> None:  # noqa: ANN001, ARG001
+    """After stop_recording, further steps are not logged."""
+    sim = _simulator()
+    sim.start_recording()
+    sim.step()
+    assert sim.state_log is not None
+    count = len(sim.state_log)
+    sim.stop_recording()
+    assert sim.is_recording is False
+    sim.step()
+    assert len(sim.state_log) == count
+
+
+def test_reset_restarts_active_recording(qapp) -> None:  # noqa: ANN001, ARG001
+    """Resetting while recording starts a fresh log seeded at t = 0."""
+    sim = _simulator()
+    sim.start_recording()
+    for _ in range(3):
+        sim.step()
+    sim.reset()
+    assert sim.is_recording is True
+    assert sim.state_log is not None
+    assert len(sim.state_log) == 1
+    assert sim.state_log.times[0] == pytest.approx(0.0)
