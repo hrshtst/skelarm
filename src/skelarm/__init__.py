@@ -22,13 +22,16 @@ from .kinematics import (
     compute_jacobian,
 )
 from .plotting import draw_skeleton, plot_trajectory
+from .simulator import SimulatorCanvas, SkelarmSimulator
 from .skeleton import Link, LinkProp, Skeleton
 
 __all__ = [
     "IKResult",
     "Link",
     "LinkProp",
+    "SimulatorCanvas",
     "SkelarmCanvas",
+    "SkelarmSimulator",
     "SkelarmViewer",
     "Skeleton",
     "compute_coriolis_basis",
