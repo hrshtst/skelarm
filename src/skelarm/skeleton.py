@@ -361,6 +361,50 @@ class Skeleton:
         link_props = [LinkProp(**link) for link in data["links"]]
         return cls(link_props, base_length=base_length)
 
+    def clone(self) -> Skeleton:
+        """Return a new, independent Skeleton with the same geometry and state.
+
+        The clone duplicates the link geometry (its ``LinkProp`` objects are
+        separate) and copies the current joint state (``q``, ``dq``, ``ddq``,
+        ``tau``); its derived link states are refreshed to match.
+
+        Returns
+        -------
+        Skeleton
+            A deep copy of this skeleton.
+        """
+        duplicate = Skeleton.from_dict(self.to_dict())
+        self.copy_state_to(duplicate)
+        return duplicate
+
+    def copy_state_to(self, target: Skeleton) -> None:
+        """Copy this skeleton's joint state onto an existing skeleton, in place.
+
+        Copies the joint angles, velocities, accelerations, and torques (``q``,
+        ``dq``, ``ddq``, ``tau``) onto ``target`` and refreshes its derived link
+        states. ``target``'s geometry is left unchanged. Values are written
+        directly, so the state is reproduced exactly without limit clamping.
+
+        Parameters
+        ----------
+        target : Skeleton
+            The skeleton to overwrite; it must have the same number of joints.
+
+        Raises
+        ------
+        ValueError
+            If ``target`` has a different number of movable joints.
+        """
+        if target.num_joints != self.num_joints:
+            error_msg = f"Expected a target with {self.num_joints} joint(s), but got {target.num_joints}"
+            raise ValueError(error_msg)
+        for source, destination in zip(self.links[1:], target.links[1:], strict=True):
+            destination.q = source.q
+            destination.dq = source.dq
+            destination.ddq = source.ddq
+            destination.tau = source.tau
+        compute_forward_kinematics(target)
+
     def apply_initial_toml(self, file_path: str | Path) -> None:
         """Apply the ``[initial]`` table from a TOML file to this skeleton.
 

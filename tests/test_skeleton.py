@@ -201,3 +201,69 @@ def test_to_dict_has_config_friendly_structure() -> None:
     assert len(data["links"]) == 1
     assert data["links"][0]["length"] == pytest.approx(1.0)
     assert data["links"][0]["qmin"] == pytest.approx(-np.pi)
+
+
+def _two_link_skeleton() -> Skeleton:
+    """A two-link arm with a non-zero base length for clone/copy tests."""
+    link_props = [
+        LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+        LinkProp(length=0.8, m=0.8, i=0.05, rgx=0.4, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+    ]
+    return Skeleton(link_props, base_length=0.3)
+
+
+def test_clone_copies_geometry_and_state_independently() -> None:
+    """clone() returns a deep copy whose geometry, state, and derived poses match."""
+    skeleton = _two_link_skeleton()
+    skeleton.set_state(q=np.array([0.3, -0.4]), dq=np.array([0.1, 0.2]), ddq=np.array([0.5, -0.5]))
+    skeleton.tau = np.array([1.0, -2.0])
+
+    clone = skeleton.clone()
+
+    assert clone is not skeleton
+    assert clone.base_length == pytest.approx(skeleton.base_length)
+    assert clone.num_joints == skeleton.num_joints
+    assert clone.q == pytest.approx(skeleton.q)
+    assert clone.dq == pytest.approx(skeleton.dq)
+    assert clone.ddq == pytest.approx(skeleton.ddq)
+    assert clone.tau == pytest.approx(skeleton.tau)
+    assert clone.links[-1].xe == pytest.approx(skeleton.links[-1].xe)
+    assert clone.links[-1].ye == pytest.approx(skeleton.links[-1].ye)
+
+    # Geometry is duplicated, not shared.
+    assert clone.links[1].prop is not skeleton.links[1].prop
+    assert clone.links[1].prop == skeleton.links[1].prop
+
+    # Mutating the clone leaves the original untouched.
+    clone.q = np.array([0.0, 0.0])
+    assert skeleton.q == pytest.approx(np.array([0.3, -0.4]))
+
+
+def test_copy_state_to_overwrites_target_state_in_place() -> None:
+    """copy_state_to() writes q, dq, ddq, tau onto an existing skeleton and refreshes it."""
+    source = _two_link_skeleton()
+    source.set_state(q=np.array([0.2, 0.3]), dq=np.array([0.4, -0.1]), ddq=np.array([0.0, 0.7]))
+    source.tau = np.array([0.5, 0.6])
+
+    target = _two_link_skeleton()
+    target.set_state(q=np.array([-0.5, 0.1]))
+
+    source.copy_state_to(target)
+    assert target.q == pytest.approx(source.q)
+    assert target.dq == pytest.approx(source.dq)
+    assert target.ddq == pytest.approx(source.ddq)
+    assert target.tau == pytest.approx(source.tau)
+    assert target.links[-1].xe == pytest.approx(source.links[-1].xe)
+    assert target.links[-1].ye == pytest.approx(source.links[-1].ye)
+
+    # The copy is by value: later changes to the source do not leak into target.
+    source.q = np.array([1.0, 1.0])
+    assert target.q == pytest.approx(np.array([0.2, 0.3]))
+
+
+def test_copy_state_to_rejects_dof_mismatch() -> None:
+    """Copying state requires the target to have the same number of joints."""
+    source = _two_link_skeleton()
+    three_joint = Skeleton([LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi)] * 3)
+    with pytest.raises(ValueError, match="joint"):
+        source.copy_state_to(three_joint)
