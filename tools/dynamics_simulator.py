@@ -1,0 +1,204 @@
+"""
+Interactive dynamics simulator tool for skelarm.
+
+Load a robot arm from a TOML config given on the command line and simulate it in
+real time under zero-torque control. Press and drag the left mouse button in the
+canvas to apply a spring-like external force at the tip (drawn as a red arrow).
+On top of the base :class:`~skelarm.SkelarmSimulator` this tool adds pause/resume,
+single-step, reset, a live stiffness spin box, a status panel (kinetic energy and
+tip position/speed), and an optional tip-trajectory plot shown when the GUI closes.
+
+Usage::
+
+    uv run python tools/dynamics_simulator.py path/to/robot.toml
+    uv run python tools/dynamics_simulator.py robot.toml --stiffness 0.2 --show-com
+    uv run python tools/dynamics_simulator.py robot.toml --pose 20,45,60,30
+    uv run python tools/dynamics_simulator.py robot.toml --initial pose.toml --no-plot
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import numpy as np
+from PyQt6.QtWidgets import QApplication, QDoubleSpinBox, QLabel, QPushButton
+
+from skelarm import (
+    SkelarmSimulator,
+    Skeleton,
+    compute_endpoint_velocity,
+    compute_kinetic_energy,
+)
+from tools.kinematics_inspector import load_skeleton
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
+_STIFFNESS_MAX = 100.0  # upper bound for the live stiffness spin box (N/m)
+
+
+class DynamicsSimulator(SkelarmSimulator):
+    """A SkelarmSimulator with playback controls, a status panel, and trajectory recording.
+
+    Adds pause/resume, single-step (while paused), reset, a live stiffness spin
+    box, a readout of kinetic energy and tip position/speed, and recording of the
+    tip trajectory (see :attr:`trajectory`) for plotting after the GUI closes.
+    """
+
+    def __init__(self, skeleton: Skeleton, *, stiffness: float | None = None) -> None:
+        """Build the simulator controls on top of the base simulator."""
+        if stiffness is None:
+            super().__init__(skeleton)
+        else:
+            super().__init__(skeleton, stiffness=stiffness)
+
+        self._trajectory_x: list[float] = []
+        self._trajectory_y: list[float] = []
+
+        self.pause_button = QPushButton("Pause")
+        self.pause_button.clicked.connect(self._on_pause_toggled)
+        self.add_control(self.pause_button)
+
+        self.step_button = QPushButton("Step")
+        self.step_button.setEnabled(False)  # only meaningful while paused
+        self.step_button.clicked.connect(self._on_single_step)
+        self.add_control(self.step_button)
+
+        self.reset_button = QPushButton("Reset")
+        self.reset_button.clicked.connect(self.reset)
+        self.add_control(self.reset_button)
+
+        self.add_control(QLabel("Stiffness (N/m)"))
+        self.stiffness_spin = QDoubleSpinBox()
+        self.stiffness_spin.setDecimals(3)
+        self.stiffness_spin.setRange(0.0, _STIFFNESS_MAX)
+        self.stiffness_spin.setSingleStep(0.05)
+        self.stiffness_spin.setValue(self.stiffness)
+        self.stiffness_spin.valueChanged.connect(self._on_stiffness_changed)
+        self.add_control(self.stiffness_spin)
+
+        self.status_label = QLabel()
+        self.status_label.setWordWrap(True)
+        self.add_control(self.status_label)
+
+        self._record_point()  # seed the trajectory with the starting tip position
+        self._update_status()
+
+    @property
+    def trajectory(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """The recorded tip trajectory as ``(xs, ys)`` arrays."""
+        return np.array(self._trajectory_x), np.array(self._trajectory_y)
+
+    def step(self) -> None:
+        """Advance one tick, then record the tip and refresh the status panel."""
+        super().step()
+        self._record_point()
+        self._update_status()
+
+    def reset(self) -> None:
+        """Restore the initial state, clear the trajectory, and refresh the status panel."""
+        super().reset()
+        self._trajectory_x.clear()
+        self._trajectory_y.clear()
+        self._record_point()
+        self._update_status()
+
+    def show_trajectory_plot(self) -> None:
+        """Plot the final pose and the recorded tip trajectory with Matplotlib.
+
+        Does nothing if fewer than two points were recorded (no visible motion).
+        Intended to be called after the Qt event loop exits.
+        """
+        if len(self._trajectory_x) < 2:  # noqa: PLR2004
+            return
+        import matplotlib.pyplot as plt
+
+        from skelarm import draw_skeleton, plot_trajectory
+
+        xs, ys = self.trajectory
+        _, ax = plt.subplots()
+        draw_skeleton(ax, self.skeleton, title="Final pose and tip trajectory")
+        plot_trajectory(ax, xs, ys, title=None)
+        plt.show()
+
+    def _record_point(self) -> None:
+        """Append the current tip position to the trajectory."""
+        tip = self.skeleton.links[-1]
+        self._trajectory_x.append(tip.xe)
+        self._trajectory_y.append(tip.ye)
+
+    def _on_pause_toggled(self) -> None:
+        """Toggle between running and paused, updating the buttons accordingly."""
+        if self.running:
+            self.pause()
+            self.pause_button.setText("Resume")
+            self.step_button.setEnabled(True)
+        else:
+            self.resume()
+            self.pause_button.setText("Pause")
+            self.step_button.setEnabled(False)
+
+    def _on_single_step(self) -> None:
+        """Advance a single tick while paused."""
+        if not self.running:
+            self.step()
+
+    def _on_stiffness_changed(self, value: float) -> None:
+        """Apply the live stiffness value to the simulation."""
+        self.stiffness = value
+
+    def _update_status(self) -> None:
+        """Refresh the status label with kinetic energy and tip position/speed."""
+        tip = self.skeleton.links[-1]
+        velocity = compute_endpoint_velocity(self.skeleton)
+        speed = float(np.hypot(velocity[0], velocity[1]))
+        energy = compute_kinetic_energy(self.skeleton)
+        self.status_label.setText(
+            f"Tip: ({tip.xe:.3f}, {tip.ye:.3f}) m\nTip speed: {speed:.3f} m/s\nKinetic energy: {energy:.4g} J"
+        )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line argument parser for the tool."""
+    parser = argparse.ArgumentParser(description="Interactive real-time dynamics simulator for a skelarm robot.")
+    parser.add_argument("config", type=Path, help="path to the robot TOML config to load")
+    parser.add_argument(
+        "--stiffness", type=float, default=None, help="drag stiffness in N/m (default: library default)"
+    )
+    parser.add_argument("--show-com", action="store_true", help="overlay each link's center of mass at startup")
+    parser.add_argument("--initial", type=Path, default=None, help="TOML file with an [initial] table to apply")
+    parser.add_argument(
+        "--pose",
+        default=None,
+        help="initial joint angles in degrees, e.g. 20,45,60,30 (overrides --initial)",
+    )
+    parser.add_argument("--no-plot", action="store_true", help="do not plot the tip trajectory when the GUI closes")
+    return parser
+
+
+def main() -> None:
+    """Parse arguments, build the simulator, and run the interactive application."""
+    parser = build_parser()
+    args = parser.parse_args()
+    try:
+        skeleton = load_skeleton(args)
+    except (FileNotFoundError, ValueError) as exc:
+        parser.error(str(exc))
+
+    app = QApplication(sys.argv)
+    simulator = DynamicsSimulator(skeleton, stiffness=args.stiffness)
+    if args.show_com:
+        simulator.com_checkbox.setChecked(True)
+
+    simulator.show()
+    app.exec()
+
+    if not args.no_plot:
+        simulator.show_trajectory_plot()
+
+
+if __name__ == "__main__":
+    main()
