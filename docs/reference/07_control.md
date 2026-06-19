@@ -201,6 +201,101 @@ In `skelarm`, computed torque can be implemented with `compute_mass_matrix` and
 `compute_coriolis_gravity_vector`, or by setting a copy of the current skeleton's
 `ddq` to $v$ and calling `compute_inverse_dynamics`.
 
+### Model predictive control
+
+Model predictive control (MPC) is another model-based tracking method, but it is
+not the same as computed torque control. Computed torque chooses an instantaneous
+model-cancelling torque. MPC repeatedly solves a finite-horizon optimization
+problem, applies only the first control input, then replans from the next measured
+state.
+
+A simple `skelarm` formulation can start in joint space. Define the discrete
+state and input as
+
+$$
+z_k =
+\begin{bmatrix}
+q_k \\
+\dot{q}_k
+\end{bmatrix},
+\qquad
+u_k = \tau_k.
+$$
+
+Using a fixed control interval $\Delta t$, the prediction model can use
+`compute_forward_dynamics`:
+
+$$
+\ddot{q}_k = \operatorname{FD}(q_k,\dot{q}_k,\tau_k),
+$$
+
+with a simple semi-implicit Euler update
+
+$$
+\dot{q}_{k+1} = \dot{q}_k + \Delta t\,\ddot{q}_k,
+\qquad
+q_{k+1} = q_k + \Delta t\,\dot{q}_{k+1}.
+$$
+
+For a horizon of $N$ steps, a basic tracking objective is
+
+$$
+\begin{aligned}
+\min_{\tau_0,\dots,\tau_{N-1}}\quad
+&\sum_{k=0}^{N-1}
+\left(
+e_{q,k}^{T}Q_q e_{q,k}
++ e_{\dot{q},k}^{T}Q_{\dot{q}} e_{\dot{q},k}
++ \tau_k^{T}R\tau_k
+\right)
++ e_{q,N}^{T}Q_f e_{q,N},
+\end{aligned}
+$$
+
+where
+
+$$
+e_{q,k}=q_k-q_{r,k},
+\qquad
+e_{\dot{q},k}=\dot{q}_k-\dot{q}_{r,k}.
+$$
+
+The first implementation can use torque bounds and soft joint-limit penalties.
+Hard constraints can be added once the optimizer interface is stable:
+
+$$
+q_{\min} \le q_k \le q_{\max},
+\qquad
+\tau_{\min} \le \tau_k \le \tau_{\max}.
+$$
+
+In Python, a practical first version can use `scipy.optimize.minimize` with a
+small horizon, flattened torque sequence, and warm start from the previous
+solution. The controller loop is:
+
+1. Read the current state $(q,\dot{q})$.
+2. Slice the next $N$ samples from the reference trajectory.
+3. Optimize $\tau_0,\dots,\tau_{N-1}$ by rolling out `compute_forward_dynamics`.
+4. Apply only $\tau_0$.
+5. Shift the optimized sequence by one step to warm-start the next solve.
+
+Task-space MPC can be added by including an endpoint term,
+
+$$
+(p(q_k)-p_{r,k})^{T}Q_p(p(q_k)-p_{r,k}),
+$$
+
+but joint-space MPC is the cleaner first target because it avoids mixing IK,
+trajectory conversion, and constrained optimal control in the same initial
+implementation.
+
+!!! note "Fixed-step simulation"
+    MPC is naturally discrete and stateful. The existing `simulate_robot` helper
+    uses adaptive `solve_ivp`, which may call a torque callback multiple times per
+    output interval. A robust MPC implementation should use a fixed-step
+    simulation loop or an MPC-specific simulator that calls the optimizer once per
+    control interval.
+
 !!! note "Gravity convention"
     The default `skelarm` arm moves in a horizontal plane, so gravity is zero
     unless a non-zero `grav_vec` is explicitly supplied. Control formulas should
@@ -217,10 +312,13 @@ The trajectory-tracking layer can be built incrementally:
    conversion.
 4. Add torque controller helpers for direct joint-space PD, inverse-dynamics
    feedforward plus PD, and computed torque control.
-5. Add tests covering endpoint path tracking, joint-reference continuity,
-   resolved-rate drift correction, and computed-torque tracking quality.
+5. Add a fixed-step simulation path for stateful controllers.
+6. Add a simple joint-space MPC tracker with torque bounds and warm starts.
+7. Add tests covering endpoint path tracking, joint-reference continuity,
+   resolved-rate drift correction, computed-torque tracking quality, and MPC
+   torque-bound handling.
 
 A plain callable `f(t, skeleton) -> tau` is enough for stateless PD,
 feedforward, and computed torque controllers. Controllers with their own dynamic
-state need additional care; the reaching chapter discusses this issue for online
-reference shaping.
+state, such as MPC and online reference shaping, need a fixed control interval or
+an augmented simulator state.
