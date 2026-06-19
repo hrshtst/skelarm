@@ -4,7 +4,7 @@ This chapter focuses on reaching: moving the endpoint from its current position
 to a desired task-space target
 
 $$
-x^\ast =
+p^\ast =
 \begin{bmatrix}
 {}^d x \\
 {}^d y
@@ -12,7 +12,7 @@ x^\ast =
 $$
 
 The [Trajectory Tracking Control](07_control.md) chapter can already solve this
-task: plan a smooth trajectory from the initial endpoint $x_0$ to $x^\ast$,
+task: plan a smooth trajectory from the initial endpoint $p_0$ to $p^\ast$,
 convert it into joint references, and track it with PD, inverse-dynamics
 feedforward, or computed torque control. That route is repeatable and easy to
 test.
@@ -28,11 +28,11 @@ tracking a preplanned time trajectory.
 The simplest reaching controller is trajectory tracking. Choose
 
 $$
-x_r(t) = x_0 + s(t)(x^\ast - x_0)
+p_r(t) = p_0 + s(t)(p^\ast - p_0)
 $$
 
 with a smooth schedule such as a quintic or minimum-jerk profile, then track
-$x_r(t)$ through IK or resolved motion rate control. This can generate smooth
+$p_r(t)$ through IK or resolved motion rate control. This can generate smooth
 endpoint motion in an undisturbed simulation.
 
 The limitation is that the reference keeps advancing with time even if the
@@ -43,30 +43,31 @@ a sudden acceleration. This is the motivation for feedback-generated reaching.
 ## 2. Virtual spring-damper reaching
 
 A time-free reaching primitive is a virtual spring-damper in task space. Let
-$x(q)$ and $\dot{x}=J(q)\dot{q}$ be the endpoint position and velocity. A direct
+$p(q)$ and $\dot{p}=J(q)\dot{q}$ be the endpoint position and velocity. A direct
 target spring can be written in `skelarm` sign convention as
 
 $$
-F_d = K_x(x^\ast-x) - D_x\dot{x},
+F_d = K_{\mathrm{task}}(p^\ast-p) - D_{\mathrm{task}}\dot{p},
 \qquad
 \tau = J^{T}F_d - C_q\dot{q}.
 $$
 
-Here $K_x$ is task-space stiffness, $D_x$ is task-space damping, and $C_q$ is
-joint damping. This does not require a target arrival time, and the Jacobian
-transpose maps the virtual endpoint force into joint torques.
+Here $K_{\mathrm{task}}$ is task-space stiffness, $D_{\mathrm{task}}$ is
+task-space damping, and $C_q$ is joint damping. This does not require a target
+arrival time, and the Jacobian transpose maps the virtual endpoint force into
+joint torques.
 
 This control law is compliant in the sense that external forces can displace the
-endpoint. Its weakness is the initial force: if $x^\ast$ is far from $x_0$, then
-$K_x(x^\ast-x_0)$ is immediately large. Seto and Sugihara describe this as the
-reason conventional virtual spring-damper reaching can produce a large initial
-acceleration rather than a human-like bell-shaped speed profile.
+endpoint. Its weakness is the initial force: if $p^\ast$ is far from $p_0$, then
+$K_{\mathrm{task}}(p^\ast-p_0)$ is immediately large. Seto and Sugihara describe
+this as the reason conventional virtual spring-damper reaching can produce a
+large initial acceleration rather than a human-like bell-shaped speed profile.
 
 ## 3. Online reference shaping
 
 Seto and Sugihara's reaching-control papers address the initial-acceleration and
-external-force problems by replacing the fixed spring equilibrium $x^\ast$ with a
-shaped equilibrium $x_s$:
+external-force problems by replacing the fixed spring equilibrium $p^\ast$ with a
+shaped equilibrium $p_s$:
 
 - Seto and Sugihara (2009),
   ["Online reference shaping with end-point position feedback for large
@@ -79,24 +80,24 @@ shaped equilibrium $x_s$:
 The endpoint spring-damper becomes
 
 $$
-F_d = K_x(x_s-x) - D_x\dot{x},
+F_d = K_{\mathrm{task}}(p_s-p) - D_{\mathrm{task}}\dot{p},
 \qquad
 \tau = J^{T}F_d - C_q\dot{q}.
 $$
 
-The shaped equilibrium $x_s$ is generated online from the target and current
+The shaped equilibrium $p_s$ is generated online from the target and current
 endpoint:
 
 $$
-x_s =
+p_s =
 \frac{1}{(T_1s+1)(T_2s+1)}
-\left(r x^\ast + (1-r)x\right),
+\left(r p^\ast + (1-r)p\right),
 \qquad
 0 < r \le 1.
 $$
 
 The second-order lag filter makes the initial reference velocity and acceleration
-smooth. Feeding back the current endpoint $x$ keeps $x_s$ near the arm when the
+smooth. Feeding back the current endpoint $p$ keeps $p_s$ near the arm when the
 endpoint is constrained by an external contact. That reduces excessive pushing
 force and avoids a large acceleration after release.
 
@@ -118,11 +119,11 @@ gently and converges faster near the target. Define
 
 $$
 d =
-\frac{\lVert x^\ast - x\rVert}
-{\lVert x^\ast - x_0\rVert},
+\frac{\lVert p^\ast - p\rVert}
+{\lVert p^\ast - p_0\rVert},
 $$
 
-where $x_0$ is the endpoint position at the start of the reach. The proposed
+where $p_0$ is the endpoint position at the start of the reach. The proposed
 schedule is
 
 $$
@@ -149,9 +150,9 @@ semantics explicit.
 The controller can be implemented as an endpoint-force controller:
 
 1. Run forward kinematics.
-2. Compute $x$ from the tip link and $\dot{x}$ with `compute_endpoint_velocity`.
-3. Update the shaped reference state $x_s$.
-4. Compute $F_d = K_x(x_s-x)-D_x\dot{x}$.
+2. Compute $p$ from the tip link and $\dot{p}$ with `compute_endpoint_velocity`.
+3. Update the shaped reference state $p_s$.
+4. Compute $F_d = K_{\mathrm{task}}(p_s-p)-D_{\mathrm{task}}\dot{p}$.
 5. Compute $\tau = J^T F_d - C_q\dot{q}$ with `compute_jacobian`.
 6. Pass $\tau$ to `compute_forward_dynamics` or return it from a
    `simulate_robot` torque callback.

@@ -15,31 +15,31 @@ The usual pipeline is:
 The endpoint trajectory notation is
 
 $$
-x_r(t) =
+p_r(t) =
 \begin{bmatrix}
-x_{r,x}(t) \\
-x_{r,y}(t)
+p_{r,x}(t) \\
+p_{r,y}(t)
 \end{bmatrix},
 \qquad
-x(q) =
+p(q) =
 \begin{bmatrix}
 x(q) \\
 y(q)
 \end{bmatrix},
 $$
 
-where $x_r(t)$ is the desired task-space reference and $x(q)$ is the endpoint
+where $p_r(t)$ is the desired task-space reference and $p(q)$ is the endpoint
 position from forward kinematics. A reaching task is one important application:
-choose $x_r(t)$ to move from the initial endpoint $x_0$ to the target $x^\ast$,
+choose $p_r(t)$ to move from the initial endpoint $p_0$ to the target $p^\ast$,
 then track the resulting reference with the methods below.
 
 ## 1. Trajectory planning
 
 A trajectory planner creates references that are smooth enough for the controller
-and dynamics. For a task-space path from $x_0$ to $x_1$, a common form is
+and dynamics. For a task-space path from $p_0$ to $p_1$, a common form is
 
 $$
-x_r(t) = x_0 + s(t)(x_1 - x_0),
+p_r(t) = p_0 + s(t)(p_1 - p_0),
 \qquad
 s(0)=0,\quad s(T)=1.
 $$
@@ -59,10 +59,10 @@ The planned reference should provide at least position and velocity. Acceleratio
 is needed for inverse-dynamics feedforward and computed torque control:
 
 $$
-x_r(t), \qquad \dot{x}_r(t), \qquad \ddot{x}_r(t).
+p_r(t), \qquad \dot{p}_r(t), \qquad \ddot{p}_r(t).
 $$
 
-Joint-space trajectories can be planned in the same way by replacing $x_r$ with
+Joint-space trajectories can be planned in the same way by replacing $p_r$ with
 $q_r$. That avoids inverse kinematics during tracking, but it does not directly
 shape the endpoint path.
 
@@ -76,7 +76,7 @@ reference before a joint torque controller can track it.
 At each sample time, solve
 
 $$
-x(q_r(t)) \approx x_r(t)
+p(q_r(t)) \approx p_r(t)
 $$
 
 with `compute_inverse_kinematics`. The previous solution is the best seed for the
@@ -84,7 +84,7 @@ next sample:
 
 $$
 q_r(t_{k+1}) =
-\operatorname{IK}\left(x_r(t_{k+1});\ q_0=q_r(t_k)\right).
+\operatorname{IK}\left(p_r(t_{k+1});\ q_0=q_r(t_k)\right).
 $$
 
 This gives a feasible position reference and naturally respects the joint limits
@@ -100,7 +100,7 @@ valid endpoint trajectory but a poor joint trajectory.
 Resolved motion rate control converts task velocity into joint velocity:
 
 $$
-\dot{q}_r = J^\#(q_r)\dot{x}_r,
+\dot{q}_r = J^\#(q_r)\dot{p}_r,
 $$
 
 where $J^\#$ is a pseudoinverse or damped pseudoinverse. For the endpoint task,
@@ -108,7 +108,7 @@ a stable default is
 
 $$
 \dot{q}_r =
-J^{T}\left(JJ^{T}+\mu I_2\right)^{-1}\dot{x}_r.
+J^{T}\left(JJ^{T}+\mu I_2\right)^{-1}\dot{p}_r.
 $$
 
 Then integrate $\dot{q}_r$ forward in time. This method can produce smoother
@@ -118,7 +118,7 @@ task-space feedback:
 
 $$
 \dot{q}_r =
-J^\#\left(\dot{x}_r + K_x(x_r - x(q_r))\right).
+J^\#\left(\dot{p}_r + K_{\mathrm{task}}(p_r - p(q_r))\right).
 $$
 
 This is velocity-level control, not torque control. In a dynamic simulation it is
@@ -210,8 +210,8 @@ In `skelarm`, computed torque can be implemented with `compute_mass_matrix` and
 
 The trajectory-tracking layer can be built incrementally:
 
-1. Add trajectory helpers that produce sampled $x_r$, $\dot{x}_r$, and optionally
-   $\ddot{x}_r$ for linear, cubic, quintic, and minimum-jerk schedules.
+1. Add trajectory helpers that produce sampled $p_r$, $\dot{p}_r$, and optionally
+   $\ddot{p}_r$ for linear, cubic, quintic, and minimum-jerk schedules.
 2. Add samplewise IK conversion using `compute_inverse_kinematics`.
 3. Add resolved motion rate conversion using damped pseudoinverse velocity
    conversion.
