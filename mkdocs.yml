@@ -65,7 +65,8 @@ nav:
       - Forward Dynamics: reference/04_forward_dynamics.md
       - Numerical Methods: reference/05_numerical_methods.md
       - Numerical Inverse Kinematics: reference/06_numerical_inverse_kinematics.md
-      - Reaching Control: reference/07_control.md
+      - Trajectory Tracking Control: reference/07_control.md
+      - Reaching Control: reference/08_reaching_control.md
   - API Reference:
       - Skeleton: api/skeleton.md
       - Kinematics: api/kinematics.md

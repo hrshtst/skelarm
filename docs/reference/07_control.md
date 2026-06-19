@@ -1,49 +1,50 @@
-# Reaching Control
+# Trajectory Tracking Control
 
-This chapter sketches the control layer that should sit above the kinematics and
-dynamics helpers in `skelarm`. The motivating task is planar reaching: a desired
-endpoint target is specified in task space as
+This chapter collects the control techniques needed to track planned robot-arm
+motion in `skelarm`. Unlike the following reaching chapter, it does not assume a
+specific goal such as moving the hand to a point. The reference may come from any
+task: drawing a curve, tracking a sampled demonstration, following a joint-space
+test trajectory, or reaching a target through a planned path.
+
+The usual pipeline is:
+
+1. Plan a desired task-space or joint-space trajectory.
+2. Convert task-space references into joint-space references if needed.
+3. Track the joint-space reference with a torque controller.
+
+The endpoint trajectory notation is
 
 $$
-x^\ast =
+x_r(t) =
 \begin{bmatrix}
-{}^d x \\
-{}^d y
+x_{r,x}(t) \\
+x_{r,y}(t)
 \end{bmatrix},
 \qquad
 x(q) =
 \begin{bmatrix}
 x(q) \\
 y(q)
-\end{bmatrix}.
+\end{bmatrix},
 $$
 
-The control problem is to move the endpoint from its current position to
-$x^\ast$ while respecting joint limits, avoiding excessive acceleration, and
-keeping the simulated motion numerically stable. There are two broad approaches:
+where $x_r(t)$ is the desired task-space reference and $x(q)$ is the endpoint
+position from forward kinematics. A reaching task is one important application:
+choose $x_r(t)$ to move from the initial endpoint $x_0$ to the target $x^\ast$,
+then track the resulting reference with the methods below.
 
-- **Plan then track.** Build a desired trajectory first, convert it into joint
-  space, then track it with a joint controller.
-- **Generate reaching by feedback.** Use endpoint feedback to shape the reference
-  online, so the motion adapts when the arm is disturbed.
+## 1. Trajectory planning
 
-Both approaches are useful in `skelarm`: planned trajectories are simple and
-repeatable, while feedback-generated reaching is closer to the human-like control
-ideas reviewed by Seto and Sugihara.
-
-## 1. Task-space trajectory planning
-
-A trajectory planner turns the fixed target $x^\ast$ into a time-indexed
-reference $x_r(t)$. For a reaching task, the simplest path is a straight segment
-from the initial endpoint $x_0$ to the target:
+A trajectory planner creates references that are smooth enough for the controller
+and dynamics. For a task-space path from $x_0$ to $x_1$, a common form is
 
 $$
-x_r(t) = x_0 + s(t)(x^\ast - x_0),
+x_r(t) = x_0 + s(t)(x_1 - x_0),
 \qquad
 s(0)=0,\quad s(T)=1.
 $$
 
-The scalar schedule $s(t)$ controls smoothness:
+The scalar schedule $s(t)$ controls endpoint velocity and acceleration:
 
 - **Linear interpolation** uses $s=t/T$. It is easy, but has velocity jumps at
   the start and end.
@@ -51,18 +52,24 @@ The scalar schedule $s(t)$ controls smoothness:
   velocity.
 - **Quintic smoothing** uses $s=10u^3-15u^4+6u^5$. It gives zero endpoint
   velocity and acceleration.
-- **Minimum-jerk style profiles** are a natural first choice for human-like
-  planned reaching, since human unconstrained reaching often shows roughly
-  straight hand paths and bell-shaped speed profiles.
+- **Minimum-jerk profiles** use the same quintic time law for rest-to-rest
+  point-to-point motion and are a useful baseline for smooth movements.
 
-The planned trajectory should provide at least $x_r(t)$ and $\dot{x}_r(t)$.
-Acceleration $\ddot{x}_r(t)$ is useful when converting the plan into a dynamic
-feedforward term, but is not required for basic position control.
+The planned reference should provide at least position and velocity. Acceleration
+is needed for inverse-dynamics feedforward and computed torque control:
 
-## 2. Converting task-space plans to joint-space references
+$$
+x_r(t), \qquad \dot{x}_r(t), \qquad \ddot{x}_r(t).
+$$
 
-`skelarm` actuates joints, so a task-space plan must become a joint reference
-before it can be tracked by a joint controller.
+Joint-space trajectories can be planned in the same way by replacing $x_r$ with
+$q_r$. That avoids inverse kinematics during tracking, but it does not directly
+shape the endpoint path.
+
+## 2. Task-space to joint-space conversion
+
+`skelarm` actuates joints. A task-space trajectory must therefore become a joint
+reference before a joint torque controller can track it.
 
 ### IK-based position conversion
 
@@ -84,10 +91,9 @@ This gives a feasible position reference and naturally respects the joint limits
 enforced by the IK solver. Joint velocities and accelerations can be estimated by
 finite differences if a tracking controller needs $\dot{q}_r$ and $\ddot{q}_r$.
 
-This method is straightforward but sample dependent. If the IK solver switches
-between redundant postures, the resulting joint trajectory can become jerky.
-Tests should therefore check both endpoint accuracy and joint-reference
-continuity.
+The implementation should check joint-reference continuity. Redundant arms can
+reach the same endpoint with multiple postures; abrupt posture switching gives a
+valid endpoint trajectory but a poor joint trajectory.
 
 ### Resolved motion rate conversion
 
@@ -105,21 +111,25 @@ $$
 J^{T}\left(JJ^{T}+\mu I_2\right)^{-1}\dot{x}_r.
 $$
 
-Then integrate $\dot{q}_r$ forward in time. This method produces smoother joint
-references than independent per-sample IK when the time step is small, but it can
-drift from the task path. A practical implementation should occasionally correct
-position error with IK or with a task-space feedback term:
+Then integrate $\dot{q}_r$ forward in time. This method can produce smoother
+joint references than independent per-sample IK when the time step is small, but
+it can drift from the desired task path. A practical implementation should add
+task-space feedback:
 
 $$
 \dot{q}_r =
 J^\#\left(\dot{x}_r + K_x(x_r - x(q_r))\right).
 $$
 
-## 3. Tracking planned joint trajectories
+This is velocity-level control, not torque control. In a dynamic simulation it is
+usually used to generate $q_r(t)$ and $\dot{q}_r(t)$ for a lower-level torque
+controller.
 
-After conversion, the controller receives $q_r(t)$ and often $\dot{q}_r(t)$,
-$\ddot{q}_r(t)$. The output is the joint torque vector $\tau$ passed to
-`compute_forward_dynamics` or `simulate_robot`.
+## 3. Joint-space trajectory tracking
+
+After conversion, the tracking controller receives $q_r(t)$ and often
+$\dot{q}_r(t)$, $\ddot{q}_r(t)$. The output is the joint torque vector $\tau$
+passed to `compute_forward_dynamics` or `simulate_robot`.
 
 ### Direct joint-space PD control
 
@@ -196,100 +206,9 @@ In `skelarm`, computed torque can be implemented with `compute_mass_matrix` and
     unless a non-zero `grav_vec` is explicitly supplied. Control formulas should
     be written against the same convention as `compute_forward_dynamics`.
 
-## 4. Human-like reaching by online reference shaping
+## 4. Implementation roadmap
 
-Planned trajectories explicitly depend on time. That is useful for repeatable
-motions, but it can be brittle when an external force or obstacle holds the
-endpoint while the planned reference keeps moving. Once the constraint is
-released, the accumulated position error can cause a large acceleration.
-
-Seto and Sugihara's reaching-control papers address this problem by combining a
-virtual spring-damper endpoint controller with an online shaped equilibrium point:
-
-- Seto and Sugihara (2009),
-  ["Online reference shaping with end-point position feedback for large
-  acceleration avoidance on manipulator
-  control"](https://doi.org/10.1109/IROS.2009.5353889).
-- Seto and Sugihara (2009),
-  ["Online nonlinear reference shaping with end-point position feedback for
-  human-like smooth reaching motion"](https://doi.org/10.1109/ICHR.2009.5379562).
-
-The endpoint spring-damper can be written in a `skelarm` sign convention as
-
-$$
-F_d = K_x(x_s-x) - D_x\dot{x},
-\qquad
-\tau = J^{T}F_d - C_q\dot{q},
-$$
-
-where:
-
-- $x_s$ is the shaped endpoint equilibrium;
-- $K_x$ is task-space stiffness;
-- $D_x$ is task-space damping;
-- $C_q$ is joint damping.
-
-The shaped equilibrium $x_s$ is not the final target itself. It is generated
-online from the target and current endpoint:
-
-$$
-x_s =
-\frac{1}{(T_1s+1)(T_2s+1)}
-\left(r x^\ast + (1-r)x\right),
-\qquad
-0 < r \le 1.
-$$
-
-The second-order lag filter makes the initial reference velocity and acceleration
-smooth. Feeding back the current endpoint $x$ keeps $x_s$ near the arm when the
-endpoint is constrained by an external contact, which reduces excessive pushing
-force and avoids a large acceleration after release.
-
-The parameter $r$ controls the tradeoff:
-
-- small $r$ places the shaped equilibrium near the current endpoint, reducing
-  acceleration and pushing force but slowing convergence;
-- large $r$ places it near the target, improving convergence but behaving more
-  like a conventional target spring.
-
-The later paper makes $r$ position dependent. Let
-
-$$
-d =
-\frac{\lVert x^\ast - x\rVert}
-{\lVert x^\ast - x_0\rVert},
-$$
-
-where $x_0$ is the endpoint position at the start of the reach. A smooth schedule
-used by Seto and Sugihara is
-
-$$
-r(d) =
-\frac{1}{2}\left(
-\sqrt{(d-1)^2+4a} - (d-1)
-\right),
-\qquad
-0 < a \ll 1.
-$$
-
-At the start, $d \approx 1$ and $r \approx \sqrt{a}$, so the controller starts
-gently. Near the target, $d \approx 0$ and $r$ approaches one, improving
-convergence. If an external force pushes the endpoint away and $d>1$, $r$
-decreases again, making the motion compliant. In implementation, clamp the
-computed value to the valid interval $0 < r \le 1$ before using it in the
-reference shaper.
-
-!!! note "Reference-shaper state"
-    The filter that produces $x_s$ is a dynamic state, not a pure function of the
-    current skeleton. With `simulate_robot` and adaptive `solve_ivp`, avoid
-    mutating this state inside a torque callback because the integrator may call
-    the callback at repeated or non-monotonic trial times. A robust implementation
-    should either augment the ODE state with the filter states or provide a
-    fixed-step simulation loop for stateful controllers.
-
-## 5. Implementation roadmap
-
-The control layer can be built incrementally.
+The trajectory-tracking layer can be built incrementally:
 
 1. Add trajectory helpers that produce sampled $x_r$, $\dot{x}_r$, and optionally
    $\ddot{x}_r$ for linear, cubic, quintic, and minimum-jerk schedules.
@@ -298,14 +217,10 @@ The control layer can be built incrementally.
    conversion.
 4. Add torque controller helpers for direct joint-space PD, inverse-dynamics
    feedforward plus PD, and computed torque control.
-5. Add online reference shaping as a stateful controller with fixed-$r$ shaping,
-   position-dependent $r(d)$ shaping, and endpoint spring-damper torque output.
-6. Add tests covering endpoint convergence, straight-path tracking,
-   computed-torque tracking quality, reduced initial acceleration under online
-   shaping, and reduced endpoint force when the endpoint is temporarily
-   constrained.
+5. Add tests covering endpoint path tracking, joint-reference continuity,
+   resolved-rate drift correction, and computed-torque tracking quality.
 
-The first implementation should prefer clear, inspectable controllers over a
-large abstraction. A plain callable `f(t, skeleton) -> tau` is enough for
-stateless PD and computed torque controllers. Stateful reference shaping should
-use an explicit controller state object or an augmented simulator state.
+A plain callable `f(t, skeleton) -> tau` is enough for stateless PD,
+feedforward, and computed torque controllers. Controllers with their own dynamic
+state need additional care; the reaching chapter discusses this issue for online
+reference shaping.
