@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 _TIMER_MS = 20  # GUI/render period in milliseconds
 _SUBSTEPS = 4  # physics steps per render tick (integration stability)
-_DEFAULT_STIFFNESS = 5.0  # N/m: external tip force = stiffness * (cursor - tip)
+_DEFAULT_STIFFNESS = 0.1  # N/m: external tip force = stiffness * (cursor - tip)
 _ARROW_COLOR = QColor(220, 0, 0)  # red
 _ARROW_HEAD_PX = 10.0
 
