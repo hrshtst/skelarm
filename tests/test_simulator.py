@@ -10,6 +10,7 @@ import pytest
 # Run Qt without a display so the test works headless (CI and local).
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from skelarm.dynamics import compute_kinetic_energy
 from skelarm.skeleton import LinkProp, Skeleton
 
 pytestmark = pytest.mark.integration
@@ -172,3 +173,36 @@ def test_reset_restores_initial_pose_velocity_and_clock(qapp) -> None:  # noqa: 
     assert sim.skeleton.q == pytest.approx(q0)
     assert sim.skeleton.dq == pytest.approx(np.zeros_like(sim.skeleton.dq))
     assert sim.time == pytest.approx(0.0)
+
+
+def test_friction_property_round_trips_and_defaults_to_zero(qapp) -> None:  # noqa: ANN001, ARG001
+    """Viscous friction is zero by default and is publicly readable/writable."""
+    sim = _simulator()
+    assert sim.friction == pytest.approx(0.0)
+    sim.friction = 0.4
+    assert sim.friction == pytest.approx(0.4)
+
+
+def test_viscous_friction_dissipates_kinetic_energy(qapp) -> None:  # noqa: ANN001, ARG001
+    """With positive friction and no external force, kinetic energy decays."""
+    sim = _simulator()
+    sim.skeleton.dq = np.array([1.0, -0.8])  # set the arm in motion
+    sim.friction = 0.5
+    energy_start = compute_kinetic_energy(sim.skeleton)
+    for _ in range(50):
+        sim.step()
+    assert compute_kinetic_energy(sim.skeleton) < energy_start
+
+
+def test_zero_friction_retains_more_energy_than_positive_friction(qapp) -> None:  # noqa: ANN001, ARG001
+    """Zero friction (the default) conserves energy where positive friction dissipates it."""
+
+    def final_energy(friction: float) -> float:
+        sim = _simulator()
+        sim.skeleton.dq = np.array([1.0, -0.8])
+        sim.friction = friction
+        for _ in range(50):
+            sim.step()
+        return compute_kinetic_energy(sim.skeleton)
+
+    assert final_energy(0.5) < final_energy(0.0)

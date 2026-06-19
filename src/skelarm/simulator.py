@@ -115,7 +115,7 @@ class SkelarmSimulator(QMainWindow):
     Joint limits act as hard stops.
     """
 
-    def __init__(self, skeleton: Skeleton, *, stiffness: float = _DEFAULT_STIFFNESS) -> None:
+    def __init__(self, skeleton: Skeleton, *, stiffness: float = _DEFAULT_STIFFNESS, friction: float = 0.0) -> None:
         """Build the simulator window for the given skeleton.
 
         Parameters
@@ -124,11 +124,16 @@ class SkelarmSimulator(QMainWindow):
             The arm to simulate (its initial ``q`` / ``dq`` are the start state).
         stiffness : float, optional
             Force per meter of tip-to-cursor distance for the interactive drag.
+        friction : float, optional
+            Joint viscous friction coefficient (N·m·s/rad). Each joint feels a
+            damping torque ``-friction * dq`` that dissipates energy; the default
+            of ``0`` leaves the arm frictionless.
         """
         super().__init__()
         self.skeleton = skeleton
         self.time = 0.0
         self._stiffness = stiffness
+        self._friction = friction
         self._lower = np.array([link.prop.qmin for link in skeleton.links[1:]], dtype=np.float64)
         self._upper = np.array([link.prop.qmax for link in skeleton.links[1:]], dtype=np.float64)
         self._initial_q = skeleton.q.copy()  # restored by reset()
@@ -201,6 +206,15 @@ class SkelarmSimulator(QMainWindow):
         self._stiffness = float(value)
 
     @property
+    def friction(self) -> float:
+        """Joint viscous friction coefficient (N·m·s/rad); ``0`` disables dissipation."""
+        return self._friction
+
+    @friction.setter
+    def friction(self, value: float) -> None:
+        self._friction = float(value)
+
+    @property
     def running(self) -> bool:
         """Whether the simulation loop is currently advancing."""
         return self._timer.isActive()
@@ -227,8 +241,10 @@ class SkelarmSimulator(QMainWindow):
         """Advance the dynamics by one render tick under zero-torque control + tip force."""
         dt = _TIMER_MS / 1000.0 / _SUBSTEPS
         for _ in range(_SUBSTEPS):
-            # Zero control torque; the only torque is from the external tip force.
+            # Zero control torque; torques come from the external tip force and
+            # joint viscous friction (-friction * dq), which dissipates energy.
             tau = compute_jacobian(self.skeleton).T @ self.canvas.external_force(self._stiffness)
+            tau = tau - self._friction * self.skeleton.dq
             ddq = compute_forward_dynamics(self.skeleton, tau)
             # Semi-implicit (symplectic) Euler keeps the undamped system bounded.
             dq = self.skeleton.dq + ddq * dt
