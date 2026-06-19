@@ -5,14 +5,15 @@ Load a robot arm from a TOML config given on the command line and simulate it in
 real time under zero-torque control. Press and drag the left mouse button in the
 canvas to apply a spring-like external force at the tip (drawn as a red arrow).
 On top of the base :class:`~skelarm.SkelarmSimulator` this tool adds pause/resume,
-single-step, reset, a live stiffness spin box, a status panel (kinetic energy and
-tip position/speed), and an optional tip-trajectory plot shown when the GUI closes.
+single-step, reset, a live viscous-friction spin box (joint damping that dissipates
+energy), a status panel (kinetic energy and tip position/speed), and an optional
+tip-trajectory plot shown when the GUI closes.
 
 Usage::
 
     uv run python tools/dynamics_simulator.py path/to/robot.toml
-    uv run python tools/dynamics_simulator.py robot.toml --stiffness 0.2 --show-com
-    uv run python tools/dynamics_simulator.py robot.toml --pose 20,45,60,30
+    uv run python tools/dynamics_simulator.py robot.toml --friction 0.2 --show-com
+    uv run python tools/dynamics_simulator.py robot.toml --stiffness 0.2 --pose 20,45,60,30
     uv run python tools/dynamics_simulator.py robot.toml --initial pose.toml --no-plot
 """
 
@@ -36,23 +37,23 @@ from skelarm import (
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-_STIFFNESS_MAX = 100.0  # upper bound for the live stiffness spin box (N/m)
+_FRICTION_MAX = 10.0  # upper bound for the live viscous-friction spin box (N·m·s/rad)
 
 
 class DynamicsSimulator(SkelarmSimulator):
     """A SkelarmSimulator with playback controls, a status panel, and trajectory recording.
 
-    Adds pause/resume, single-step (while paused), reset, a live stiffness spin
-    box, a readout of kinetic energy and tip position/speed, and recording of the
-    tip trajectory (see :attr:`trajectory`) for plotting after the GUI closes.
+    Adds pause/resume, single-step (while paused), reset, a live viscous-friction
+    spin box, a readout of kinetic energy and tip position/speed, and recording of
+    the tip trajectory (see :attr:`trajectory`) for plotting after the GUI closes.
     """
 
-    def __init__(self, skeleton: Skeleton, *, stiffness: float | None = None) -> None:
+    def __init__(self, skeleton: Skeleton, *, stiffness: float | None = None, friction: float = 0.0) -> None:
         """Build the simulator controls on top of the base simulator."""
         if stiffness is None:
-            super().__init__(skeleton)
+            super().__init__(skeleton, friction=friction)
         else:
-            super().__init__(skeleton, stiffness=stiffness)
+            super().__init__(skeleton, stiffness=stiffness, friction=friction)
 
         self._trajectory_x: list[float] = []
         self._trajectory_y: list[float] = []
@@ -70,14 +71,14 @@ class DynamicsSimulator(SkelarmSimulator):
         self.reset_button.clicked.connect(self.reset)
         self.add_control(self.reset_button)
 
-        self.add_control(QLabel("Stiffness (N/m)"))
-        self.stiffness_spin = QDoubleSpinBox()
-        self.stiffness_spin.setDecimals(3)
-        self.stiffness_spin.setRange(0.0, _STIFFNESS_MAX)
-        self.stiffness_spin.setSingleStep(0.05)
-        self.stiffness_spin.setValue(self.stiffness)
-        self.stiffness_spin.valueChanged.connect(self._on_stiffness_changed)
-        self.add_control(self.stiffness_spin)
+        self.add_control(QLabel("Viscous friction (N·m·s/rad)"))
+        self.friction_spin = QDoubleSpinBox()
+        self.friction_spin.setDecimals(3)
+        self.friction_spin.setRange(0.0, _FRICTION_MAX)
+        self.friction_spin.setSingleStep(0.01)
+        self.friction_spin.setValue(self.friction)
+        self.friction_spin.valueChanged.connect(self._on_friction_changed)
+        self.add_control(self.friction_spin)
 
         self.status_label = QLabel()
         self.status_label.setWordWrap(True)
@@ -145,9 +146,9 @@ class DynamicsSimulator(SkelarmSimulator):
         if not self.running:
             self.step()
 
-    def _on_stiffness_changed(self, value: float) -> None:
-        """Apply the live stiffness value to the simulation."""
-        self.stiffness = value
+    def _on_friction_changed(self, value: float) -> None:
+        """Apply the live viscous friction coefficient to the simulation."""
+        self.friction = value
 
     def _update_status(self) -> None:
         """Refresh the status label with kinetic energy and tip position/speed."""
@@ -166,6 +167,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("config", type=Path, help="path to the robot TOML config to load")
     parser.add_argument(
         "--stiffness", type=float, default=None, help="drag stiffness in N/m (default: library default)"
+    )
+    parser.add_argument(
+        "--friction",
+        type=float,
+        default=0.0,
+        help="joint viscous friction coefficient in N·m·s/rad (default: 0, frictionless)",
     )
     parser.add_argument("--show-com", action="store_true", help="overlay each link's center of mass at startup")
     parser.add_argument("--initial", type=Path, default=None, help="TOML file with an [initial] table to apply")
@@ -232,7 +239,7 @@ def main() -> None:
         parser.error(str(exc))
 
     app = QApplication(sys.argv)
-    simulator = DynamicsSimulator(skeleton, stiffness=args.stiffness)
+    simulator = DynamicsSimulator(skeleton, stiffness=args.stiffness, friction=args.friction)
     if args.show_com:
         simulator.com_checkbox.setChecked(True)
 

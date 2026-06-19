@@ -27,13 +27,13 @@ def qapp():  # noqa: ANN201
     return QApplication.instance() or QApplication([])
 
 
-def _simulator(stiffness: float | None = None) -> DynamicsSimulator:
+def _simulator(stiffness: float | None = None, friction: float = 0.0) -> DynamicsSimulator:
     """Build a two-link dynamics simulator at rest."""
     link_props = [LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi) for _ in range(2)]
     skeleton = Skeleton(link_props)
     skeleton.q = np.array([0.3, 0.3])
     skeleton.dq = np.zeros(2)
-    return DynamicsSimulator(skeleton, stiffness=stiffness)
+    return DynamicsSimulator(skeleton, stiffness=stiffness, friction=friction)
 
 
 def test_parser_requires_config() -> None:
@@ -42,12 +42,21 @@ def test_parser_requires_config() -> None:
         build_parser().parse_args([])
 
 
-def test_parser_parses_stiffness_and_flags() -> None:
+def test_parser_parses_stiffness_friction_and_flags() -> None:
     """The dynamics-specific options are parsed."""
-    args = build_parser().parse_args(["robot.toml", "--stiffness", "0.25", "--show-com", "--no-plot"])
+    args = build_parser().parse_args(
+        ["robot.toml", "--stiffness", "0.25", "--friction", "0.3", "--show-com", "--no-plot"]
+    )
     assert args.stiffness == pytest.approx(0.25)
+    assert args.friction == pytest.approx(0.3)
     assert args.show_com is True
     assert args.no_plot is True
+
+
+def test_friction_defaults_to_zero() -> None:
+    """Friction is frictionless by default."""
+    args = build_parser().parse_args(["robot.toml"])
+    assert args.friction == pytest.approx(0.0)
 
 
 def test_runs_as_a_standalone_script() -> None:
@@ -69,17 +78,24 @@ def test_runs_as_a_standalone_script() -> None:
 
 
 def test_stiffness_option_overrides_default(qapp) -> None:  # noqa: ANN001, ARG001
-    """An explicit --stiffness flows through to the simulator and its spin box."""
+    """An explicit --stiffness flows through to the simulator."""
     sim = _simulator(stiffness=0.5)
     assert sim.stiffness == pytest.approx(0.5)
-    assert sim.stiffness_spin.value() == pytest.approx(0.5)
 
 
-def test_stiffness_spin_box_updates_stiffness(qapp) -> None:  # noqa: ANN001, ARG001
-    """Changing the spin box live-updates the simulation stiffness."""
+def test_friction_option_seeds_simulator_and_spin_box(qapp) -> None:  # noqa: ANN001, ARG001
+    """An explicit --friction flows through to the simulator and its spin box."""
+    sim = _simulator(friction=0.3)
+    assert sim.friction == pytest.approx(0.3)
+    assert sim.friction_spin.value() == pytest.approx(0.3)
+
+
+def test_friction_spin_box_updates_friction(qapp) -> None:  # noqa: ANN001, ARG001
+    """Changing the spin box live-updates the joint viscous friction."""
     sim = _simulator()
-    sim.stiffness_spin.setValue(2.0)
-    assert sim.stiffness == pytest.approx(2.0)
+    assert sim.friction == pytest.approx(0.0)  # frictionless by default
+    sim.friction_spin.setValue(0.5)
+    assert sim.friction == pytest.approx(0.5)
 
 
 def test_trajectory_is_recorded_on_each_step(qapp) -> None:  # noqa: ANN001, ARG001
