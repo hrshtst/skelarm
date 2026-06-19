@@ -24,14 +24,14 @@ if TYPE_CHECKING:
     from skelarm.skeleton import Skeleton
 
 _MARGIN_PX = 20.0  # Empty border kept between the arm and the widget edge.
-_DEFAULT_SCALE = 100.0  # Pixels per metre, used before the reach/size are known.
+_DEFAULT_SCALE = 100.0  # Pixels per meter, used before the reach/size are known.
 
 
 def _fit_scale(reach: float, width: int, height: int) -> float:
-    """Compute a pixels-per-metre scale that fits an arm of ``reach`` in the widget.
+    """Compute a pixels-per-meter scale that fits an arm of ``reach`` in the widget.
 
-    The arm is drawn from the centre of the widget and can extend up to ``reach``
-    metres in any direction, so the scale is set from the smaller half-dimension
+    The arm is drawn from the center of the widget and can extend up to ``reach``
+    meters in any direction, so the scale is set from the smaller half-dimension
     (minus a margin) to guarantee the fully-extended arm stays visible.
 
     Parameters
@@ -44,7 +44,7 @@ def _fit_scale(reach: float, width: int, height: int) -> float:
     Returns
     -------
     float
-        Scale in pixels per metre, falling back to :data:`_DEFAULT_SCALE` when the
+        Scale in pixels per meter, falling back to :data:`_DEFAULT_SCALE` when the
         reach or widget size is non-positive.
     """
     half = min(width, height) / 2 - _MARGIN_PX
@@ -74,7 +74,7 @@ class SkelarmCanvas(QWidget):
         """Initialize the canvas."""
         super().__init__(parent)
         self.skeleton = skeleton
-        self.scale_factor = _DEFAULT_SCALE  # Pixels per metre; re-fit on each paint.
+        self.scale_factor = _DEFAULT_SCALE  # Pixels per meter; re-fit on each paint.
         self.show_com = False  # whether to overlay each link's center of mass
         self.ik_method = "lm_sugihara"  # solver method used by solve_to_world
         self.last_ik_result: IKResult | None = None  # outcome of the latest IK solve
@@ -159,7 +159,7 @@ class SkelarmCanvas(QWidget):
         self.update()
 
     def _world_from_screen(self, screen_pos: QPointF) -> tuple[float, float]:
-        """Convert a widget pixel position to world coordinates (metres)."""
+        """Convert a widget pixel position to world coordinates (meters)."""
         center_x = self.width() / 2
         center_y = self.height() / 2
         # Inverse of _world_to_screen (screen Y is down).
@@ -176,7 +176,7 @@ class SkelarmCanvas(QWidget):
         Parameters
         ----------
         x, y : float
-            Target endpoint position in world coordinates (metres).
+            Target endpoint position in world coordinates (meters).
         """
         self.last_ik_result = compute_inverse_kinematics(self.skeleton, (x, y), method=self.ik_method)
         self._ik_target = (x, y)

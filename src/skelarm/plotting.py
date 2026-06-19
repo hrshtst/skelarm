@@ -104,7 +104,7 @@ def draw_skeleton(
         ax.plot(com_x, com_y, linestyle="none", marker="o", markersize=_COM_MARKER_SIZE, color=com_color, zorder=3)
 
     # Fit the view to the data with a margin and equal aspect, rather than forcing
-    # a symmetric box centred on the origin. Autoscaling stays enabled so any other
+    # a symmetric box centered on the origin. Autoscaling stays enabled so any other
     # artists (e.g. an overlaid trajectory) are included instead of clipped, and a
     # zero-extent arm still gets a valid, non-degenerate range.
     ax.set_aspect("equal", adjustable="box")
