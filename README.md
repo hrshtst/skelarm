@@ -108,6 +108,16 @@ uv run python tools/dynamics_simulator.py examples/four_dof_robot.toml
 
 Like the kinematics inspector it accepts `--show-com`, `--pose`, and `--initial`, plus `--stiffness <N/m>`, `--friction <N·m·s/rad>`, and `--no-plot`.
 
+### Replaying a Recorded Run
+
+The dynamics simulator records the run (joint angles, velocities, torque, and the external tip force) and can export it as a `*.sklog.npz` state log (recording is on by default; use the **Export…** button). Replay it later — the motion is reconstructed and animated from the log *without* re-running the dynamics — and plot any channel versus time for analysis:
+
+```bash
+uv run python tools/replay.py run.sklog.npz
+```
+
+Scrub the timeline, play/pause at a chosen speed (`--speed`), toggle the centers of mass (`--show-com`), and open per-channel plots with the **Plot channels…** button. The log embeds the robot geometry, so the file replays on its own.
+
 ### Interactive Kinematics (FK & IK)
 
 Launch the PyQt6 GUI to pose a robot arm with the joint sliders (forward kinematics) or by clicking/dragging in the canvas to move the tip (inverse kinematics):
