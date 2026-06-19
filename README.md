@@ -94,6 +94,12 @@ Run a dynamic simulation of a 4-DOF robot loaded from a TOML file:
 uv run python examples/simulate_four_dof.py
 ```
 
+For an interactive version, launch the real-time GUI simulator and press/drag in the canvas to apply an external force at the tip (shown as a red arrow):
+
+```bash
+uv run python examples/simulate_four_dof_gui.py
+```
+
 ### Interactive Kinematics (FK & IK)
 
 Launch the PyQt6 GUI to pose a robot arm with the joint sliders (forward kinematics) or by clicking/dragging in the canvas to move the tip (inverse kinematics):
