@@ -22,6 +22,7 @@ from .kinematics import (
     compute_jacobian,
 )
 from .plotting import draw_skeleton, plot_trajectory
+from .recording import StateLog
 from .simulator import SimulatorCanvas, SkelarmSimulator
 from .skeleton import Link, LinkProp, Skeleton
 
@@ -34,6 +35,7 @@ __all__ = [
     "SkelarmSimulator",
     "SkelarmViewer",
     "Skeleton",
+    "StateLog",
     "compute_coriolis_basis",
     "compute_coriolis_gravity_vector",
     "compute_endpoint_acceleration",
