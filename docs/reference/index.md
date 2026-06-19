@@ -32,3 +32,7 @@ total; in code, `links[0]` is the base and `links[1:]` are the movable joints.
 6.  [Numerical Inverse Kinematics](06_numerical_inverse_kinematics.md)
     -   Newton-Raphson, pseudoinverse, SR inverse, and Levenberg-Marquardt IK.
     -   Sugihara-style residual-based damping for robust numerical IK.
+7.  [Reaching Control](07_control.md)
+    -   Task-space trajectory planning and joint-space tracking.
+    -   PD, inverse-dynamics feedforward, computed torque, and online reference
+        shaping for human-like reaching.
