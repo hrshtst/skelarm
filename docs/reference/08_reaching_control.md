@@ -219,7 +219,76 @@ before using it in the reference shaper. The formula can slightly exceed one
 near $d=0$ for nonzero $a$, while `skelarm` should keep the interpolation
 semantics explicit.
 
-## 6. Implementation notes for `skelarm`
+## 6. Adaptation to target changes and external force
+
+Seto and Sugihara later extended the online reference-shaping controller for
+cases where the target changes during motion or an external force moves the
+endpoint far from the current reach:
+
+- Seto and Sugihara (2010),
+  ["Motion Control with Slow and Rapid Adaptation for Smooth Reaching Movement
+  under External Force Disturbance"](https://doi.org/10.1109/IROS.2010.5652721).
+
+The key idea is to adapt the apparent initial endpoint used by the online
+parameter tuning. Let $p_a$ denote this apparent initial endpoint, $p^\ast$ the
+target, and $p$ the current endpoint. A simple tuning law from the paper is
+
+$$
+p_s = r p^\ast + (1-r)p,
+\qquad
+r =
+1 - (1-\epsilon)
+\frac{\lVert p^\ast-p\rVert}{\lVert p^\ast-p_a\rVert},
+\qquad
+0 < \epsilon \ll 1.
+$$
+
+When $p=p_a$, the shaping ratio is $r=\epsilon$, so the spring equilibrium is
+only slightly shifted toward the target and the initial endpoint acceleration is
+small. As $p$ approaches $p^\ast$, $r$ increases toward one and the controller
+recovers target convergence. In implementation, clamp $r$ to $[\epsilon,1]$ and
+guard against a small denominator when $p_a$ is already very close to $p^\ast$.
+
+The 2010 paper proposes two adaptations for $p_a$:
+
+- **Slow adaptation** moves $p_a$ toward the current endpoint with a first-order
+  lag,
+
+$$
+\dot{p}_a = \frac{p-p_a}{T}.
+$$
+
+This moderates the change of $r$ and allows the controller to restart a smooth
+reach when the target is changed during motion. Without this adaptation, $p_a$
+remains tied to the original movement onset and the shaping ratio may no longer
+increase smoothly toward the new target.
+
+- **Rapid adaptation** resets $p_a$ when the endpoint has been displaced outside
+  the current reaching region:
+
+$$
+p_a \leftarrow p
+\quad\text{if}\quad
+\frac{\lVert p^\ast-p\rVert}{\lVert p^\ast-p_a\rVert} > 1.
+$$
+
+This makes $r$ return to $\epsilon$ at the displaced endpoint, reducing the
+virtual spring force so the arm can behave compliantly under a large external
+disturbance. After the disturbance is removed, $r$ increases again from the new
+position and the reach resumes smoothly. For a backdrivable manipulator this can
+be done from endpoint position feedback alone; a non-backdrivable robot may need
+force sensing or a separate admittance layer to realize the same compliant
+behavior.
+
+For `skelarm`, this is a useful extension of online reference shaping rather
+than a replacement for the base spring-damper controller. A first implementation
+can store $p_a$, update it once per fixed control step, apply the rapid reset
+before computing $r$, then compute $p_s$ and the endpoint force as in the
+previous sections. Because both slow and rapid adaptation mutate controller
+state, they should use a fixed-step controller loop or be included explicitly in
+an augmented ODE state.
+
+## 7. Implementation notes for `skelarm`
 
 The controller can be implemented as an endpoint-force controller:
 
@@ -248,6 +317,10 @@ Suggested first tests:
   in an undisturbed simulation;
 - position-dependent $r(d)$ converges faster than a conservative fixed small
   $r$ while keeping the initial acceleration small;
+- slow adaptation restarts a smooth reach after the target is changed during
+  motion;
+- rapid adaptation resets the apparent initial endpoint after a large endpoint
+  displacement and avoids a large post-release velocity spike;
 - when the endpoint is temporarily constrained, online shaping produces smaller
   stored endpoint force than a direct target spring;
 - after release from a temporary constraint, the endpoint resumes toward the
