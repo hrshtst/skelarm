@@ -52,8 +52,40 @@ The scalar schedule $s(t)$ controls endpoint velocity and acceleration:
   velocity.
 - **Quintic smoothing** uses $s=10u^3-15u^4+6u^5$. It gives zero endpoint
   velocity and acceleration.
-- **Minimum-jerk profiles** use the same quintic time law for rest-to-rest
-  point-to-point motion and are a useful baseline for smooth movements.
+- **Minimum-jerk profiles** minimize the integral of squared jerk. For the
+  rest-to-rest point-to-point problem above, the solution is mathematically the
+  same quintic time law as quintic smoothing:
+
+$$
+\min_{p_r(t)}
+\int_0^T \left\|\dddot{p}_r(t)\right\|^2\,dt
+$$
+
+subject to
+
+$$
+p_r(0)=p_0,\quad p_r(T)=p_1,\quad
+\dot{p}_r(0)=\dot{p}_r(T)=0,\quad
+\ddot{p}_r(0)=\ddot{p}_r(T)=0.
+$$
+
+With these boundary conditions,
+
+$$
+p_r(t)=p_0+\left(10u^3-15u^4+6u^5\right)(p_1-p_0),
+\qquad u=t/T.
+$$
+
+In the current `skelarm` trajectory-planning problem, therefore, a `quintic`
+schedule and a rest-to-rest `minimum_jerk` schedule can share the same
+implementation. They become distinct when the problem statement changes: for
+example, if endpoint velocity or acceleration is non-zero, if multiple via-points
+or multiple movement segments are optimized together, if segment durations are
+also optimized, or if the objective includes task constraints such as obstacle
+avoidance or effort penalties. In those cases, quintic interpolation is a local
+polynomial construction, while minimum jerk is an optimization problem whose
+solution may require solving for polynomial coefficients or a larger trajectory
+optimization.
 
 The planned reference should provide at least position and velocity. Acceleration
 is needed for inverse-dynamics feedforward and computed torque control:
