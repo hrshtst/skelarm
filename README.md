@@ -100,6 +100,14 @@ For an interactive version, launch the real-time GUI simulator and press/drag in
 uv run python examples/simulate_four_dof_gui.py
 ```
 
+To simulate an arbitrary robot, use the generalized tool in `tools/`, which adds pause/resume, single-step, reset, a live stiffness control, a status panel (kinetic energy and tip position/speed), and an optional tip-trajectory plot when the window closes:
+
+```bash
+uv run python tools/dynamics_simulator.py examples/four_dof_robot.toml
+```
+
+Like the kinematics inspector it accepts `--show-com`, `--pose`, and `--initial`, plus `--stiffness <N/m>` and `--no-plot`.
+
 ### Interactive Kinematics (FK & IK)
 
 Launch the PyQt6 GUI to pose a robot arm with the joint sliders (forward kinematics) or by clicking/dragging in the canvas to move the tip (inverse kinematics):
