@@ -196,3 +196,54 @@ def test_status_label_reports_energy_and_tip(qapp) -> None:  # noqa: ANN001, ARG
     for _ in range(10):
         sim.step()
     assert sim.status_label.text() != text0  # the readout changed as the arm moved
+
+
+def test_records_state_by_default(qapp) -> None:  # noqa: ANN001, ARG001
+    """The tool records states from the start; stepping appends frames."""
+    sim = _simulator()
+    assert sim.is_recording is True
+    assert sim.state_log is not None
+    n0 = len(sim.state_log)
+    for _ in range(3):
+        sim.step()
+    assert len(sim.state_log) == n0 + 3
+
+
+def test_record_checkbox_toggles_recording(qapp) -> None:  # noqa: ANN001, ARG001
+    """Unchecking the record box stops capture; rechecking restarts it."""
+    sim = _simulator()
+    sim.record_checkbox.setChecked(False)
+    assert sim.is_recording is False
+    sim.record_checkbox.setChecked(True)
+    assert sim.is_recording is True
+
+
+def test_export_writes_loadable_npz(qapp, tmp_path) -> None:  # noqa: ANN001, ARG001
+    """Export produces a .sklog.npz that loads back with the robot and channels."""
+    from skelarm import StateLog
+
+    sim = _simulator()
+    for _ in range(4):
+        sim.step()
+    path = tmp_path / "run.sklog.npz"
+    sim.export(path)
+
+    assert sim.state_log is not None
+    loaded = StateLog.load(path)
+    assert loaded.producer == "skelarm_simulator"
+    assert len(loaded) == len(sim.state_log)
+    assert set(loaded.channel_names) == {"q", "dq", "tau", "ext_force"}
+    assert loaded.build_skeleton().num_joints == sim.skeleton.num_joints
+
+
+def test_export_toml_round_trips(qapp, tmp_path) -> None:  # noqa: ANN001, ARG001
+    """Export to a .toml path writes a parseable TOML document."""
+    import tomllib
+
+    sim = _simulator()
+    sim.step()
+    path = tmp_path / "run.toml"
+    sim.export(path)
+    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    assert data["producer"] == "skelarm_simulator"
+    assert "q" in data["data"]

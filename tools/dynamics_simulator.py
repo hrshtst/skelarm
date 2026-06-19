@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
-from PyQt6.QtWidgets import QApplication, QDoubleSpinBox, QLabel, QPushButton
+from PyQt6.QtWidgets import QApplication, QCheckBox, QDoubleSpinBox, QFileDialog, QLabel, QPushButton
 
 from skelarm import (
     SkelarmSimulator,
@@ -80,10 +80,20 @@ class DynamicsSimulator(SkelarmSimulator):
         self.friction_spin.valueChanged.connect(self._on_friction_changed)
         self.add_control(self.friction_spin)
 
+        self.record_checkbox = QCheckBox("Record states")
+        self.record_checkbox.setChecked(True)
+        self.record_checkbox.toggled.connect(self._on_record_toggled)
+        self.add_control(self.record_checkbox)
+
+        self.export_button = QPushButton("Export…")
+        self.export_button.clicked.connect(self._on_export)
+        self.add_control(self.export_button)
+
         self.status_label = QLabel()
         self.status_label.setWordWrap(True)
         self.add_control(self.status_label)
 
+        self.start_recording()  # record by default; the checkbox toggles it
         self._record_point()  # seed the trajectory with the starting tip position
         self._update_status()
 
@@ -105,6 +115,39 @@ class DynamicsSimulator(SkelarmSimulator):
         self._trajectory_y.clear()
         self._record_point()
         self._update_status()
+
+    def export(self, path: str | Path) -> None:
+        """Write the recorded state log to ``path`` (``.toml`` exports TOML, else ``.npz``).
+
+        Raises
+        ------
+        RuntimeError
+            If recording was never started, so there is nothing to export.
+        """
+        if self.state_log is None:
+            msg = "nothing to export: recording has not been started"
+            raise RuntimeError(msg)
+        if Path(path).suffix == ".toml":
+            self.state_log.export_toml(path)
+        else:
+            self.state_log.save(path)
+
+    def _on_record_toggled(self, checked: bool) -> None:  # noqa: FBT001
+        """Start or stop appending frames to the state log."""
+        if checked:
+            self.start_recording()
+        else:
+            self.stop_recording()
+
+    def _on_export(self) -> None:
+        """Prompt for a path and export the recorded state log."""
+        if self.state_log is None or len(self.state_log) == 0:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export state log", "run.sklog.npz", "State log (*.npz);;TOML (*.toml)"
+        )
+        if path:
+            self.export(path)
 
     def show_trajectory_plot(self) -> None:
         """Plot the final pose and the recorded tip trajectory with Matplotlib.
