@@ -1,0 +1,3 @@
+# Scenario API
+
+::: skelarm.scenario

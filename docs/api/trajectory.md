@@ -1,0 +1,3 @@
+# Trajectory API
+
+::: skelarm.trajectory

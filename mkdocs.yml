@@ -73,5 +73,12 @@ nav:
       - Skeleton: api/skeleton.md
       - Kinematics: api/kinematics.md
       - Dynamics: api/dynamics.md
+      - Trajectory: api/trajectory.md
+      - Control: api/control.md
+      - Reaching: api/reaching.md
+      - MPC: api/mpc.md
+      - Scenario: api/scenario.md
+      - Recording: api/recording.md
       - Plotting: api/plotting.md
       - Canvas: api/canvas.md
+      - Simulator: api/simulator.md

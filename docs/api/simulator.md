@@ -1,0 +1,3 @@
+# Simulator API
+
+::: skelarm.simulator
