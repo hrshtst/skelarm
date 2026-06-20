@@ -118,6 +118,17 @@ uv run python tools/replay.py run.sklog.npz
 
 Scrub the timeline, play/pause at a chosen speed (`--speed`), toggle the centers of mass (`--show-com`), and open per-channel plots with the **Plot channels…** button. The log embeds the robot geometry, so the file replays on its own.
 
+### Reaching & Trajectory Control
+
+A combined scenario file describes the robot (`[skeleton]` / `[initial]`), the reaching goal (`[task]`), and the controller (`[controller]`) in one place. Run it to simulate the reach and export a `*.sklog.npz` for replay:
+
+```bash
+uv run python tools/reach.py examples/reach.toml
+uv run python tools/replay.py reach.sklog.npz
+```
+
+The `[controller].type` selects the control law — trajectory tracking (`computed_torque`, `inverse_dynamics_pd`, `joint_pd`), human-like reaching (`virtual_spring_damper`, `time_varying_stiffness`, `online_shaping`, `position_dependent_shaping`, `adaptive_shaping`), or `mpc` — and the remaining keys are its gains. The control library is also usable directly via `skelarm.load_scenario` and `skelarm.simulate_controlled`. See the [Trajectory Tracking](docs/reference/07_control.md) and [Reaching Control](docs/reference/08_reaching_control.md) references for the theory.
+
 ### Interactive Kinematics (FK & IK)
 
 Launch the PyQt6 GUI to pose a robot arm with the joint sliders (forward kinematics) or by clicking/dragging in the canvas to move the tip (inverse kinematics):
