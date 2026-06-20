@@ -86,6 +86,9 @@ from skelarm import Skeleton
 skeleton = Skeleton.from_toml("path/to/robot.toml")
 ```
 
+For the full per-link key reference and the `[initial]` schema, see the
+[Robot Configuration](guides/robot_configuration.md) guide.
+
 ### 4-DOF Simulation Example
 
 Run a dynamic simulation of a 4-DOF robot loaded from a TOML file:

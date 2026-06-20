@@ -2,9 +2,9 @@
 
 A **scenario** file describes a complete controlled run in one TOML document: the
 robot, its start state, the reaching task, and the controller that drives it. It
-extends the per-section schema used by [`Skeleton.from_toml`](../api/skeleton.md)
-with `[task]` and `[controller]` sections, and is loaded by
-`skelarm.load_scenario`.
+adds `[task]` and `[controller]` sections on top of the
+[Robot Configuration](robot_configuration.md) (`[skeleton]` / `[initial]`), and is
+loaded by `skelarm.load_scenario`.
 
 ```bash
 uv run python tools/reach.py examples/reach.toml   # simulate the reach, export a log

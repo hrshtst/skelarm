@@ -68,6 +68,7 @@ nav:
       - Trajectory Tracking Control: reference/07_control.md
       - Reaching Control: reference/08_reaching_control.md
   - Guides:
+      - Robot Configuration: guides/robot_configuration.md
       - Control Configuration: guides/control_configuration.md
   - API Reference:
       - Skeleton: api/skeleton.md
