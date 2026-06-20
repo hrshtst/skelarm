@@ -127,7 +127,7 @@ uv run python tools/reach.py examples/reach.toml
 uv run python tools/replay.py reach.sklog.npz
 ```
 
-The `[controller].type` selects the control law — trajectory tracking (`computed_torque`, `inverse_dynamics_pd`, `joint_pd`), human-like reaching (`virtual_spring_damper`, `time_varying_stiffness`, `online_shaping`, `position_dependent_shaping`, `adaptive_shaping`), or `mpc` — and the remaining keys are its gains. The control library is also usable directly via `skelarm.load_scenario` and `skelarm.simulate_controlled`. See the [Trajectory Tracking](reference/07_control.md) and [Reaching Control](reference/08_reaching_control.md) references for the theory.
+The `[controller].type` selects the control law — trajectory tracking (`computed_torque`, `inverse_dynamics_pd`, `joint_pd`), human-like reaching (`virtual_spring_damper`, `time_varying_stiffness`, `online_shaping`, `position_dependent_shaping`, `adaptive_shaping`), or `mpc` — and the remaining keys are its gains. The control library is also usable directly via `skelarm.load_scenario` and `skelarm.simulate_controlled`. See the [Control Configuration](guides/control_configuration.md) guide for the full scenario schema and per-controller config keys, and the [Trajectory Tracking](reference/07_control.md) and [Reaching Control](reference/08_reaching_control.md) references for the theory.
 
 ### Interactive Kinematics (FK & IK)
 

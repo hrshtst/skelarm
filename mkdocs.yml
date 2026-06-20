@@ -67,6 +67,8 @@ nav:
       - Numerical Inverse Kinematics: reference/06_numerical_inverse_kinematics.md
       - Trajectory Tracking Control: reference/07_control.md
       - Reaching Control: reference/08_reaching_control.md
+  - Guides:
+      - Control Configuration: guides/control_configuration.md
   - API Reference:
       - Skeleton: api/skeleton.md
       - Kinematics: api/kinematics.md
