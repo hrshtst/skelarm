@@ -33,6 +33,14 @@ from .kinematics import (
     compute_jacobian,
 )
 from .plotting import draw_skeleton, plot_trajectory
+from .reaching import (
+    EndpointController,
+    OnlineReferenceShaping,
+    PositionDependentShaping,
+    TimeVaryingStiffness,
+    VirtualSpringDamper,
+    shaping_ratio,
+)
 from .recording import StateLog
 from .simulator import SimulatorCanvas, SkelarmSimulator
 from .skeleton import Link, LinkProp, Skeleton
@@ -41,11 +49,14 @@ from .trajectory import Trajectory, evaluate_schedule
 __all__ = [
     "ComputedTorque",
     "Controller",
+    "EndpointController",
     "IKResult",
     "InverseDynamicsFeedforwardPD",
     "JointPD",
     "Link",
     "LinkProp",
+    "OnlineReferenceShaping",
+    "PositionDependentShaping",
     "SampledJointReference",
     "SimulatorCanvas",
     "SkelarmCanvas",
@@ -53,8 +64,10 @@ __all__ = [
     "SkelarmViewer",
     "Skeleton",
     "StateLog",
+    "TimeVaryingStiffness",
     "TrackingController",
     "Trajectory",
+    "VirtualSpringDamper",
     "compute_coriolis_basis",
     "compute_coriolis_gravity_vector",
     "compute_endpoint_acceleration",
@@ -73,6 +86,7 @@ __all__ = [
     "ik_joint_reference",
     "plot_trajectory",
     "resolved_rate_joint_reference",
+    "shaping_ratio",
     "simulate_controlled",
     "simulate_robot",
 ]
