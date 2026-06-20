@@ -54,6 +54,31 @@ def shaping_ratio(d: float, a: float) -> float:
     return float(np.clip(r, 0.0, 1.0))
 
 
+def adaptive_shaping_ratio(remaining: float, span: float, epsilon: float) -> float:
+    """Adaptive shaping ratio ``r`` from an apparent initial endpoint (IROS 2010).
+
+    Parameters
+    ----------
+    remaining : float
+        Remaining distance to the target, ``||p*-p||``.
+    span : float
+        Distance from the apparent initial endpoint to the target, ``||p*-p_a||``.
+    epsilon : float
+        Small positive floor (``0 < epsilon << 1``).
+
+    Returns
+    -------
+    float
+        ``r = 1 - (1-epsilon) * remaining/span`` clamped to ``[epsilon, 1]``. It is
+        ``epsilon`` when the endpoint sits at the apparent initial point and rises to
+        one as the endpoint approaches the target.
+    """
+    if span <= _MIN_SPAN:
+        return 1.0
+    ratio = remaining / span
+    return float(np.clip(1.0 - (1.0 - epsilon) * ratio, epsilon, 1.0))
+
+
 class EndpointController(Controller):
     """Base class for task-space spring-damper controllers.
 
@@ -270,3 +295,82 @@ class PositionDependentShaping(OnlineReferenceShaping):
         d = float(np.linalg.norm(self.target - position)) / span if span > _MIN_SPAN else 0.0
         self.r = shaping_ratio(d, self.a)
         super().update(t, skeleton, dt)
+
+
+class AdaptiveReferenceShaping(OnlineReferenceShaping):
+    """Online reference shaping with slow/rapid adaptation of the apparent initial endpoint.
+
+    Extends online reference shaping (Seto-Sugihara IROS 2010) so the reach stays
+    smooth when the target changes mid-motion or a large external force displaces the
+    endpoint. An apparent initial endpoint ``p_a`` normalizes the shaping ratio
+    :func:`adaptive_shaping_ratio`; it drifts toward the current endpoint with a
+    first-order lag (slow adaptation) and is reset to the endpoint when the endpoint
+    leaves the current reaching region (rapid adaptation).
+
+    Parameters
+    ----------
+    target : ArrayLike
+        The task-space target (may be reassigned during motion).
+    k_task, d_task : float
+        Task-space stiffness and damping.
+    c_joint : float, optional
+        Joint viscous damping gain.
+    epsilon : float, optional
+        Small positive floor for the shaping ratio.
+    t_adapt : float, optional
+        Slow-adaptation time constant ``T`` (seconds).
+    t1, t2 : float, optional
+        Lag-filter time constants (seconds).
+    """
+
+    def __init__(
+        self,
+        target: ArrayLike,
+        *,
+        k_task: float,
+        d_task: float,
+        c_joint: float = 0.0,
+        epsilon: float = 0.01,
+        t_adapt: float = 0.5,
+        t1: float = 0.1,
+        t2: float = 0.1,
+    ) -> None:
+        """Store the shaping floor and slow-adaptation time constant."""
+        super().__init__(target, k_task=k_task, d_task=d_task, c_joint=c_joint, r=epsilon, t1=t1, t2=t2)
+        self.epsilon = float(epsilon)
+        self.t_adapt = float(t_adapt)
+        self._apparent: NDArray[np.float64] | None = None  # apparent initial endpoint p_a
+
+    @property
+    def apparent_initial(self) -> NDArray[np.float64] | None:
+        """The current apparent initial endpoint ``p_a`` (``None`` before reset)."""
+        return self._apparent
+
+    def reset(self, skeleton: Skeleton) -> None:
+        """Initialize the apparent initial endpoint to the current endpoint."""
+        super().reset(skeleton)
+        self._apparent = _endpoint_position(skeleton)
+
+    def update(self, t: float, skeleton: Skeleton, dt: float) -> None:
+        """Adapt ``p_a``, recompute the shaping ratio, then advance the lag filter."""
+        if self._apparent is None:
+            self.reset(skeleton)
+        assert self._apparent is not None  # set by reset
+        position = _endpoint_position(skeleton)
+        remaining = float(np.linalg.norm(self.target - position))
+        span = float(np.linalg.norm(self.target - self._apparent))
+        # Rapid adaptation: if the endpoint left the reaching region, reset p_a to it.
+        if span > _MIN_SPAN and remaining / span > 1.0:
+            self._apparent = position.copy()
+            span = remaining
+        self.r = adaptive_shaping_ratio(remaining, span, self.epsilon)
+        # Slow adaptation: drift p_a toward the current endpoint with a first-order lag.
+        self._apparent = self._apparent + dt * (position - self._apparent) / self.t_adapt
+        super().update(t, skeleton, dt)
+
+    def log_channels(self) -> dict[str, ArrayLike]:
+        """Record the endpoint, equilibrium, and apparent initial endpoint."""
+        channels = super().log_channels()
+        if channels and self._apparent is not None:
+            channels["apparent_initial"] = self._apparent
+        return channels

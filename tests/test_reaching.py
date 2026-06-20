@@ -9,10 +9,12 @@ from skelarm.control import simulate_controlled
 from skelarm.dynamics import compute_forward_dynamics
 from skelarm.kinematics import compute_endpoint_velocity
 from skelarm.reaching import (
+    AdaptiveReferenceShaping,
     OnlineReferenceShaping,
     PositionDependentShaping,
     TimeVaryingStiffness,
     VirtualSpringDamper,
+    adaptive_shaping_ratio,
     shaping_ratio,
 )
 from skelarm.skeleton import LinkProp, Skeleton
@@ -150,3 +152,72 @@ def test_reaching_controllers_log_endpoint_and_equilibrium() -> None:
     log = simulate_controlled(skeleton, controller, duration=1.0, dt=0.01)
     assert {"endpoint", "equilibrium"} <= set(log.channel_names)
     assert log.channel("equilibrium").shape == (len(log), 2)
+
+
+def test_adaptive_shaping_ratio_endpoints_and_floor() -> None:
+    """R is epsilon at the apparent initial point, 1 at the target, and floored when pushed out."""
+    epsilon = 0.01
+    span = 0.4
+    assert adaptive_shaping_ratio(span, span, epsilon) == pytest.approx(epsilon)  # endpoint at p_a
+    assert adaptive_shaping_ratio(0.0, span, epsilon) == pytest.approx(1.0)  # endpoint at target
+    assert adaptive_shaping_ratio(2.0 * span, span, epsilon) == pytest.approx(epsilon)  # beyond -> floored
+    assert adaptive_shaping_ratio(0.25 * span, span, epsilon) > adaptive_shaping_ratio(0.75 * span, span, epsilon)
+
+
+def test_adaptive_reaching_reaches_target_with_gentle_start() -> None:
+    """Adaptive shaping starts gently (r=epsilon) and converges to the target.
+
+    The slow-adaptation time constant must be genuinely slow for a fixed target:
+    with a fast t_adapt the apparent initial endpoint chases the endpoint, pinning
+    r near epsilon and stalling convergence.
+    """
+    skeleton = _two_link()
+    target = _tip(skeleton) + np.array([-0.25, -0.15])
+    controller = AdaptiveReferenceShaping(target, k_task=150.0, d_task=25.0, epsilon=0.01, t_adapt=5.0, t1=0.2, t2=0.2)
+
+    controller.reset(skeleton)
+    ddq_initial = compute_forward_dynamics(skeleton, controller.control(0.0, skeleton))
+    assert np.linalg.norm(ddq_initial) == pytest.approx(0.0, abs=1e-9)
+
+    log = simulate_controlled(skeleton, controller, duration=6.0, dt=0.002)
+    assert _tip_at(skeleton, log.channel("q")[-1]) == pytest.approx(target, abs=3e-2)
+
+
+def test_slow_adaptation_drifts_apparent_initial_toward_the_endpoint() -> None:
+    """Over a reach, the apparent initial endpoint drifts from p0 toward the target."""
+    skeleton = _two_link()
+    p0 = _tip(skeleton)
+    target = p0 + np.array([-0.25, -0.15])
+    controller = AdaptiveReferenceShaping(target, k_task=150.0, d_task=25.0, epsilon=0.01, t_adapt=2.0, t1=0.2, t2=0.2)
+
+    simulate_controlled(skeleton, controller, duration=4.0, dt=0.002)
+    apparent = controller.apparent_initial
+    assert apparent is not None
+    assert np.linalg.norm(apparent - target) < np.linalg.norm(p0 - target)  # moved toward the target
+
+
+def test_rapid_adaptation_resets_apparent_initial_on_large_displacement() -> None:
+    """A displacement out of the reaching region resets the apparent initial endpoint."""
+    skeleton = _two_link()
+    p0 = _tip(skeleton)
+    target = p0 + np.array([0.02, 0.0])  # target very close to the start -> small span
+    controller = AdaptiveReferenceShaping(target, k_task=120.0, d_task=20.0, epsilon=0.01, t_adapt=10.0)
+    controller.reset(skeleton)
+
+    displaced = skeleton.clone()
+    displaced.q = np.array([0.0, 0.0])  # fully extended -> endpoint far from the target
+    displaced_tip = _tip(displaced)
+
+    controller.update(0.0, displaced, dt=0.01)
+    assert controller.apparent_initial == pytest.approx(displaced_tip, abs=1e-6)
+
+
+def test_adaptive_reaching_logs_apparent_initial() -> None:
+    """An adaptive run records the apparent initial endpoint channel."""
+    skeleton = _two_link()
+    target = _tip(skeleton) + np.array([-0.2, -0.1])
+    controller = AdaptiveReferenceShaping(target, k_task=120.0, d_task=20.0)
+
+    log = simulate_controlled(skeleton, controller, duration=1.0, dt=0.01)
+    assert "apparent_initial" in log.channel_names
+    assert log.channel("apparent_initial").shape == (len(log), 2)
