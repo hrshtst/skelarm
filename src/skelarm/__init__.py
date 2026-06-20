@@ -45,6 +45,7 @@ from .reaching import (
     shaping_ratio,
 )
 from .recording import StateLog
+from .scenario import Scenario, Task, build_controller, load_scenario
 from .simulator import SimulatorCanvas, SkelarmSimulator
 from .skeleton import Link, LinkProp, Skeleton
 from .trajectory import Trajectory, evaluate_schedule
@@ -63,17 +64,20 @@ __all__ = [
     "OnlineReferenceShaping",
     "PositionDependentShaping",
     "SampledJointReference",
+    "Scenario",
     "SimulatorCanvas",
     "SkelarmCanvas",
     "SkelarmSimulator",
     "SkelarmViewer",
     "Skeleton",
     "StateLog",
+    "Task",
     "TimeVaryingStiffness",
     "TrackingController",
     "Trajectory",
     "VirtualSpringDamper",
     "adaptive_shaping_ratio",
+    "build_controller",
     "compute_coriolis_basis",
     "compute_coriolis_gravity_vector",
     "compute_endpoint_acceleration",
@@ -90,6 +94,7 @@ __all__ = [
     "evaluate_schedule",
     "hello",
     "ik_joint_reference",
+    "load_scenario",
     "plot_trajectory",
     "resolved_rate_joint_reference",
     "shaping_ratio",
