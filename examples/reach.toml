@@ -1,0 +1,34 @@
+# A complete reaching scenario: robot + start state + task + controller.
+# Run it with:  uv run python tools/reach.py examples/reach.toml
+# then replay the recorded run with:  uv run python tools/replay.py reach.sklog.npz
+
+[skeleton]
+base_length = 0.0
+
+[[skeleton.link]]
+length = 1.0
+mass = 1.0
+inertia = 0.1
+com = [0.5, 0.0]
+limits = [-180.0, 180.0]
+
+[[skeleton.link]]
+length = 0.8
+mass = 0.8
+inertia = 0.05
+com = [0.4, 0.0]
+limits = [-180.0, 180.0]
+
+[initial]
+q = [34.4, 57.3]  # degrees; endpoint starts near (0.80, 1.36) m
+
+[task]
+target = [0.55, 1.21]  # endpoint goal (x, y) in meters
+duration = 2.0         # simulated time (s)
+dt = 0.002             # control / integration step (s)
+schedule = "minimum_jerk"
+
+[controller]
+type = "computed_torque"
+kp = 200.0
+kd = 30.0
