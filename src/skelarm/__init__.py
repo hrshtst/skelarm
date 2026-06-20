@@ -32,13 +32,16 @@ from .kinematics import (
     compute_inverse_kinematics,
     compute_jacobian,
 )
+from .mpc import JointSpaceMPC
 from .plotting import draw_skeleton, plot_trajectory
 from .reaching import (
+    AdaptiveReferenceShaping,
     EndpointController,
     OnlineReferenceShaping,
     PositionDependentShaping,
     TimeVaryingStiffness,
     VirtualSpringDamper,
+    adaptive_shaping_ratio,
     shaping_ratio,
 )
 from .recording import StateLog
@@ -47,12 +50,14 @@ from .skeleton import Link, LinkProp, Skeleton
 from .trajectory import Trajectory, evaluate_schedule
 
 __all__ = [
+    "AdaptiveReferenceShaping",
     "ComputedTorque",
     "Controller",
     "EndpointController",
     "IKResult",
     "InverseDynamicsFeedforwardPD",
     "JointPD",
+    "JointSpaceMPC",
     "Link",
     "LinkProp",
     "OnlineReferenceShaping",
@@ -68,6 +73,7 @@ __all__ = [
     "TrackingController",
     "Trajectory",
     "VirtualSpringDamper",
+    "adaptive_shaping_ratio",
     "compute_coriolis_basis",
     "compute_coriolis_gravity_vector",
     "compute_endpoint_acceleration",
