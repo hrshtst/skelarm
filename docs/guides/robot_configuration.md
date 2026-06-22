@@ -46,8 +46,10 @@ preferred.
     Limits are stored in radians internally and enforced on the kinematics angle
     setters: a value outside `[min, max]` is clamped into range with a warning. A
     link that omits `limits` defaults to `[-180, 180]` degrees — one full
-    revolution — so an unspecified joint is capped, not left unbounded. Limits are
-    intentionally **not** enforced inside the dynamics solvers.
+    revolution — so an unspecified joint is capped, not left unbounded. How limits
+    behave during a dynamic run — hard stops in the fixed-step simulators, but
+    unconstrained under `simulate_robot` — is covered in
+    [Joint Limits](joint_limits.md).
 
 ## The `[initial]` section
 
@@ -111,6 +113,8 @@ nested `[skeleton]` form so the robot can share one file with `[initial]`,
 
 - [Control Configuration](control_configuration.md) — adding `[task]` /
   `[controller]` for a controlled run.
+- [Joint Limits](joint_limits.md) — how the `[min, max]` range is enforced during
+  simulation.
 - [Kinematics](../reference/01_kinematics.md) and
   [Inverse Dynamics](../reference/03_inverse_dynamics.md) — what the link mass
   properties mean physically.

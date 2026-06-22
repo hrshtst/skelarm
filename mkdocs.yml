@@ -78,6 +78,7 @@ nav:
   - Guides:
       - Robot Configuration: guides/robot_configuration.md
       - Control Configuration: guides/control_configuration.md
+      - Joint Limits: guides/joint_limits.md
   - API Reference:
       - Architecture: api/architecture.md
       - Skeleton: api/skeleton.md
