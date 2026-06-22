@@ -116,7 +116,7 @@ The dynamics simulator records the run (joint angles, velocities, torque, and th
 uv run python tools/replay.py run.sklog.npz
 ```
 
-Scrub the timeline, play/pause at a chosen speed (`--speed`), toggle the centers of mass (`--show-com`), and open per-channel plots with the **Plot channels…** button. The log embeds the robot geometry, so the file replays on its own.
+Scrub the timeline, play/pause at a chosen speed (`--speed`), toggle the centers of mass (`--show-com`), and open per-channel plots with the **Plot channels…** button. When the log recorded an external tip force, it is drawn as a red arrow at the tip (toggle it with **Show external force**). The log embeds the robot geometry, so the file replays on its own.
 
 ### Reaching & Trajectory Control
 

@@ -6,7 +6,9 @@ robot motion: the arm is rebuilt from the embedded geometry and driven from the
 recorded joint angles, so no dynamics are simulated. A timeline slider scrubs
 frames, play/pause animates them at a chosen speed, and "Plot channels…" opens
 Matplotlib plots of every recorded channel versus time for analysis (e.g. a
-controller's tracking error) without re-running the simulation.
+controller's tracking error) without re-running the simulation. When the log
+recorded an external tip force (``ext_force`` channel, as the dynamics simulator
+does), it is drawn as a red arrow at the tip and toggled by "Show external force".
 
 Usage::
 
@@ -78,9 +80,14 @@ class PlaybackWindow(QMainWindow):
         self._frame = 0
         self._play_time = float(self._times[0]) if self._n else 0.0
         self._speed = speed
+        # Recorded external tip force (N), shown as an arrow when present.
+        self._force = log.channel("ext_force") if "ext_force" in log.channel_names else None
+        self._show_force = self._force is not None
 
         self.canvas = SkelarmCanvas(self.skeleton)
         self.canvas.show_com = show_com
+        if self._force is not None:
+            self.canvas.force_scale = self._force_arrow_scale()
         self.setWindowTitle("Skelarm Replay")
         self.resize(1024, 768)
 
@@ -122,6 +129,15 @@ class PlaybackWindow(QMainWindow):
         self.com_checkbox.setChecked(show_com)
         self.com_checkbox.toggled.connect(self._on_show_com_toggled)
         controls.addWidget(self.com_checkbox)
+
+        # External-force arrow controls, shown only when the log recorded a force.
+        self.force_checkbox = QCheckBox("Show external force")
+        self.force_checkbox.setChecked(True)
+        self.force_checkbox.toggled.connect(self._on_show_force_toggled)
+        self.force_label = QLabel()
+        if self._force is not None:
+            controls.addWidget(self.force_checkbox)
+            controls.addWidget(self.force_label)
 
         self.plot_button = QPushButton("Plot channels…")
         self.plot_button.clicked.connect(self._on_plot_channels)
@@ -218,6 +234,10 @@ class PlaybackWindow(QMainWindow):
         for link, value in zip(self.skeleton.links[1:], self._q[index], strict=True):
             link.q = float(value)
         compute_forward_kinematics(self.skeleton)
+        if self._force is not None:
+            force = self._force[index]
+            self.canvas.tip_force = force if self._show_force else None
+            self.force_label.setText(f"Ext. force: {float(np.hypot(force[0], force[1])):.3g} N")
         self.canvas.update_skeleton()
         with QSignalBlocker(self.slider):
             self.slider.setValue(index)
@@ -247,6 +267,21 @@ class PlaybackWindow(QMainWindow):
         """Toggle the center-of-mass overlay."""
         self.canvas.show_com = self.com_checkbox.isChecked()
         self.canvas.update_skeleton()
+
+    def _on_show_force_toggled(self) -> None:
+        """Toggle the external-force arrow overlay and redraw the current frame."""
+        self._show_force = self.force_checkbox.isChecked()
+        self._show_frame(self._frame)
+
+    def _force_arrow_scale(self) -> float:
+        """Meters per Newton so the largest recorded force spans ~40% of the arm's reach."""
+        assert self._force is not None  # only called when a force channel is present
+        magnitudes = np.hypot(self._force[:, 0], self._force[:, 1])
+        peak = float(magnitudes.max()) if magnitudes.size else 0.0
+        if peak <= 0.0:
+            return 0.0
+        reach = sum(link.prop.length for link in self.skeleton.links)
+        return 0.4 * reach / peak
 
     def _on_plot_channels(self) -> None:
         """Open the per-channel analysis plots without blocking the player."""

@@ -20,11 +20,53 @@ from PyQt6.QtWidgets import (
 from skelarm.kinematics import compute_inverse_kinematics
 
 if TYPE_CHECKING:
+    import numpy as np
+    from numpy.typing import NDArray
+
     from skelarm.kinematics import IKResult
     from skelarm.skeleton import Skeleton
 
 _MARGIN_PX = 20.0  # Empty border kept between the arm and the widget edge.
 _DEFAULT_SCALE = 100.0  # Pixels per meter, used before the reach/size are known.
+_ARROW_HEAD_PX = 10.0  # Length of the arrowhead strokes, in pixels.
+
+
+def draw_arrow(
+    painter: QPainter,
+    start: QPointF,
+    end: QPointF,
+    *,
+    color: QColor,
+    width: int = 2,
+    head_px: float = _ARROW_HEAD_PX,
+) -> None:
+    """Draw a line from ``start`` to ``end`` with an arrowhead at ``end``.
+
+    A small reusable primitive shared by the simulator's interactive force arrow
+    and the replay tool's recorded-force overlay.
+
+    Parameters
+    ----------
+    painter : QPainter
+        An active painter to draw with.
+    start, end : QPointF
+        Screen-space endpoints; the arrowhead is drawn at ``end``.
+    color : QColor
+        Pen color for the shaft and head.
+    width : int, optional
+        Pen width in pixels.
+    head_px : float, optional
+        Length of each arrowhead stroke in pixels.
+    """
+    pen = QPen(color)
+    pen.setWidth(width)
+    painter.setPen(pen)
+    painter.drawLine(start, end)
+    angle = math.atan2(end.y() - start.y(), end.x() - start.x())
+    for offset in (math.radians(150.0), math.radians(-150.0)):
+        head_x = end.x() + head_px * math.cos(angle + offset)
+        head_y = end.y() + head_px * math.sin(angle + offset)
+        painter.drawLine(end, QPointF(head_x, head_y))
 
 
 def _fit_scale(reach: float, width: int, height: int) -> float:
@@ -69,6 +111,7 @@ class SkelarmCanvas(QWidget):
     _COM_COLOR = QColor(200, 0, 0)  # red (centers of mass)
     _TARGET_COLOR = QColor(230, 120, 0)  # orange (IK target)
     _TARGET_RADIUS_PX = 7
+    _FORCE_COLOR = QColor(220, 0, 0)  # red (external force arrow)
 
     def __init__(self, skeleton: Skeleton, parent: QWidget | None = None) -> None:
         """Initialize the canvas."""
@@ -79,6 +122,10 @@ class SkelarmCanvas(QWidget):
         self.ik_method = "lm_sugihara"  # solver method used by solve_to_world
         self.last_ik_result: IKResult | None = None  # outcome of the latest IK solve
         self._ik_target: tuple[float, float] | None = None  # latest IK click target
+        # Optional external force (N) at the tip, drawn as an arrow of length
+        # force * force_scale (meters per Newton). None hides the arrow.
+        self.tip_force: NDArray[np.float64] | None = None
+        self.force_scale = 1.0
         # Set background color to white
         self.setAutoFillBackground(True)
         p = self.palette()
@@ -146,6 +193,18 @@ class SkelarmCanvas(QWidget):
             pen.setStyle(Qt.PenStyle.SolidLine)
             painter.setPen(pen)
             painter.drawEllipse(target_screen, self._TARGET_RADIUS_PX, self._TARGET_RADIUS_PX)
+
+        # Show an external force applied at the tip as a red arrow (force * force_scale).
+        if self.tip_force is not None:
+            fx = float(self.tip_force[0])
+            fy = float(self.tip_force[1])
+            if math.hypot(fx, fy) > 0.0:
+                tip = self.skeleton.links[-1]
+                start = self._world_to_screen(tip.xe, tip.ye, center_x, center_y)
+                end = self._world_to_screen(
+                    tip.xe + fx * self.force_scale, tip.ye + fy * self.force_scale, center_x, center_y
+                )
+                draw_arrow(painter, start, end, color=self._FORCE_COLOR)
 
     def _world_to_screen(self, wx: float, wy: float, cx: float, cy: float) -> QPointF:
         """Convert world coordinates (meters) to screen coordinates (pixels)."""

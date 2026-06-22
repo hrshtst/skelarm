@@ -41,6 +41,22 @@ def _log(frames: int = 5) -> StateLog:
     return log
 
 
+def _force_log(frames: int = 5) -> StateLog:
+    """A small two-link log that also records an external tip force per frame."""
+    link_props = [LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi) for _ in range(2)]
+    log = StateLog(
+        Skeleton(link_props),
+        producer="test",
+        channel_meta={
+            "q": {"unit": "rad", "columns": ["q1", "q2"]},
+            "ext_force": {"unit": "N", "columns": ["fx", "fy"]},
+        },
+    )
+    for k in range(frames):
+        log.record(0.1 * k, q=[0.1 * k, -0.05 * k], ext_force=[0.5 * k, -0.2 * k])
+    return log
+
+
 def test_parser_requires_logfile() -> None:
     """The logfile argument is required."""
     with pytest.raises(SystemExit):
@@ -124,6 +140,30 @@ def test_build_channel_figure_has_one_axis_per_channel(qapp) -> None:  # noqa: A
     window = PlaybackWindow(log)
     figure = window.build_channel_figure()
     assert len(figure.axes) == len(log.channel_names)
+
+
+def test_force_arrow_set_when_log_records_force(qapp) -> None:  # noqa: ANN001, ARG001
+    """A log with an ext_force channel drives the canvas force arrow and auto-scales it."""
+    log = _force_log()
+    window = PlaybackWindow(log)
+    window.set_frame(3)
+    np.testing.assert_array_equal(window.canvas.tip_force, log.channel("ext_force")[3])
+    assert window.canvas.force_scale > 0.0
+
+
+def test_no_force_arrow_without_force_channel(qapp) -> None:  # noqa: ANN001, ARG001
+    """A log without an ext_force channel leaves the canvas force arrow unset."""
+    window = PlaybackWindow(_log())
+    window.set_frame(2)
+    assert window.canvas.tip_force is None
+
+
+def test_force_toggle_hides_arrow(qapp) -> None:  # noqa: ANN001, ARG001
+    """Unchecking 'Show external force' clears the arrow on the canvas."""
+    window = PlaybackWindow(_force_log())
+    window.force_checkbox.setChecked(False)
+    window.set_frame(2)
+    assert window.canvas.tip_force is None
 
 
 def test_runs_as_a_standalone_script() -> None:

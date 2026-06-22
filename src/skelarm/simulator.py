@@ -6,8 +6,8 @@ import math
 from typing import TYPE_CHECKING
 
 import numpy as np
-from PyQt6.QtCore import QPointF, Qt, QTimer
-from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPen
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent
 from PyQt6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from skelarm.canvas import SkelarmCanvas
+from skelarm.canvas import SkelarmCanvas, draw_arrow
 from skelarm.dynamics import compute_forward_dynamics
 from skelarm.kinematics import compute_forward_kinematics, compute_jacobian
 from skelarm.recording import StateLog
@@ -32,7 +32,6 @@ _TIMER_MS = 20  # GUI/render period in milliseconds
 _SUBSTEPS = 4  # physics steps per render tick (integration stability)
 _DEFAULT_STIFFNESS = 0.1  # N/m: external tip force = stiffness * (cursor - tip)
 _ARROW_COLOR = QColor(220, 0, 0)  # red
-_ARROW_HEAD_PX = 10.0
 
 
 class SimulatorCanvas(SkelarmCanvas):
@@ -95,15 +94,7 @@ class SimulatorCanvas(SkelarmCanvas):
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        pen = QPen(_ARROW_COLOR)
-        pen.setWidth(2)
-        painter.setPen(pen)
-        painter.drawLine(start, end)
-        angle = math.atan2(end.y() - start.y(), end.x() - start.x())
-        for offset in (math.radians(150.0), math.radians(-150.0)):
-            head_x = end.x() + _ARROW_HEAD_PX * math.cos(angle + offset)
-            head_y = end.y() + _ARROW_HEAD_PX * math.sin(angle + offset)
-            painter.drawLine(end, QPointF(head_x, head_y))
+        draw_arrow(painter, start, end, color=_ARROW_COLOR)
 
 
 class SkelarmSimulator(QMainWindow):
