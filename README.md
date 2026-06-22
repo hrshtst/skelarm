@@ -97,7 +97,7 @@ uv run python examples/simulate_four_dof.py
 For an interactive version, launch the real-time GUI simulator and press/drag in the canvas to apply an external force at the tip (shown as a red arrow):
 
 ```bash
-uv run python examples/simulate_four_dof_gui.py
+uv run python examples/interactive_dynamics.py
 ```
 
 To simulate an arbitrary robot, use the generalized tool in `tools/`, which adds pause/resume, single-step, reset, a live viscous-friction control (joint damping that dissipates energy), a status panel (kinetic energy and tip position/speed), and an optional tip-trajectory plot when the window closes:
