@@ -183,10 +183,10 @@ export_scenario_toml(StateLog.load("reach.sklog.npz"), "edited.toml")
 variant = run_scenario(load_scenario("edited.toml"))
 ```
 
-From the command line, `tools/replay.py` exports the config without opening the GUI:
+From the command line, `tools/export_config.py` writes the config from a saved log:
 
 ```bash
-uv run python tools/replay.py reach.sklog.npz --export-config edited.toml
+uv run python tools/export_config.py reach.sklog.npz --output edited.toml
 uv run python tools/reach.py edited.toml   # re-run the (edited) scenario
 ```
 

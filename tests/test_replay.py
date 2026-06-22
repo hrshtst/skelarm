@@ -19,15 +19,6 @@ from tools.replay import PlaybackWindow, build_parser
 
 pytestmark = pytest.mark.integration
 
-_SCENARIO_TOML = (
-    "[skeleton]\n"
-    "[[skeleton.link]]\nlength = 1.0\nmass = 1.0\ninertia = 0.1\ncom = [0.5, 0.0]\nlimits = [-180.0, 180.0]\n"
-    "[[skeleton.link]]\nlength = 0.8\nmass = 0.8\ninertia = 0.05\ncom = [0.4, 0.0]\nlimits = [-180.0, 180.0]\n"
-    "[initial]\nq = [34.4, 57.3]\n"
-    "[task]\ntarget = [0.55, 1.21]\nduration = 0.03\ndt = 0.01\n"
-    '[controller]\ntype = "computed_torque"\nkp = 200.0\nkd = 30.0\n'
-)
-
 
 @pytest.fixture(scope="module")
 def qapp():  # noqa: ANN201
@@ -146,21 +137,3 @@ def test_runs_as_a_standalone_script() -> None:
     )
     assert result.returncode == 0, result.stderr
     assert "replay" in result.stdout.lower()
-
-
-def test_export_config_cli_writes_loadable_scenario(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """`replay.py --export-config` writes an editable, loadable scenario config and exits."""
-    from skelarm.scenario import load_scenario, run_scenario
-    from tools.replay import main
-
-    config = tmp_path / "reach.toml"
-    config.write_text(_SCENARIO_TOML, encoding="utf-8")
-    log_path = tmp_path / "run.sklog.npz"
-    run_scenario(load_scenario(config)).save(log_path)
-
-    exported = tmp_path / "exported.toml"
-    monkeypatch.setattr(sys, "argv", ["replay", str(log_path), "--export-config", str(exported)])
-    main()  # returns before the GUI starts
-
-    assert exported.exists()
-    assert type(load_scenario(exported).controller).__name__ == "ComputedTorque"
