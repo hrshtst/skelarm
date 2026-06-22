@@ -128,6 +128,28 @@ d_task = 25.0
 t_adapt = 5.0
 ```
 
+## Overriding sections for comparison
+
+`tools/reach.py` can override the `[initial]`, `[task]`, and `[controller]`
+sections from separate files, so one base config can be reused across a comparison
+sweep without editing it. Each override file supplies the named table (e.g. a file
+with just a `[controller]` block):
+
+```bash
+# Same robot and task, different controllers:
+uv run python tools/reach.py base.toml --controller computed_torque.toml --output ct.sklog.npz
+uv run python tools/reach.py base.toml --controller mpc.toml            --output mpc.sklog.npz
+
+# Same controller, different tasks:
+uv run python tools/reach.py base.toml --task near.toml --output near.sklog.npz
+uv run python tools/reach.py base.toml --task far.toml  --output far.sklog.npz
+```
+
+`--initial FILE` replaces the initial pose from a file's `[initial]` table, and
+`--pose 20,45` then overrides just the joint angles (degrees) — matching the
+kinematics and dynamics tools. The override values are merged into the scenario, so
+each run's log still embeds its exact (overridden) config for reproduction.
+
 ## Using it from Python
 
 ```python

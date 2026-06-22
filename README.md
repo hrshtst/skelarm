@@ -127,6 +127,14 @@ uv run python tools/reach.py examples/reach.toml
 uv run python tools/replay.py reach.sklog.npz
 ```
 
+The `[initial]`, `[task]`, and `[controller]` sections can be overridden from separate files on the command line, so one base config can be compared across controllers or tasks without editing it (`--initial`/`--pose` mirror the kinematics and dynamics tools):
+
+```bash
+uv run python tools/reach.py examples/reach.toml --controller pd.toml   # same task, different controller
+uv run python tools/reach.py examples/reach.toml --task far.toml        # same controller, different task
+uv run python tools/reach.py examples/reach.toml --initial pose.toml --pose 20,45
+```
+
 The `[controller].type` selects the control law — trajectory tracking (`computed_torque`, `inverse_dynamics_pd`, `joint_pd`), human-like reaching (`virtual_spring_damper`, `time_varying_stiffness`, `online_shaping`, `position_dependent_shaping`, `adaptive_shaping`), or `mpc` — and the remaining keys are its gains. The control library is also usable directly via `skelarm.load_scenario` and `skelarm.run_scenario`. The exported log embeds the full scenario config (robot, task, controller, initial state, and run parameters), so a run can be re-simulated later with `skelarm.rerun_log` — exactly for the deterministic controllers, and within a small numerical tolerance for MPC. You can also export an editable config from a log (`skelarm.export_scenario_toml`, or `tools/export_config.py`) to tweak a parameter and re-run for comparison. See the [Control Configuration](docs/guides/control_configuration.md) guide for the full scenario schema and per-controller config keys, and the [Trajectory Tracking](docs/reference/07_control.md) and [Reaching Control](docs/reference/08_reaching_control.md) references for the theory.
 
 ### Interactive Kinematics (FK & IK)

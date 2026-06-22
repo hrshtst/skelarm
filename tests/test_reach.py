@@ -70,6 +70,60 @@ def test_run_reach_defaults_output_next_to_config(tmp_path: Path) -> None:
     assert written.exists()
 
 
+def test_run_reach_overrides_controller(tmp_path: Path) -> None:
+    """--controller swaps the controller while keeping the base robot and task."""
+    config = tmp_path / "reach.toml"
+    config.write_text(_SCENARIO_TOML, encoding="utf-8")  # base: computed_torque
+    controller = tmp_path / "pd.toml"
+    controller.write_text('[controller]\ntype = "joint_pd"\nkp = 300.0\nkd = 40.0\n', encoding="utf-8")
+
+    output = tmp_path / "run.sklog.npz"
+    run_reach(config, output=output, duration=0.05, controller=controller)
+
+    log = StateLog.load(output)
+    assert log.producer == "JointPD"
+    assert log.extra["source_config"]["controller"]["type"] == "joint_pd"
+    # The embedded (overridden) config re-runs and reproduces the motion.
+    np.testing.assert_array_equal(rerun_log(log).channel("q"), log.channel("q"))
+
+
+def test_run_reach_overrides_task(tmp_path: Path) -> None:
+    """--task swaps the task (e.g. a different target) over the base config."""
+    config = tmp_path / "reach.toml"
+    config.write_text(_SCENARIO_TOML, encoding="utf-8")  # base target [0.55, 1.21]
+    task = tmp_path / "task.toml"
+    task.write_text("[task]\ntarget = [0.4, 0.9]\nduration = 0.05\ndt = 0.01\n", encoding="utf-8")
+
+    output = tmp_path / "run.sklog.npz"
+    run_reach(config, output=output, task=task)
+
+    log = StateLog.load(output)
+    assert log.extra["source_config"]["task"]["target"] == pytest.approx([0.4, 0.9])
+
+
+def test_run_reach_initial_then_pose_override(tmp_path: Path) -> None:
+    """--initial replaces the initial pose; --pose then overrides just q."""
+    config = tmp_path / "reach.toml"
+    config.write_text(_SCENARIO_TOML, encoding="utf-8")
+    initial = tmp_path / "init.toml"
+    initial.write_text("[initial]\nq = [10.0, 20.0]\n", encoding="utf-8")
+
+    output = tmp_path / "run.sklog.npz"
+    run_reach(config, output=output, duration=0.02, initial=initial, pose="5,15")
+
+    log = StateLog.load(output)
+    assert log.extra["source_config"]["initial"]["q"] == pytest.approx([5.0, 15.0])  # --pose wins
+    np.testing.assert_allclose(log.channel("q")[0], np.deg2rad([5.0, 15.0]))
+
+
+def test_run_reach_missing_override_file_errors(tmp_path: Path) -> None:
+    """A missing override file raises a clear error."""
+    config = tmp_path / "reach.toml"
+    config.write_text(_SCENARIO_TOML, encoding="utf-8")
+    with pytest.raises(FileNotFoundError, match="override file not found"):
+        run_reach(config, duration=0.02, controller=tmp_path / "missing.toml")
+
+
 def test_runs_as_a_standalone_script() -> None:
     """Running the file directly (script mode) must resolve all of its imports."""
     script = Path(__file__).resolve().parents[1] / "tools" / "reach.py"

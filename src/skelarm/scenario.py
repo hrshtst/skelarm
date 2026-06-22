@@ -273,10 +273,10 @@ def load_scenario(file_path: str | Path) -> Scenario:
     """Load a robot, task, and controller from one combined TOML file."""
     with Path(file_path).open("rb") as f:
         data = tomllib.load(f)
-    return _scenario_from_config(data)
+    return scenario_from_config(data)
 
 
-def _scenario_from_config(data: Mapping[str, Any]) -> Scenario:
+def scenario_from_config(data: Mapping[str, Any]) -> Scenario:
     """Build a Scenario from a parsed combined config and keep the config for re-runs.
 
     Reuses the real parsers (:meth:`Skeleton.from_config`, :meth:`Task.from_dict`,
@@ -405,7 +405,7 @@ def scenario_from_log(log: StateLog) -> tuple[Scenario, Mapping[str, Any]]:
     if not config:
         msg = "log has no reproduction metadata; it was not produced by run_scenario"
         raise ValueError(msg)
-    scenario = _scenario_from_config(config)
+    scenario = scenario_from_config(config)
     run = log.extra.get(
         "run",
         {"duration": scenario.task.duration, "dt": scenario.task.dt, "grav_vec": [0.0, 0.0]},

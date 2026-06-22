@@ -53,6 +53,7 @@ from .scenario import (
     load_scenario,
     rerun_log,
     run_scenario,
+    scenario_from_config,
     scenario_from_log,
 )
 from .simulator import SimulatorCanvas, SkelarmSimulator
@@ -109,6 +110,7 @@ __all__ = [
     "rerun_log",
     "resolved_rate_joint_reference",
     "run_scenario",
+    "scenario_from_config",
     "scenario_from_log",
     "shaping_ratio",
     "simulate_controlled",
