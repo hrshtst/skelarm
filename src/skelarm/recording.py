@@ -174,7 +174,7 @@ class StateLog:
 
     def save(self, path: str | Path) -> None:
         """Save the log as a ``.sklog.npz`` archive (channel arrays + TOML metadata)."""
-        meta_toml = _dump_toml(self._meta_dict())
+        meta_toml = dump_toml(self._meta_dict())
         # dict[str, Any] so the meta string array and the float arrays can share one
         # ``**`` spread without tripping savez_compressed's typed ``allow_pickle`` kwarg.
         payload: dict[str, Any] = {**self.to_arrays(), _META_KEY: np.array(meta_toml)}
@@ -189,7 +189,7 @@ class StateLog:
         document["data"] = {name: array.tolist() for name, array in self.to_arrays().items()}
         from pathlib import Path as _Path
 
-        _Path(path).write_text(_dump_toml(document), encoding="utf-8")
+        _Path(path).write_text(dump_toml(document), encoding="utf-8")
 
     @classmethod
     def load(cls, path: str | Path) -> StateLog:
@@ -233,7 +233,7 @@ class StateLog:
         return meta
 
 
-def _dump_toml(data: Mapping[str, Any]) -> str:
+def dump_toml(data: Mapping[str, Any]) -> str:
     """Serialize a constrained nested mapping to TOML text.
 
     Supports scalars (``bool``, ``int``, ``float``, ``str``), (possibly nested)

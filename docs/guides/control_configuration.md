@@ -146,10 +146,10 @@ so controllers can be constructed without a file.
 ## Reproducible runs
 
 A log written by `run_scenario` (and by `tools/reach.py`) is a self-contained,
-re-runnable record. Alongside the recorded channels and the embedded robot
-geometry, it stores — in the log's `[extra]` metadata — the `[task]` and
-`[controller]` tables, the initial joint state, the actual run parameters
-(`duration` / `dt` / `grav_vec`), and the `skelarm` / `numpy` / `scipy` versions.
+re-runnable record. It embeds — in the log's `[extra]` metadata — the **original
+source config** (the full `[skeleton]` / `[initial]` / `[task]` / `[controller]`
+tables, exactly as loaded), the actual run parameters (`duration` / `dt` /
+`grav_vec`), and the `skelarm` / `numpy` / `scipy` versions.
 
 `rerun_log` reconstructs the scenario and re-simulates it:
 
@@ -161,13 +161,37 @@ log = StateLog.load("reach.sklog.npz")
 again = rerun_log(log)   # rebuilds the scenario and re-runs the dynamics
 ```
 
-The deterministic controllers (PD, computed torque, inverse-dynamics feedforward,
-and the reaching controllers) reproduce the recorded channels exactly on the same
-machine. MPC calls `scipy.optimize.minimize`, which is deterministic but only
-bit-identical for the same `scipy` / BLAS build, so an MPC re-run matches within a
-small numerical tolerance rather than exactly.
+Reconstruction reparses the embedded source config, so identical input gives
+identical state. The deterministic controllers (PD, computed torque,
+inverse-dynamics feedforward, and the reaching controllers) reproduce the recorded
+channels **exactly** on the same machine. MPC calls `scipy.optimize.minimize`,
+which is deterministic but only bit-identical for the same `scipy` / BLAS build, so
+an MPC re-run matches within a small numerical tolerance rather than exactly.
+
+### Export an editable config for comparison
+
+To tweak parameters and compare, export the embedded config to an editable TOML and
+re-run it. Because the export is the original config verbatim, re-running it
+**unedited** reproduces the run exactly; editing a value gives a controlled variant:
+
+```python
+from skelarm import export_scenario_toml, load_scenario, run_scenario
+from skelarm.recording import StateLog
+
+export_scenario_toml(StateLog.load("reach.sklog.npz"), "edited.toml")
+# ... edit a gain / target / gravity in edited.toml ...
+variant = run_scenario(load_scenario("edited.toml"))
+```
+
+From the command line, `tools/replay.py` exports the config without opening the GUI:
+
+```bash
+uv run python tools/replay.py reach.sklog.npz --export-config edited.toml
+uv run python tools/reach.py edited.toml   # re-run the (edited) scenario
+```
 
 !!! note "What is not captured"
     A controller built programmatically (not from a config) has no embedded
     config, so its run is recorded without reproduction metadata and `rerun_log`
-    rejects it. Re-running is available for scenarios loaded from TOML.
+    (and `export_scenario_toml`) reject it. Re-running is available for scenarios
+    loaded from TOML.

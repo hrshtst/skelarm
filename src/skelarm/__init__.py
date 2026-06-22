@@ -45,7 +45,16 @@ from .reaching import (
     shaping_ratio,
 )
 from .recording import StateLog
-from .scenario import Scenario, Task, build_controller, load_scenario, rerun_log, run_scenario, scenario_from_log
+from .scenario import (
+    Scenario,
+    Task,
+    build_controller,
+    export_scenario_toml,
+    load_scenario,
+    rerun_log,
+    run_scenario,
+    scenario_from_log,
+)
 from .simulator import SimulatorCanvas, SkelarmSimulator
 from .skeleton import Link, LinkProp, Skeleton
 from .trajectory import Trajectory, evaluate_schedule
@@ -92,6 +101,7 @@ __all__ = [
     "compute_mass_matrix",
     "draw_skeleton",
     "evaluate_schedule",
+    "export_scenario_toml",
     "hello",
     "ik_joint_reference",
     "load_scenario",

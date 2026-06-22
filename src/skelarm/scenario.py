@@ -45,7 +45,7 @@ from skelarm.reaching import (
     TimeVaryingStiffness,
     VirtualSpringDamper,
 )
-from skelarm.recording import StateLog
+from skelarm.recording import StateLog, dump_toml
 from skelarm.skeleton import Skeleton
 from skelarm.trajectory import Trajectory
 
@@ -115,15 +115,16 @@ class Task:
 class Scenario:
     """A loaded control scenario: the robot, the task, and a ready-to-run controller.
 
-    ``controller_config`` keeps the raw ``[controller]`` table (``type`` plus gains)
-    when the scenario was loaded from a config, so a run can embed it for later
-    reproduction; it is ``None`` for controllers built programmatically.
+    ``source_config`` keeps the original combined config (the parsed ``[skeleton]`` /
+    ``[initial]`` / ``[task]`` / ``[controller]`` tables) when the scenario was
+    loaded from a file, so a run can embed it for an exact, editable re-run; it is
+    ``None`` for scenarios built programmatically.
     """
 
     skeleton: Skeleton
     task: Task
     controller: Controller
-    controller_config: Mapping[str, Any] | None = None
+    source_config: Mapping[str, Any] | None = None
 
 
 def _endpoint(skeleton: Skeleton) -> NDArray[np.float64]:
@@ -270,11 +271,33 @@ def build_controller(source: str | Path | Mapping[str, Any], *, skeleton: Skelet
 
 def load_scenario(file_path: str | Path) -> Scenario:
     """Load a robot, task, and controller from one combined TOML file."""
-    skeleton = Skeleton.from_toml(file_path)
-    task = Task.from_toml(file_path)
-    controller_config = dict(_read_controller_section(file_path))
-    controller = build_controller(controller_config, skeleton=skeleton, task=task)
-    return Scenario(skeleton=skeleton, task=task, controller=controller, controller_config=controller_config)
+    with Path(file_path).open("rb") as f:
+        data = tomllib.load(f)
+    return _scenario_from_config(data)
+
+
+def _scenario_from_config(data: Mapping[str, Any]) -> Scenario:
+    """Build a Scenario from a parsed combined config and keep the config for re-runs.
+
+    Reuses the real parsers (:meth:`Skeleton.from_config`, :meth:`Task.from_dict`,
+    :func:`build_controller`), so rebuilding from an identical mapping reproduces the
+    robot, initial pose, task, and controller exactly.
+
+    Raises
+    ------
+    ValueError
+        If the config has no ``[task]`` or ``[controller]`` table.
+    """
+    if "task" not in data:
+        msg = "no [task] section in scenario config"
+        raise ValueError(msg)
+    if "controller" not in data:
+        msg = "no [controller] section in scenario config"
+        raise ValueError(msg)
+    skeleton = Skeleton.from_config(data)
+    task = Task.from_dict(data["task"])
+    controller = build_controller(data["controller"], skeleton=skeleton, task=task)
+    return Scenario(skeleton=skeleton, task=task, controller=controller, source_config=dict(data))
 
 
 def _read_controller_section(file_path: str | Path) -> Mapping[str, Any]:
@@ -303,8 +326,6 @@ def _provenance() -> dict[str, str]:
 
 def _reproduction_metadata(
     scenario: Scenario,
-    initial_q: NDArray[np.float64],
-    initial_dq: NDArray[np.float64],
     *,
     duration: float,
     dt: float,
@@ -312,24 +333,16 @@ def _reproduction_metadata(
 ) -> dict[str, Any] | None:
     """Assemble the ``[extra]`` payload that lets a run be reconstructed and re-run.
 
-    Returns ``None`` when the scenario carries no ``controller_config`` (e.g. a
-    programmatically built controller), so the run is recorded without it.
+    Embeds the original source config (the editable ``[skeleton]`` / ``[initial]`` /
+    ``[task]`` / ``[controller]`` tables, exactly as loaded), the actual run
+    parameters, and the package versions. Returns ``None`` when the scenario carries
+    no ``source_config`` (e.g. a programmatically built controller).
     """
-    if scenario.controller_config is None:
+    if scenario.source_config is None:
         return None
-    controller = {key: value for key, value in scenario.controller_config.items() if value is not None}
     return {
-        "scenario": {
-            "initial": {"q": initial_q.tolist(), "dq": initial_dq.tolist()},
-            "task": {
-                "target": scenario.task.target.tolist(),
-                "duration": float(scenario.task.duration),
-                "dt": float(scenario.task.dt),
-                "schedule": scenario.task.schedule,
-            },
-            "controller": controller,
-            "run": {"duration": float(duration), "dt": float(dt), "grav_vec": grav_vec.tolist()},
-        },
+        "source_config": dict(scenario.source_config),
+        "run": {"duration": float(duration), "dt": float(dt), "grav_vec": grav_vec.tolist()},
         "provenance": _provenance(),
     }
 
@@ -367,9 +380,7 @@ def run_scenario(
     run_duration = scenario.task.duration if duration is None else float(duration)
     run_dt = scenario.task.dt if dt is None else float(dt)
     grav = np.zeros(_TASK_DIM, dtype=np.float64) if grav_vec is None else np.asarray(grav_vec, dtype=np.float64)
-    initial_q = scenario.skeleton.q.copy()
-    initial_dq = scenario.skeleton.dq.copy()
-    extra = _reproduction_metadata(scenario, initial_q, initial_dq, duration=run_duration, dt=run_dt, grav_vec=grav)
+    extra = _reproduction_metadata(scenario, duration=run_duration, dt=run_dt, grav_vec=grav)
     return simulate_controlled(
         scenario.skeleton, scenario.controller, duration=run_duration, dt=run_dt, grav_vec=grav, extra=extra
     )
@@ -390,30 +401,26 @@ def scenario_from_log(log: StateLog) -> tuple[Scenario, Mapping[str, Any]]:
         If the log carries no reproduction metadata (was not produced by
         :func:`run_scenario`).
     """
-    config = log.extra.get("scenario")
+    config = log.extra.get("source_config")
     if not config:
         msg = "log has no reproduction metadata; it was not produced by run_scenario"
         raise ValueError(msg)
-    skeleton = log.build_skeleton()
-    initial = config["initial"]
-    skeleton.set_state(
-        q=np.asarray(initial["q"], dtype=np.float64),
-        dq=np.asarray(initial["dq"], dtype=np.float64),
+    scenario = _scenario_from_config(config)
+    run = log.extra.get(
+        "run",
+        {"duration": scenario.task.duration, "dt": scenario.task.dt, "grav_vec": [0.0, 0.0]},
     )
-    task = Task.from_dict(config["task"])
-    controller_config = dict(config["controller"])
-    controller = build_controller(controller_config, skeleton=skeleton, task=task)
-    scenario = Scenario(skeleton=skeleton, task=task, controller=controller, controller_config=controller_config)
-    return scenario, config["run"]
+    return scenario, run
 
 
 def rerun_log(log: StateLog) -> StateLog:
     """Reconstruct and re-simulate a scenario recorded by :func:`run_scenario`.
 
-    The new run uses the recorded initial state, controller, task, and run
-    parameters, so deterministic controllers reproduce the original channels
-    exactly (MPC, which calls :func:`scipy.optimize.minimize`, reproduces within a
-    small numerical tolerance on the same platform).
+    Rebuilds the scenario by reparsing the embedded source config (identical input
+    gives identical state) and re-runs with the recorded run parameters, so
+    deterministic controllers reproduce the original channels exactly (MPC, which
+    calls :func:`scipy.optimize.minimize`, reproduces within a small numerical
+    tolerance on the same platform).
 
     Raises
     ------
@@ -423,3 +430,30 @@ def rerun_log(log: StateLog) -> StateLog:
     scenario, run = scenario_from_log(log)
     grav_vec = np.asarray(run["grav_vec"], dtype=np.float64)
     return run_scenario(scenario, duration=run["duration"], dt=run["dt"], grav_vec=grav_vec)
+
+
+def export_scenario_toml(log: StateLog, path: str | Path) -> None:
+    """Write the log's embedded scenario config to an editable TOML file.
+
+    The output is a standard combined config (``[skeleton]`` / ``[initial]`` /
+    ``[task]`` / ``[controller]``) that :func:`load_scenario` reads back. Re-running
+    the unedited file reproduces the original run exactly for the deterministic
+    controllers, and individual values can be edited for comparison studies.
+
+    Parameters
+    ----------
+    log : StateLog
+        A log produced by :func:`run_scenario` (carrying the source config).
+    path : str | Path
+        Destination ``.toml`` path.
+
+    Raises
+    ------
+    ValueError
+        If the log carries no embedded scenario config.
+    """
+    config = log.extra.get("source_config")
+    if not config:
+        msg = "log has no embedded scenario config to export; it was not produced by run_scenario"
+        raise ValueError(msg)
+    Path(path).write_text(dump_toml(config).strip() + "\n", encoding="utf-8")

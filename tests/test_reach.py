@@ -54,7 +54,7 @@ def test_run_reach_exports_a_rerunnable_log(tmp_path: Path) -> None:
     run_reach(config, output=output, duration=0.2)
 
     log = StateLog.load(output)
-    assert log.extra["scenario"]["controller"]["type"] == "computed_torque"
+    assert log.extra["source_config"]["controller"]["type"] == "computed_torque"
 
     replayed = rerun_log(log)
     np.testing.assert_array_equal(replayed.channel("q"), log.channel("q"))

@@ -7,7 +7,7 @@ import tomllib
 import numpy as np
 import pytest
 
-from skelarm.recording import StateLog, _dump_toml
+from skelarm.recording import StateLog, dump_toml
 from skelarm.skeleton import LinkProp, Skeleton
 
 
@@ -126,4 +126,4 @@ def test_dump_toml_round_trips_via_tomllib() -> None:
         "channels": {"q": {"unit": "rad", "columns": ["q1", "q2"]}},
         "data": {"q": [[0.1, 0.2], [0.3, 0.4]]},
     }
-    assert tomllib.loads(_dump_toml(source)) == source
+    assert tomllib.loads(dump_toml(source)) == source

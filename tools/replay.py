@@ -35,7 +35,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from skelarm import SkelarmCanvas, StateLog, compute_forward_kinematics
+from skelarm import SkelarmCanvas, StateLog, compute_forward_kinematics, export_scenario_toml
 
 _TIMER_MS = 20  # playback/render period in milliseconds
 
@@ -264,6 +264,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("logfile", type=Path, help="path to a .sklog.npz state log")
     parser.add_argument("--show-com", action="store_true", help="overlay each link's center of mass")
     parser.add_argument("--speed", type=float, default=1.0, help="initial playback speed multiplier (default: 1.0)")
+    parser.add_argument(
+        "--export-config",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="write the log's embedded scenario config to an editable TOML and exit (no GUI)",
+    )
     return parser
 
 
@@ -277,6 +284,14 @@ def main() -> None:
         log = StateLog.load(args.logfile)
     except (OSError, ValueError, KeyError) as exc:
         parser.error(f"could not load {args.logfile}: {exc}")
+
+    if args.export_config is not None:
+        try:
+            export_scenario_toml(log, args.export_config)
+        except ValueError as exc:
+            parser.error(str(exc))
+        print(f"wrote scenario config to {args.export_config}")
+        return
 
     app = QApplication(sys.argv)
     try:

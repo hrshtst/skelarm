@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import tomllib
 import warnings
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -149,7 +149,7 @@ def _initial_joint_vector(values: Sequence[float], num_joints: int, field: str) 
     return array
 
 
-def _apply_initial(skeleton: Skeleton, data: dict[str, Any], default_q: NDArray[np.float64]) -> None:
+def _apply_initial(skeleton: Skeleton, data: Mapping[str, Any], default_q: NDArray[np.float64]) -> None:
     """Apply a TOML ``[initial]`` section (degrees) to ``skeleton``.
 
     ``q`` overrides ``default_q`` when present; ``dq`` is applied when present and
@@ -265,7 +265,28 @@ class Skeleton:
         path = Path(file_path)
         with path.open("rb") as f:
             data = tomllib.load(f)
+        return cls.from_config(data)
 
+    @classmethod
+    def from_config(cls, data: Mapping[str, Any]) -> Skeleton:
+        """Build a Skeleton from an already-parsed combined config mapping.
+
+        This is the dict-based core of :meth:`from_toml`: it reads the same
+        ``[skeleton]`` / ``[initial]`` schema (degrees) and applies the initial
+        pose. Rebuilding from the identical mapping reproduces the robot and pose
+        exactly, which underpins reproducible re-runs from an exported config.
+
+        Parameters
+        ----------
+        data : Mapping[str, Any]
+            A parsed combined config with an optional ``[skeleton]`` table (links
+            as ``[[skeleton.link]]``, degrees) and an optional ``[initial]`` table.
+
+        Returns
+        -------
+        Skeleton
+            A new Skeleton posed at the configured initial state.
+        """
         # The canonical layout nests skeleton keys under a ``[skeleton]`` table so
         # robot, task, and controller configs can coexist in one combined file. Fall
         # back to top-level keys for legacy (flat) configs.

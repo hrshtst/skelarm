@@ -1,7 +1,7 @@
-"""Full-config embedding and re-run reproducibility of recorded scenario logs.
+"""Full-config embedding, editable export, and re-run reproducibility of logs.
 
-A ``run_scenario`` log embeds the task, controller, initial state, and run
-parameters, so ``rerun_log`` can reconstruct the scenario and re-simulate it. The
+A ``run_scenario`` log embeds the original source config, so ``rerun_log`` and an
+exported editable TOML both reconstruct the scenario and re-simulate it. The
 deterministic controllers reproduce the recorded channels exactly; MPC reproduces
 within a small numerical tolerance.
 """
@@ -14,7 +14,13 @@ import numpy as np
 import pytest
 
 from skelarm.recording import StateLog
-from skelarm.scenario import load_scenario, rerun_log, run_scenario, scenario_from_log
+from skelarm.scenario import (
+    export_scenario_toml,
+    load_scenario,
+    rerun_log,
+    run_scenario,
+    scenario_from_log,
+)
 
 _SKELETON_TOML = (
     "[skeleton]\n"
@@ -23,37 +29,37 @@ _SKELETON_TOML = (
 )
 
 
-def _write_scenario(path: Path, controller_block: str) -> None:
+def _write_scenario(path: Path, controller_block: str, *, duration: float = 2.0, dt: float = 0.01) -> None:
     """Write a combined skeleton + initial + task + controller config."""
     path.write_text(
         _SKELETON_TOML
         + "[initial]\nq = [34.4, 57.3]\n"
-        + "[task]\ntarget = [0.55, 1.21]\nduration = 2.0\ndt = 0.01\n"
+        + f"[task]\ntarget = [0.55, 1.21]\nduration = {duration}\ndt = {dt}\n"
         + controller_block,
         encoding="utf-8",
     )
 
 
-def _computed_torque(path: Path) -> None:
+def _computed_torque(path: Path, *, duration: float = 2.0) -> None:
     """Write a computed-torque scenario config to ``path``."""
-    _write_scenario(path, '[controller]\ntype = "computed_torque"\nkp = 200.0\nkd = 30.0\n')
+    _write_scenario(path, '[controller]\ntype = "computed_torque"\nkp = 200.0\nkd = 30.0\n', duration=duration)
 
 
-def test_run_scenario_embeds_reproduction_metadata(tmp_path: Path) -> None:
-    """A run_scenario log carries the controller, task, initial state, and run params."""
+def test_run_scenario_embeds_the_source_config(tmp_path: Path) -> None:
+    """A run_scenario log carries the original config plus the actual run params."""
     config = tmp_path / "reach.toml"
     _computed_torque(config)
     scenario = load_scenario(config)
 
     log = run_scenario(scenario, duration=0.1, dt=0.01)
 
-    repro = log.extra["scenario"]
-    assert repro["controller"]["type"] == "computed_torque"
-    assert repro["controller"]["kp"] == pytest.approx(200.0)
-    assert repro["task"]["target"] == pytest.approx([0.55, 1.21])
-    assert len(repro["initial"]["q"]) == scenario.skeleton.num_joints
-    assert repro["run"]["duration"] == pytest.approx(0.1)
-    assert repro["run"]["dt"] == pytest.approx(0.01)
+    source = log.extra["source_config"]
+    assert source["controller"]["type"] == "computed_torque"
+    assert source["controller"]["kp"] == pytest.approx(200.0)
+    assert source["task"]["target"] == pytest.approx([0.55, 1.21])
+    assert source["initial"]["q"] == pytest.approx([34.4, 57.3])  # degrees, exactly as written
+    assert log.extra["run"]["duration"] == pytest.approx(0.1)
+    assert log.extra["run"]["dt"] == pytest.approx(0.01)
     assert "skelarm" in log.extra["provenance"]
 
 
@@ -108,6 +114,44 @@ def test_rerun_log_without_metadata_raises() -> None:
     log = StateLog()
     with pytest.raises(ValueError, match="reproduction"):
         rerun_log(log)
+
+
+def test_export_scenario_toml_round_trips_exactly(tmp_path: Path) -> None:
+    """Run -> save -> reload -> export editable TOML -> re-run reproduces exactly."""
+    config = tmp_path / "reach.toml"
+    _computed_torque(config, duration=0.05)
+    original = run_scenario(load_scenario(config))  # default duration = task.duration = 0.05
+
+    original.save(tmp_path / "run.sklog.npz")
+    loaded = StateLog.load(tmp_path / "run.sklog.npz")
+    exported = tmp_path / "exported.toml"
+    export_scenario_toml(loaded, exported)
+
+    replayed = run_scenario(load_scenario(exported))  # the exported file is a valid scenario config
+
+    np.testing.assert_array_equal(replayed.channel("q"), original.channel("q"))
+    np.testing.assert_array_equal(replayed.channel("tau"), original.channel("tau"))
+
+
+def test_edited_export_changes_the_result(tmp_path: Path) -> None:
+    """Editing a gain in the exported config changes the re-run (the comparison use case)."""
+    config = tmp_path / "reach.toml"
+    _computed_torque(config, duration=0.1)
+    original = run_scenario(load_scenario(config))
+
+    exported = tmp_path / "exported.toml"
+    export_scenario_toml(original, exported)
+    exported.write_text(exported.read_text(encoding="utf-8").replace("kp = 200.0", "kp = 50.0"), encoding="utf-8")
+
+    edited = run_scenario(load_scenario(exported))
+
+    assert not np.allclose(edited.channel("tau"), original.channel("tau"))
+
+
+def test_export_scenario_toml_requires_metadata(tmp_path: Path) -> None:
+    """A log without an embedded scenario config cannot be exported."""
+    with pytest.raises(ValueError, match="scenario config"):
+        export_scenario_toml(StateLog(), tmp_path / "x.toml")
 
 
 @pytest.mark.slow
