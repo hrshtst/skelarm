@@ -43,7 +43,11 @@ markdown_extensions:
   - admonition
   - attr_list
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.inlinehilite
@@ -51,9 +55,13 @@ markdown_extensions:
   - pymdownx.arithmatex:
       generic: true
 
+extra_css:
+  - stylesheets/mermaid-zoom.css
+
 extra_javascript:
   - javascripts/mathjax.js
   - https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js
+  - javascripts/mermaid-zoom.js
 
 nav:
   - Home: index.md
@@ -71,6 +79,7 @@ nav:
       - Robot Configuration: guides/robot_configuration.md
       - Control Configuration: guides/control_configuration.md
   - API Reference:
+      - Architecture: api/architecture.md
       - Skeleton: api/skeleton.md
       - Kinematics: api/kinematics.md
       - Dynamics: api/dynamics.md
