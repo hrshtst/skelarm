@@ -27,6 +27,9 @@ from skelarm.kinematics import compute_forward_kinematics, compute_inverse_kinem
 from skelarm.recording import StateLog
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+    from typing import Any
+
     from numpy.typing import ArrayLike, NDArray
 
     from skelarm.skeleton import Skeleton
@@ -268,6 +271,7 @@ def simulate_controlled(
     duration: float,
     dt: float = 1e-3,
     grav_vec: NDArray[np.float64] | None = None,
+    extra: Mapping[str, Any] | None = None,
 ) -> StateLog:
     """Run a controller against the dynamics with a fixed time step.
 
@@ -288,6 +292,9 @@ def simulate_controlled(
         Fixed control/integration step (seconds).
     grav_vec : NDArray[np.float64] | None, optional
         Gravity vector; defaults to zero (planar motion).
+    extra : Mapping[str, Any] | None, optional
+        Free-form metadata to embed in the returned log's ``[extra]`` table (e.g.
+        the scenario config that produced the run, for later reproduction).
 
     Returns
     -------
@@ -303,7 +310,7 @@ def simulate_controlled(
         "dq": {"unit": "rad/s", "label": "joint velocity", "columns": joints},
         "tau": {"unit": "N*m", "label": "applied joint torque", "columns": joints},
     }
-    log = StateLog(model, producer=type(controller).__name__, channel_meta=channel_meta)
+    log = StateLog(model, producer=type(controller).__name__, channel_meta=channel_meta, extra=extra)
     controller.reset(model)
 
     t = 0.0

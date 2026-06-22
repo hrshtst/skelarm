@@ -20,8 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
-from skelarm.control import simulate_controlled
-from skelarm.scenario import load_scenario
+from skelarm.scenario import load_scenario, run_scenario
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -54,8 +53,7 @@ def run_reach(config: str | Path, *, output: str | Path | None = None, duration:
     """
     config = Path(config)
     scenario = load_scenario(config)
-    run_duration = scenario.task.duration if duration is None else duration
-    log = simulate_controlled(scenario.skeleton, scenario.controller, duration=run_duration, dt=scenario.task.dt)
+    log = run_scenario(scenario, duration=duration)
 
     out_path = Path(output) if output is not None else config.with_suffix(".sklog.npz")
     log.save(out_path)

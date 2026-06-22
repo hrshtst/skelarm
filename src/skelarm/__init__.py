@@ -45,7 +45,7 @@ from .reaching import (
     shaping_ratio,
 )
 from .recording import StateLog
-from .scenario import Scenario, Task, build_controller, load_scenario
+from .scenario import Scenario, Task, build_controller, load_scenario, rerun_log, run_scenario, scenario_from_log
 from .simulator import SimulatorCanvas, SkelarmSimulator
 from .skeleton import Link, LinkProp, Skeleton
 from .trajectory import Trajectory, evaluate_schedule
@@ -96,7 +96,10 @@ __all__ = [
     "ik_joint_reference",
     "load_scenario",
     "plot_trajectory",
+    "rerun_log",
     "resolved_rate_joint_reference",
+    "run_scenario",
+    "scenario_from_log",
     "shaping_ratio",
     "simulate_controlled",
     "simulate_robot",

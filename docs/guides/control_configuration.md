@@ -131,14 +131,43 @@ t_adapt = 5.0
 ## Using it from Python
 
 ```python
-from skelarm import load_scenario, simulate_controlled
+from skelarm import load_scenario, run_scenario
 
 scenario = load_scenario("examples/reach.toml")
-log = simulate_controlled(
-    scenario.skeleton, scenario.controller, duration=scenario.task.duration, dt=scenario.task.dt
-)
-log.save("reach.sklog.npz")   # replay/analyze with tools/replay.py
+log = run_scenario(scenario)   # uses the task's duration / dt
+log.save("reach.sklog.npz")    # replay/analyze with tools/replay.py
 ```
 
-`build_controller` can also be called directly with a `[controller]` mapping, a
-`Task`, and a `Skeleton`, so controllers can be constructed without a file.
+`run_scenario` runs the fixed-step control loop (like `simulate_controlled`) but
+also embeds the scenario in the log for later reproduction. `build_controller` can
+also be called directly with a `[controller]` mapping, a `Task`, and a `Skeleton`,
+so controllers can be constructed without a file.
+
+## Reproducible runs
+
+A log written by `run_scenario` (and by `tools/reach.py`) is a self-contained,
+re-runnable record. Alongside the recorded channels and the embedded robot
+geometry, it stores — in the log's `[extra]` metadata — the `[task]` and
+`[controller]` tables, the initial joint state, the actual run parameters
+(`duration` / `dt` / `grav_vec`), and the `skelarm` / `numpy` / `scipy` versions.
+
+`rerun_log` reconstructs the scenario and re-simulates it:
+
+```python
+from skelarm import rerun_log
+from skelarm.recording import StateLog
+
+log = StateLog.load("reach.sklog.npz")
+again = rerun_log(log)   # rebuilds the scenario and re-runs the dynamics
+```
+
+The deterministic controllers (PD, computed torque, inverse-dynamics feedforward,
+and the reaching controllers) reproduce the recorded channels exactly on the same
+machine. MPC calls `scipy.optimize.minimize`, which is deterministic but only
+bit-identical for the same `scipy` / BLAS build, so an MPC re-run matches within a
+small numerical tolerance rather than exactly.
+
+!!! note "What is not captured"
+    A controller built programmatically (not from a config) has no embedded
+    config, so its run is recorded without reproduction metadata and `rerun_log`
+    rejects it. Re-running is available for scenarios loaded from TOML.

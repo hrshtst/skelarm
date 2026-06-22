@@ -8,7 +8,8 @@ format change.
 
 The canonical on-disk format is a numpy ``.npz`` archive holding one array per
 channel plus a ``__meta__`` member with TOML metadata (schema version, producer,
-the embedded robot geometry, and per-channel units/labels). A standalone
+the embedded robot geometry, per-channel units/labels, and any free-form ``extra``
+metadata such as the scenario config that produced the run). A standalone
 human-readable ``.toml`` export is also available for small logs.
 """
 
@@ -126,6 +127,11 @@ class StateLog:
     def channel_meta(self) -> dict[str, dict[str, Any]]:
         """Per-channel descriptors (``unit`` / ``label`` / ``columns``)."""
         return self._channel_meta
+
+    @property
+    def extra(self) -> dict[str, Any]:
+        """Free-form extra metadata stored under the ``[extra]`` table."""
+        return self._extra
 
     @property
     def channel_names(self) -> list[str]:

@@ -20,6 +20,7 @@ Example::
 
 from __future__ import annotations
 
+import importlib.metadata
 import tomllib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -34,6 +35,7 @@ from skelarm.control import (
     InverseDynamicsFeedforwardPD,
     JointPD,
     ik_joint_reference,
+    simulate_controlled,
 )
 from skelarm.mpc import JointSpaceMPC
 from skelarm.reaching import (
@@ -43,6 +45,7 @@ from skelarm.reaching import (
     TimeVaryingStiffness,
     VirtualSpringDamper,
 )
+from skelarm.recording import StateLog
 from skelarm.skeleton import Skeleton
 from skelarm.trajectory import Trajectory
 
@@ -110,11 +113,17 @@ class Task:
 
 @dataclass
 class Scenario:
-    """A loaded control scenario: the robot, the task, and a ready-to-run controller."""
+    """A loaded control scenario: the robot, the task, and a ready-to-run controller.
+
+    ``controller_config`` keeps the raw ``[controller]`` table (``type`` plus gains)
+    when the scenario was loaded from a config, so a run can embed it for later
+    reproduction; it is ``None`` for controllers built programmatically.
+    """
 
     skeleton: Skeleton
     task: Task
     controller: Controller
+    controller_config: Mapping[str, Any] | None = None
 
 
 def _endpoint(skeleton: Skeleton) -> NDArray[np.float64]:
@@ -263,8 +272,9 @@ def load_scenario(file_path: str | Path) -> Scenario:
     """Load a robot, task, and controller from one combined TOML file."""
     skeleton = Skeleton.from_toml(file_path)
     task = Task.from_toml(file_path)
-    controller = build_controller(file_path, skeleton=skeleton, task=task)
-    return Scenario(skeleton=skeleton, task=task, controller=controller)
+    controller_config = dict(_read_controller_section(file_path))
+    controller = build_controller(controller_config, skeleton=skeleton, task=task)
+    return Scenario(skeleton=skeleton, task=task, controller=controller, controller_config=controller_config)
 
 
 def _read_controller_section(file_path: str | Path) -> Mapping[str, Any]:
@@ -275,3 +285,141 @@ def _read_controller_section(file_path: str | Path) -> Mapping[str, Any]:
         msg = f"no [controller] section in {file_path}"
         raise ValueError(msg)
     return data["controller"]
+
+
+_PROVENANCE_PACKAGES = ("skelarm", "numpy", "scipy")
+
+
+def _provenance() -> dict[str, str]:
+    """Record the installed versions of the packages that affect reproducibility."""
+    versions: dict[str, str] = {}
+    for package in _PROVENANCE_PACKAGES:
+        try:
+            versions[package] = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:  # pragma: no cover - install-dependent
+            versions[package] = "unknown"
+    return versions
+
+
+def _reproduction_metadata(
+    scenario: Scenario,
+    initial_q: NDArray[np.float64],
+    initial_dq: NDArray[np.float64],
+    *,
+    duration: float,
+    dt: float,
+    grav_vec: NDArray[np.float64],
+) -> dict[str, Any] | None:
+    """Assemble the ``[extra]`` payload that lets a run be reconstructed and re-run.
+
+    Returns ``None`` when the scenario carries no ``controller_config`` (e.g. a
+    programmatically built controller), so the run is recorded without it.
+    """
+    if scenario.controller_config is None:
+        return None
+    controller = {key: value for key, value in scenario.controller_config.items() if value is not None}
+    return {
+        "scenario": {
+            "initial": {"q": initial_q.tolist(), "dq": initial_dq.tolist()},
+            "task": {
+                "target": scenario.task.target.tolist(),
+                "duration": float(scenario.task.duration),
+                "dt": float(scenario.task.dt),
+                "schedule": scenario.task.schedule,
+            },
+            "controller": controller,
+            "run": {"duration": float(duration), "dt": float(dt), "grav_vec": grav_vec.tolist()},
+        },
+        "provenance": _provenance(),
+    }
+
+
+def run_scenario(
+    scenario: Scenario,
+    *,
+    duration: float | None = None,
+    dt: float | None = None,
+    grav_vec: NDArray[np.float64] | None = None,
+) -> StateLog:
+    """Simulate a scenario and embed its full config for later reproduction.
+
+    Runs :func:`~skelarm.control.simulate_controlled` and, when the scenario was
+    loaded from a config, stores the task, controller, initial state, and run
+    parameters in the log's ``[extra]`` table so :func:`rerun_log` can reconstruct
+    and re-simulate it.
+
+    Parameters
+    ----------
+    scenario : Scenario
+        The robot, task, and controller to run.
+    duration : float | None, optional
+        Simulated duration (seconds); defaults to ``scenario.task.duration``.
+    dt : float | None, optional
+        Control / integration step; defaults to ``scenario.task.dt``.
+    grav_vec : NDArray[np.float64] | None, optional
+        Gravity vector; defaults to zero (planar motion).
+
+    Returns
+    -------
+    StateLog
+        The recorded run, with reproduction metadata when available.
+    """
+    run_duration = scenario.task.duration if duration is None else float(duration)
+    run_dt = scenario.task.dt if dt is None else float(dt)
+    grav = np.zeros(_TASK_DIM, dtype=np.float64) if grav_vec is None else np.asarray(grav_vec, dtype=np.float64)
+    initial_q = scenario.skeleton.q.copy()
+    initial_dq = scenario.skeleton.dq.copy()
+    extra = _reproduction_metadata(scenario, initial_q, initial_dq, duration=run_duration, dt=run_dt, grav_vec=grav)
+    return simulate_controlled(
+        scenario.skeleton, scenario.controller, duration=run_duration, dt=run_dt, grav_vec=grav, extra=extra
+    )
+
+
+def scenario_from_log(log: StateLog) -> tuple[Scenario, Mapping[str, Any]]:
+    """Reconstruct the scenario and run parameters embedded in a log by :func:`run_scenario`.
+
+    Returns
+    -------
+    tuple[Scenario, Mapping[str, Any]]
+        The rebuilt scenario (skeleton posed at the recorded initial state) and the
+        ``run`` parameters (``duration`` / ``dt`` / ``grav_vec``).
+
+    Raises
+    ------
+    ValueError
+        If the log carries no reproduction metadata (was not produced by
+        :func:`run_scenario`).
+    """
+    config = log.extra.get("scenario")
+    if not config:
+        msg = "log has no reproduction metadata; it was not produced by run_scenario"
+        raise ValueError(msg)
+    skeleton = log.build_skeleton()
+    initial = config["initial"]
+    skeleton.set_state(
+        q=np.asarray(initial["q"], dtype=np.float64),
+        dq=np.asarray(initial["dq"], dtype=np.float64),
+    )
+    task = Task.from_dict(config["task"])
+    controller_config = dict(config["controller"])
+    controller = build_controller(controller_config, skeleton=skeleton, task=task)
+    scenario = Scenario(skeleton=skeleton, task=task, controller=controller, controller_config=controller_config)
+    return scenario, config["run"]
+
+
+def rerun_log(log: StateLog) -> StateLog:
+    """Reconstruct and re-simulate a scenario recorded by :func:`run_scenario`.
+
+    The new run uses the recorded initial state, controller, task, and run
+    parameters, so deterministic controllers reproduce the original channels
+    exactly (MPC, which calls :func:`scipy.optimize.minimize`, reproduces within a
+    small numerical tolerance on the same platform).
+
+    Raises
+    ------
+    ValueError
+        If the log carries no reproduction metadata.
+    """
+    scenario, run = scenario_from_log(log)
+    grav_vec = np.asarray(run["grav_vec"], dtype=np.float64)
+    return run_scenario(scenario, duration=run["duration"], dt=run["dt"], grav_vec=grav_vec)

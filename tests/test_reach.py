@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from skelarm.recording import StateLog
+from skelarm.scenario import rerun_log
 from tools.reach import build_parser, run_reach
 
 _SCENARIO_TOML = (
@@ -43,6 +44,20 @@ def test_run_reach_exports_a_replayable_log(tmp_path: Path) -> None:
     final.q = log.channel("q")[-1]
     tip = np.array([final.links[-1].xe, final.links[-1].ye])
     assert tip == pytest.approx(np.array([0.55, 1.21]), abs=2e-2)
+
+
+def test_run_reach_exports_a_rerunnable_log(tmp_path: Path) -> None:
+    """The exported log embeds the scenario, so it re-simulates to the same motion."""
+    config = tmp_path / "reach.toml"
+    config.write_text(_SCENARIO_TOML, encoding="utf-8")
+    output = tmp_path / "run.sklog.npz"
+    run_reach(config, output=output, duration=0.2)
+
+    log = StateLog.load(output)
+    assert log.extra["scenario"]["controller"]["type"] == "computed_torque"
+
+    replayed = rerun_log(log)
+    np.testing.assert_array_equal(replayed.channel("q"), log.channel("q"))
 
 
 def test_run_reach_defaults_output_next_to_config(tmp_path: Path) -> None:
