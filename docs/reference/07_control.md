@@ -120,12 +120,15 @@ q_r(t_{k+1}) =
 $$
 
 This gives a feasible position reference and naturally respects the joint limits
-enforced by the IK solver. Joint velocities and accelerations can be estimated by
-finite differences if a tracking controller needs $\dot{q}_r$ and $\ddot{q}_r$.
+enforced by the IK solver. `skelarm` implements this conversion as
+`ik_joint_reference`, which warm-starts each solve from the previous solution and
+fills $\dot{q}_r$ and $\ddot{q}_r$ by finite differences, returning a
+`SampledJointReference` that a tracking controller reads by linear interpolation.
 
-The implementation should check joint-reference continuity. Redundant arms can
-reach the same endpoint with multiple postures; abrupt posture switching gives a
-valid endpoint trajectory but a poor joint trajectory.
+Warm-starting also preserves joint-reference continuity. Redundant arms can reach
+the same endpoint with multiple postures; abrupt posture switching would give a
+valid endpoint trajectory but a poor joint trajectory, and seeding each solve from
+the previous solution keeps the posture from jumping.
 
 ### Resolved motion rate conversion
 
@@ -145,17 +148,18 @@ $$
 
 Then integrate $\dot{q}_r$ forward in time. This method can produce smoother
 joint references than independent per-sample IK when the time step is small, but
-it can drift from the desired task path. A practical implementation should add
-task-space feedback:
+it can drift from the desired task path. `skelarm`'s `resolved_rate_joint_reference`
+adds task-space feedback to correct that drift,
 
 $$
 \dot{q}_r =
-J^\#\left(\dot{p}_r + K_{\mathrm{task}}(p_r - p(q_r))\right).
+J^\#\left(\dot{p}_r + K_{\mathrm{task}}(p_r - p(q_r))\right),
 $$
 
+exposing the damping $\mu$ as `damping` and $K_{\mathrm{task}}$ as `k_task`.
+
 This is velocity-level control, not torque control. In a dynamic simulation it is
-usually used to generate $q_r(t)$ and $\dot{q}_r(t)$ for a lower-level torque
-controller.
+used to generate $q_r(t)$ and $\dot{q}_r(t)$ for a lower-level torque controller.
 
 ## 3. Joint-space trajectory tracking
 
@@ -172,10 +176,11 @@ $$
 K_p(q_r-q) + K_d(\dot{q}_r-\dot{q}).
 $$
 
-$K_p$ and $K_d$ are positive diagonal gain matrices. This controller is easy to
-implement as a `simulate_robot` torque callback. It does not compensate for the
-arm's inertia or Coriolis terms, so the same gains can behave differently across
-configurations.
+$K_p$ and $K_d$ are positive diagonal gain matrices. `skelarm` provides it as the
+`JointPD` controller, which is callable as a `simulate_robot` torque callback and
+also runs through the fixed-step `simulate_controlled` loop. It does not compensate
+for the arm's inertia or Coriolis terms, so the same gains can behave differently
+across configurations.
 
 ### Inverse-dynamics feedforward plus feedback
 
@@ -197,10 +202,11 @@ $$
 + K_d(\dot{q}_r-\dot{q}).
 $$
 
-In `skelarm`, this can be implemented by copying a skeleton, setting its
-`q`, `dq`, and `ddq` to the reference state, and running
-`compute_inverse_dynamics` to read `tau`. This is useful when the planned
-trajectory is trusted and the feedback term only needs to correct tracking error.
+`skelarm` provides this as `InverseDynamicsFeedforwardPD`, which holds a separate
+clone of the skeleton, sets its `q`, `dq`, and `ddq` to the reference state, and
+runs `compute_inverse_dynamics` to read the feedforward `tau`. This is useful when
+the planned trajectory is trusted and the feedback term only needs to correct
+tracking error.
 
 ### Computed torque control
 
@@ -229,9 +235,8 @@ $$
 e_q=q_r-q.
 $$
 
-In `skelarm`, computed torque can be implemented with `compute_mass_matrix` and
-`compute_coriolis_gravity_vector`, or by setting a copy of the current skeleton's
-`ddq` to $v$ and calling `compute_inverse_dynamics`.
+`skelarm` provides this as the `ComputedTorque` controller, which forms $H(q)$ with
+`compute_mass_matrix` and $b(q,\dot{q})$ with `compute_coriolis_gravity_vector`.
 
 ### Model predictive control
 
@@ -292,18 +297,19 @@ e_{q,k}=q_k-q_{r,k},
 e_{\dot{q},k}=\dot{q}_k-\dot{q}_{r,k}.
 $$
 
-The first implementation can use torque bounds and soft joint-limit penalties.
-Hard constraints can be added once the optimizer interface is stable:
+`skelarm`'s `JointSpaceMPC` uses symmetric torque bounds (`tau_max`) and a soft
+joint-limit penalty (`limit_weight`). Hard state constraints,
 
 $$
 q_{\min} \le q_k \le q_{\max},
 \qquad
-\tau_{\min} \le \tau_k \le \tau_{\max}.
+\tau_{\min} \le \tau_k \le \tau_{\max},
 $$
 
-In Python, a practical first version can use `scipy.optimize.minimize` with a
-small horizon, flattened torque sequence, and warm start from the previous
-solution. The controller loop is:
+are not yet enforced: the solver is `scipy.optimize.minimize` with `L-BFGS-B`,
+whose only hard constraints are box bounds on the torque variables. `JointSpaceMPC`
+optimizes a flattened torque sequence over a small horizon and warm-starts from the
+previous solution. Its controller loop is:
 
 1. Read the current state $(q,\dot{q})$.
 2. Slice the next $N$ samples from the reference trajectory.
@@ -311,46 +317,57 @@ solution. The controller loop is:
 4. Apply only $\tau_0$.
 5. Shift the optimized sequence by one step to warm-start the next solve.
 
-Task-space MPC can be added by including an endpoint term,
+Only joint-space MPC is implemented. Task-space MPC could be added by including an
+endpoint term,
 
 $$
 (p(q_k)-p_{r,k})^{T}Q_p(p(q_k)-p_{r,k}),
 $$
 
-but joint-space MPC is the cleaner first target because it avoids mixing IK,
-trajectory conversion, and constrained optimal control in the same initial
-implementation.
+but the joint-space form is kept deliberately simple: it avoids mixing IK,
+trajectory conversion, and constrained optimal control in the same controller.
 
 !!! note "Fixed-step simulation"
-    MPC is naturally discrete and stateful. The existing `simulate_robot` helper
-    uses adaptive `solve_ivp`, which may call a torque callback multiple times per
-    output interval. A robust MPC implementation should use a fixed-step
-    simulation loop or an MPC-specific simulator that calls the optimizer once per
-    control interval.
+    MPC is naturally discrete and stateful. The `simulate_robot` helper uses
+    adaptive `solve_ivp`, which may call a torque callback multiple times per
+    output interval, so it is unsuitable for a stateful controller. `JointSpaceMPC`
+    is therefore run with the fixed-step `simulate_controlled` loop, which calls the
+    controller once per control interval with the same `dt` as the MPC rollout.
 
 !!! note "Gravity convention"
     The default `skelarm` arm moves in a horizontal plane, so gravity is zero
     unless a non-zero `grav_vec` is explicitly supplied. Control formulas should
     be written against the same convention as `compute_forward_dynamics`.
 
-## 4. Implementation roadmap
+## 4. Implementation in `skelarm`
 
-The trajectory-tracking layer can be built incrementally:
+The trajectory-tracking layer described above is implemented across
+`skelarm.trajectory`, `skelarm.control`, and `skelarm.mpc`:
 
-1. Add trajectory helpers that produce sampled $p_r$, $\dot{p}_r$, and optionally
-   $\ddot{p}_r$ for linear, cubic, quintic, and minimum-jerk schedules.
-2. Add samplewise IK conversion using `compute_inverse_kinematics`.
-3. Add resolved motion rate conversion using damped pseudoinverse velocity
-   conversion.
-4. Add torque controller helpers for direct joint-space PD, inverse-dynamics
-   feedforward plus PD, and computed torque control.
-5. Add a fixed-step simulation path for stateful controllers.
-6. Add a simple joint-space MPC tracker with torque bounds and warm starts.
-7. Add tests covering endpoint path tracking, joint-reference continuity,
+1. `Trajectory` (in `skelarm.trajectory`) produces sampled $p_r$, $\dot{p}_r$, and
+   $\ddot{p}_r$ for the `linear`, `cubic`, `quintic`, and `minimum_jerk` schedules
+   (the last two share one polynomial; see §1).
+2. `ik_joint_reference` converts a task trajectory to a joint reference by
+   samplewise `compute_inverse_kinematics` with warm starts.
+3. `resolved_rate_joint_reference` converts by damped-pseudoinverse velocity
+   integration with optional task-space feedback.
+4. `JointPD`, `InverseDynamicsFeedforwardPD`, and `ComputedTorque` (in
+   `skelarm.control`) implement the three torque controllers.
+5. `simulate_controlled` is the fixed-step (semi-implicit Euler) loop for stateful
+   controllers; it returns a `StateLog` for replay and analysis.
+6. `JointSpaceMPC` (in `skelarm.mpc`) is the joint-space MPC tracker with torque
+   bounds, soft joint-limit penalties, and warm starts.
+7. The behaviors are tested in `tests/test_trajectory.py`, `tests/test_control.py`,
+   and `tests/test_mpc.py` (endpoint path tracking, joint-reference continuity,
    resolved-rate drift correction, computed-torque tracking quality, and MPC
-   torque-bound handling.
+   torque-bound handling).
 
-A plain callable `f(t, skeleton) -> tau` is enough for stateless PD,
-feedforward, and computed torque controllers. Controllers with their own dynamic
-state, such as MPC and online reference shaping, need a fixed control interval or
-an augmented simulator state.
+A `Controller` is callable as `f(t, skeleton) -> tau`, so the stateless PD,
+feedforward, and computed-torque controllers also work directly as a
+`simulate_robot` torque callback. Controllers with their own dynamic state, such
+as MPC and the online reference shaping of the next chapter, instead use the
+`reset`/`update` hooks and the fixed control interval of `simulate_controlled`.
+
+These controllers can also be configured from a single TOML scenario file and run
+without writing code; see the [Control Configuration](../guides/control_configuration.md)
+guide, the `skelarm.scenario` loader, and the `tools/reach.py` runner.

@@ -63,7 +63,8 @@ human-like reaching with redundant arms:
 Here $K_{\mathrm{task}}$ is task-space stiffness, $D_{\mathrm{task}}$ is
 task-space damping, and $C_q$ is joint damping. This does not require a target
 arrival time, and the Jacobian transpose maps the virtual endpoint force into
-joint torques.
+joint torques. `skelarm` implements it as the `VirtualSpringDamper` controller,
+using isotropic (scalar) `k_task`, `d_task`, and `c_joint` gains.
 
 This control law is compliant in the sense that external forces can displace the
 endpoint. Its weakness is the initial force: if $p^\ast$ is far from $p_0$, then
@@ -124,18 +125,21 @@ from a constant target spring:
 - task-space virtual damping makes endpoint paths straighter, especially for
   redundant arms.
 
-For `skelarm`, this controller is a useful intermediate implementation between a
-constant virtual spring and the later online reference-shaping methods. It does
-not require IK, a Jacobian inverse, or a planned joint trajectory. Unlike the
-Seto-Sugihara online shaper below, however, $k(t)$ is tied to elapsed time from
-movement onset. If the endpoint is blocked, the stiffness continues to grow even
-though the arm has not progressed, so contact behavior may still need force
-limits, reset logic, or the online feedback shaping described next.
+`skelarm` implements this as the `TimeVaryingStiffness` controller, a useful
+intermediate between a constant virtual spring and the later online
+reference-shaping methods. It takes the saturated stiffness `k0`, the rate `alpha`,
+and a damping ratio `zeta1` (so the damping gain is `zeta1 * k0`), and needs no IK,
+Jacobian inverse, or planned joint trajectory. Unlike the Seto-Sugihara online
+shaper below, however, $k(t)$ is tied to elapsed time from movement onset. If the
+endpoint is blocked, the stiffness continues to grow even though the arm has not
+progressed, so contact behavior may still need force limits, reset logic, or the
+online feedback shaping described next.
 
-Because `skelarm` assumes planar motion without gravity by default, the gravity
-compensation term used in the 3-D PA-10 experiments should be omitted unless the
-dynamics model is extended. Viscosity compensation from the paper is also not a
-first implementation requirement unless explicit joint friction is added.
+Because `skelarm` assumes planar motion without gravity by default,
+`TimeVaryingStiffness` omits the gravity compensation term used in the 3-D PA-10
+experiments; it would only be needed if the dynamics model were extended. The
+paper's viscosity compensation is likewise unnecessary unless explicit joint
+friction is added to the dynamics.
 
 ## 4. Online reference shaping
 
@@ -184,7 +188,10 @@ The parameter $r$ controls the tradeoff:
 
 This fixed-$r$ controller is the core idea of the IROS 2009 paper. It produces
 smoother reaching than a direct target spring and makes the behavior more pliant
-under endpoint constraints.
+under endpoint constraints. `skelarm` implements it as the `OnlineReferenceShaping`
+controller, which realizes the second-order lag as two cascaded first-order lags
+with time constants `t1` and `t2`, advanced once per fixed control step, and takes
+the fixed ratio as `r`.
 
 ## 5. Position-dependent shaping ratio
 
@@ -214,10 +221,11 @@ with a small shaped-equilibrium shift. Near the target, $d \approx 0$ and $r$
 approaches one, improving convergence. If an external force pushes the endpoint
 away and $d>1$, $r$ decreases again, making the motion compliant.
 
-In implementation, clamp the computed value to the valid interval $0 < r \le 1$
-before using it in the reference shaper. The formula can slightly exceed one
-near $d=0$ for nonzero $a$, while `skelarm` should keep the interpolation
-semantics explicit.
+`skelarm` implements this as the `PositionDependentShaping` controller (built on
+`OnlineReferenceShaping`) and exposes the schedule as the `shaping_ratio` helper,
+parameterized by `a`. It clamps the computed value to $0 < r \le 1$ before using it
+in the reference shaper, because the formula can slightly exceed one near $d=0$ for
+nonzero $a$.
 
 ## 6. Adaptation to target changes and external force
 
@@ -280,34 +288,37 @@ be done from endpoint position feedback alone; a non-backdrivable robot may need
 force sensing or a separate admittance layer to realize the same compliant
 behavior.
 
-For `skelarm`, this is a useful extension of online reference shaping rather
-than a replacement for the base spring-damper controller. A first implementation
-can store $p_a$, update it once per fixed control step, apply the rapid reset
-before computing $r$, then compute $p_s$ and the endpoint force as in the
-previous sections. Because both slow and rapid adaptation mutate controller
-state, they should use a fixed-step controller loop or be included explicitly in
-an augmented ODE state.
+`skelarm` implements this as the `AdaptiveReferenceShaping` controller, built on
+`OnlineReferenceShaping`, with the ratio computed by the `adaptive_shaping_ratio`
+helper. Each fixed control step it stores $p_a$, applies the rapid reset before
+computing $r$, then drifts $p_a$ with the slow-adaptation lag (`t_adapt` is the
+time constant $T$). One detail differs from the paper: the 2010 paper uses the
+internally dividing point $r p^\ast + (1-r)p$ directly as the spring equilibrium
+(the second-order lag of the earlier papers is dropped), whereas `skelarm` feeds it
+through the same second-order lag as §4, so the shaped equilibrium $p_s$ inherits
+the smooth-start behavior of the fixed-$r$ shaper. Because both adaptations mutate controller state, the controller
+runs through the fixed-step `simulate_controlled` loop via its `update` hook.
 
-## 7. Implementation notes for `skelarm`
+## 7. Implementation in `skelarm`
 
-The controller can be implemented as an endpoint-force controller:
+All five controllers above live in `skelarm.reaching` and share an
+`EndpointController` base whose `control` step is an endpoint-force law:
 
-1. Run forward kinematics.
+1. Run forward kinematics (handled by the eager setters on the simulated clone).
 2. Compute $p$ from the tip link and $\dot{p}$ with `compute_endpoint_velocity`.
-3. Update the shaped reference state $p_s$.
+3. Update the shaped reference state $p_s$ in the controller's `update` hook.
 4. Compute $F_d = K_{\mathrm{task}}(p_s-p)-D_{\mathrm{task}}\dot{p}$.
 5. Compute $\tau = J^T F_d - C_q\dot{q}$ with `compute_jacobian`.
-6. Pass $\tau$ to `compute_forward_dynamics` or return it from a
-   `simulate_robot` torque callback.
+6. Return $\tau$, which `simulate_controlled` passes to `compute_forward_dynamics`.
 
 The reference shaper is dynamic state, not a pure function of the current
-skeleton. With `simulate_robot` and adaptive `solve_ivp`, avoid mutating this
-state inside a torque callback because the integrator may call the callback at
-repeated or non-monotonic trial times. A robust implementation should either
-augment the ODE state with the filter states or provide a fixed-step simulation
-loop for stateful controllers.
+skeleton. With `simulate_robot` and adaptive `solve_ivp`, mutating this state
+inside a torque callback is unsafe because the integrator may call the callback at
+repeated or non-monotonic trial times. `skelarm` therefore advances the filter and
+adaptation state in the controller's `update` hook, which `simulate_controlled`
+calls exactly once per fixed control step.
 
-Suggested first tests:
+These properties are verified in `tests/test_reaching.py`:
 
 - a direct target spring has larger initial endpoint acceleration than shaped
   reaching for the same target;
@@ -317,11 +328,14 @@ Suggested first tests:
   in an undisturbed simulation;
 - position-dependent $r(d)$ converges faster than a conservative fixed small
   $r$ while keeping the initial acceleration small;
-- slow adaptation restarts a smooth reach after the target is changed during
-  motion;
+- slow adaptation drifts the apparent initial endpoint toward the current
+  endpoint;
 - rapid adaptation resets the apparent initial endpoint after a large endpoint
-  displacement and avoids a large post-release velocity spike;
-- when the endpoint is temporarily constrained, online shaping produces smaller
-  stored endpoint force than a direct target spring;
-- after release from a temporary constraint, the endpoint resumes toward the
-  target without a large velocity spike.
+  displacement;
+- the shaping-ratio helpers match the paper values at the endpoints of their
+  ranges.
+
+Like the trackers of the previous chapter, these controllers can also be driven
+from a TOML scenario file (`virtual_spring_damper`, `time_varying_stiffness`,
+`online_shaping`, `position_dependent_shaping`, `adaptive_shaping`); see the
+[Control Configuration](../guides/control_configuration.md) guide.
