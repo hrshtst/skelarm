@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
 )
 
 from skelarm.canvas import SkelarmCanvas, draw_arrow
-from skelarm.dynamics import compute_forward_dynamics
+from skelarm.dynamics import integrate_with_limits
 from skelarm.kinematics import compute_forward_kinematics, compute_jacobian
 from skelarm.recording import StateLog
 
@@ -52,6 +52,23 @@ class SimulatorCanvas(SkelarmCanvas):
         self.target: NDArray[np.float64] | None = None  # optional task-space goal marker
         self.target_color = _GOAL_COLOR  # marker color
         self.target_tolerance: float | None = None  # success radius (m); sizes the ring
+        # When set, a left-press only starts a drag if it is within this distance
+        # (meters) of the tip ("grab near the tip"); None grabs anywhere.
+        self.grab_radius: float | None = None
+
+    @property
+    def drag_point(self) -> tuple[float, float] | None:
+        """The current pointer world position ``(x, y)`` while dragging, else ``None``.
+
+        Settable so the drag target can be driven programmatically (scripting/tests),
+        bypassing the mouse and :attr:`grab_radius` gate.
+        """
+        return self._drag_world
+
+    @drag_point.setter
+    def drag_point(self, value: tuple[float, float] | None) -> None:
+        self._drag_world = None if value is None else (float(value[0]), float(value[1]))
+        self.update()
 
     def external_force(self, stiffness: float) -> NDArray[np.float64]:
         """Return the spring force pulling the tip toward the drag point.
@@ -72,9 +89,14 @@ class SimulatorCanvas(SkelarmCanvas):
         return stiffness * (np.array(self._drag_world, dtype=np.float64) - np.array([tip.xe, tip.ye]))
 
     def mousePressEvent(self, a0: QMouseEvent | None) -> None:  # noqa: N802
-        """Begin applying a force toward the cursor on left press."""
+        """Begin a drag on left press (only near the tip when ``grab_radius`` is set)."""
         if a0 is not None and a0.button() == Qt.MouseButton.LeftButton:
-            self._drag_world = self._world_from_screen(a0.position())
+            world = self._world_from_screen(a0.position())
+            if self.grab_radius is not None:
+                tip = self.skeleton.links[-1]
+                if math.hypot(world[0] - tip.xe, world[1] - tip.ye) > self.grab_radius:
+                    return
+            self._drag_world = world
             self.update()
 
     def mouseMoveEvent(self, a0: QMouseEvent | None) -> None:  # noqa: N802
@@ -333,18 +355,7 @@ class SkelarmSimulator(QMainWindow):
             tau = self._control_torque(dt)
             tau = tau + compute_jacobian(self.skeleton).T @ self.canvas.external_force(self._stiffness)
             tau = tau - self._friction * self.skeleton.dq
-            ddq = compute_forward_dynamics(self.skeleton, tau)
-            # Semi-implicit (symplectic) Euler keeps the undamped system bounded.
-            dq = self.skeleton.dq + ddq * dt
-            q = self.skeleton.q + dq * dt
-            # Joint limits act as hard stops: clamp the angle and halt that joint.
-            q_clamped = np.clip(q, self._lower, self._upper)
-            dq = np.where(q_clamped != q, 0.0, dq)
-            # Write link state directly to bypass the clamping (warning) setter.
-            for link, q_value, dq_value in zip(self.skeleton.links[1:], q_clamped, dq, strict=True):
-                link.q = float(q_value)
-                link.dq = float(dq_value)
-            compute_forward_kinematics(self.skeleton)
+            integrate_with_limits(self.skeleton, tau, dt, self._lower, self._upper)
             self.time += dt
         if self._recording and self.state_log is not None:
             self.state_log.record(

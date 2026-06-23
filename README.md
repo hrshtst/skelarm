@@ -118,6 +118,18 @@ uv run python tools/player.py run.sklog.npz
 
 Scrub the timeline, play/pause at a chosen speed (`--speed`), toggle the centers of mass (`--show-com`), and open per-channel plots with the **Plot channels…** button. When the log recorded an external tip force, it is drawn as a red arrow at the tip (toggle it with **Show external force**). The log embeds the robot geometry, so the file replays on its own.
 
+### Teaching a Trajectory
+
+Author a joint trajectory by demonstration: grab the robot's tip with the left mouse button and drag it to teach a motion, recorded to a `*.sklog.npz` log that replays with `tools/player.py`. Recording starts on the first grab and stops at the max duration (or the **Finish** button), sampling at the configured rate; a plot of the recorded motion is shown afterward. Two modes turn the task-space teaching into joint angles:
+
+```bash
+uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml                 # ik mode (default)
+uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --mode dynamics  # force + forward dynamics
+uv run python tools/player.py teach.sklog.npz                                            # replay the recording
+```
+
+In `ik` mode the tip tracks the cursor via the IK solver (`--method`); in `dynamics` mode the drag applies a tip force integrated under forward dynamics with viscous friction (`--stiffness`, `--friction`). `--sample-rate` and `--duration` configure the logger; `--initial`/`--pose` set the start pose, and an optional `[task]` draws a target. The log records per-joint angles and the tip path.
+
 ### Reaching & Trajectory Control
 
 A combined scenario file describes the robot (`[skeleton]` / `[initial]`), the reaching goal (`[task]`), and the controller (`[controller]`) in one place. For a quick scripted run that plots the reach, see `examples/reaching.py`. Run `tools/reaching_simulator.py` on the config for an interactive GUI: the controller drives the arm toward the target (a purple marker) and you press/drag the left mouse button to apply an external force at the tip (a red arrow), like the dynamics simulator. Record and **Export…** the run to a `*.sklog.npz`, then replay it:

@@ -21,6 +21,7 @@ from .dynamics import (
     compute_kinetic_energy,
     compute_kinetic_energy_rate,
     compute_mass_matrix,
+    integrate_with_limits,
     simulate_robot,
 )
 from .kinematics import (
@@ -105,6 +106,7 @@ __all__ = [
     "export_scenario_toml",
     "hello",
     "ik_joint_reference",
+    "integrate_with_limits",
     "load_scenario",
     "plot_trajectory",
     "rerun_log",

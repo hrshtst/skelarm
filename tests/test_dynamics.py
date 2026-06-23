@@ -14,6 +14,7 @@ from skelarm.dynamics import (
     compute_inverse_dynamics,
     compute_kinetic_energy,
     compute_mass_matrix,
+    integrate_with_limits,
     simulate_robot,
 )
 from skelarm.kinematics import compute_forward_kinematics
@@ -529,3 +530,31 @@ def test_two_link_dynamics_round_trip_with_gravity() -> None:
     compute_inverse_dynamics(skeleton, grav_vec=grav_vec)
 
     assert skeleton.tau == pytest.approx(tau_input, abs=1e-6)
+
+
+def test_integrate_with_limits_hard_stops_at_a_joint_limit() -> None:
+    """A joint heading past its limit is pinned at the bound with zero velocity."""
+    link = LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-1.0, qmax=1.0)
+    skeleton = Skeleton([link])
+    skeleton.q = np.array([0.99])
+    skeleton.dq = np.array([5.0])  # fast toward the upper limit
+
+    lower = np.array([-1.0])
+    upper = np.array([1.0])
+    integrate_with_limits(skeleton, np.zeros(1), 0.1, lower, upper)
+
+    assert skeleton.q[0] == pytest.approx(1.0)  # clamped to the bound
+    assert skeleton.dq[0] == 0.0  # velocity zeroed at the inelastic stop
+
+
+def test_integrate_with_limits_advances_within_range() -> None:
+    """Within limits, the step integrates position and velocity (symplectic Euler)."""
+    link = LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-3.0, qmax=3.0)
+    skeleton = Skeleton([link])
+    skeleton.q = np.array([0.0])
+    skeleton.dq = np.array([1.0])
+
+    integrate_with_limits(skeleton, np.zeros(1), 0.1, np.array([-3.0]), np.array([3.0]))
+
+    assert skeleton.q[0] == pytest.approx(0.1)  # q += dq*dt
+    assert skeleton.dq[0] == pytest.approx(1.0)  # unchanged (zero torque, no Coriolis)

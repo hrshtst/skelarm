@@ -71,6 +71,34 @@ def test_left_press_applies_spring_force_toward_cursor(qapp) -> None:  # noqa: A
     assert sim.canvas.external_force(2.0) == pytest.approx(expected, abs=1e-3)
 
 
+def test_grab_radius_blocks_a_far_press(qapp) -> None:  # noqa: ANN001, ARG001
+    """With a grab radius set, a press far from the tip does not start a drag."""
+    sim = _simulator()
+    sim.canvas.grab_radius = 0.1
+    tip = sim.skeleton.links[-1]
+    _press(sim.canvas, (tip.xe + 0.5, tip.ye))
+    assert sim.canvas.drag_point is None
+
+
+def test_grab_radius_allows_a_near_press(qapp) -> None:  # noqa: ANN001, ARG001
+    """A press within the grab radius of the tip starts a drag."""
+    sim = _simulator()
+    sim.canvas.grab_radius = 0.1
+    tip = sim.skeleton.links[-1]
+    _press(sim.canvas, (tip.xe + 0.02, tip.ye))
+    assert sim.canvas.drag_point is not None
+
+
+def test_drag_point_is_settable(qapp) -> None:  # noqa: ANN001, ARG001
+    """The drag point can be driven programmatically (scripting/tests)."""
+    sim = _simulator()
+    assert sim.canvas.drag_point is None
+    sim.canvas.drag_point = (0.4, 0.5)
+    assert sim.canvas.drag_point == pytest.approx((0.4, 0.5))
+    sim.canvas.drag_point = None
+    assert sim.canvas.drag_point is None
+
+
 def test_step_pulls_tip_toward_drag_point(qapp) -> None:  # noqa: ANN001, ARG001
     """Stepping under a tip force moves the tip closer to the drag point and advances time."""
     sim = _simulator()

@@ -19,11 +19,11 @@ import numpy as np
 
 from skelarm.dynamics import (
     compute_coriolis_gravity_vector,
-    compute_forward_dynamics,
     compute_inverse_dynamics,
     compute_mass_matrix,
+    integrate_with_limits,
 )
-from skelarm.kinematics import compute_forward_kinematics, compute_inverse_kinematics, compute_jacobian
+from skelarm.kinematics import compute_inverse_kinematics, compute_jacobian
 from skelarm.recording import StateLog
 
 if TYPE_CHECKING:
@@ -319,15 +319,7 @@ def simulate_controlled(
         tau = controller.control(t, model)
         log.record(t, q=model.q, dq=model.dq, tau=tau, **controller.log_channels())
 
-        ddq = compute_forward_dynamics(model, tau, grav_vec)
-        dq = model.dq + ddq * dt
-        q = model.q + dq * dt
-        q_clamped = np.clip(q, lower, upper)
-        dq = np.where(q_clamped != q, 0.0, dq)
-        for link, q_value, dq_value in zip(model.links[1:], q_clamped, dq, strict=True):
-            link.q = float(q_value)
-            link.dq = float(dq_value)
-        compute_forward_kinematics(model)
+        integrate_with_limits(model, tau, dt, lower, upper, grav_vec)
         t += dt
 
     # Final frame: record the settled state with the torque that would be applied next.

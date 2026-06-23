@@ -228,6 +228,46 @@ def compute_forward_dynamics(
         raise ValueError(msg) from exc
 
 
+def integrate_with_limits(
+    skeleton: Skeleton,
+    tau: NDArray[np.float64],
+    dt: float,
+    lower: NDArray[np.float64],
+    upper: NDArray[np.float64],
+    grav_vec: NDArray[np.float64] | None = None,
+) -> None:
+    """Advance one semi-implicit Euler step under ``tau``, with joint limits as hard stops.
+
+    Computes ``ddq`` with :func:`compute_forward_dynamics`, integrates velocity then
+    position (symplectic Euler), clamps each joint to ``[lower, upper]`` and zeros the
+    velocity of any joint that hit a bound (a fully inelastic stop), writes the new
+    ``q`` / ``dq`` directly onto the links (bypassing the clamping setter), and
+    refreshes forward kinematics. The skeleton is updated in place.
+
+    Parameters
+    ----------
+    skeleton : Skeleton
+        The arm to advance; its current ``q`` / ``dq`` are the state.
+    tau : NDArray[np.float64]
+        Applied joint torque.
+    dt : float
+        Integration step (seconds).
+    lower, upper : NDArray[np.float64]
+        Per-joint angle limits (radians).
+    grav_vec : NDArray[np.float64] | None, optional
+        Gravity vector; defaults to zero (planar motion).
+    """
+    ddq = compute_forward_dynamics(skeleton, tau, grav_vec)
+    dq = skeleton.dq + ddq * dt
+    q = skeleton.q + dq * dt
+    q_clamped = np.clip(q, lower, upper)
+    dq = np.where(q_clamped != q, 0.0, dq)
+    for link, q_value, dq_value in zip(skeleton.links[1:], q_clamped, dq, strict=True):
+        link.q = float(q_value)
+        link.dq = float(dq_value)
+    compute_forward_kinematics(skeleton)
+
+
 def compute_kinetic_energy(skeleton: Skeleton) -> float:
     """Compute the total kinetic energy of the robot arm.
 
