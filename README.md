@@ -120,18 +120,19 @@ Scrub the timeline, play/pause at a chosen speed (`--speed`), toggle the centers
 
 ### Reaching & Trajectory Control
 
-A combined scenario file describes the robot (`[skeleton]` / `[initial]`), the reaching goal (`[task]`), and the controller (`[controller]`) in one place. Run it to simulate the reach and export a `*.sklog.npz` for replay:
+A combined scenario file describes the robot (`[skeleton]` / `[initial]`), the reaching goal (`[task]`), and the controller (`[controller]`) in one place. For a quick scripted run that plots the reach, see `examples/reaching.py`. Run `tools/reach.py` on the config for an interactive GUI: the controller drives the arm toward the target (a purple marker) and you press/drag the left mouse button to apply an external force at the tip (a red arrow), like the dynamics simulator. Record and **Export…** the run to a `*.sklog.npz`, then replay it:
 
 ```bash
-uv run python tools/reach.py examples/reach.toml
-uv run python tools/replay.py reach.sklog.npz
+uv run python examples/reaching.py            # scripted reach + plot
+uv run python tools/reach.py examples/reach.toml   # interactive GUI (drag to perturb)
+uv run python tools/replay.py reach.sklog.npz      # replay an exported run
 ```
 
-The `[initial]`, `[task]`, and `[controller]` sections can be overridden from separate files on the command line, so one base config can be compared across controllers or tasks without editing it (`--initial`/`--pose` mirror the kinematics and dynamics tools):
+The `[initial]`, `[task]`, and `[controller]` sections can be overridden from separate files on the command line, so one base config can be compared across controllers or tasks without editing it (`--initial`/`--pose` mirror the kinematics and dynamics tools). Add `--save PATH` to run headlessly (no GUI) and write the log directly — handy for batch comparison:
 
 ```bash
-uv run python tools/reach.py examples/reach.toml --controller pd.toml   # same task, different controller
-uv run python tools/reach.py examples/reach.toml --task far.toml        # same controller, different task
+uv run python tools/reach.py examples/reach.toml --controller pd.toml          # GUI, different controller
+uv run python tools/reach.py examples/reach.toml --task far.toml --save far.sklog.npz   # headless batch
 uv run python tools/reach.py examples/reach.toml --initial pose.toml --pose 20,45
 ```
 

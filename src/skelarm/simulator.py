@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent
+from PyQt6.QtGui import QBrush, QColor, QMouseEvent, QPainter, QPaintEvent, QPen
 from PyQt6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
@@ -24,14 +24,18 @@ from skelarm.kinematics import compute_forward_kinematics, compute_jacobian
 from skelarm.recording import StateLog
 
 if TYPE_CHECKING:
-    from numpy.typing import NDArray
+    from numpy.typing import ArrayLike, NDArray
 
+    from skelarm.control import Controller
     from skelarm.skeleton import Skeleton
 
 _TIMER_MS = 20  # GUI/render period in milliseconds
 _SUBSTEPS = 4  # physics steps per render tick (integration stability)
 _DEFAULT_STIFFNESS = 0.1  # N/m: external tip force = stiffness * (cursor - tip)
 _ARROW_COLOR = QColor(220, 0, 0)  # red
+_GOAL_COLOR = QColor(170, 0, 170)  # purple (task target marker)
+_GOAL_DOT_PX = 4  # filled center of the target marker
+_GOAL_RING_PX = 9  # hollow ring around the target marker
 
 
 class SimulatorCanvas(SkelarmCanvas):
@@ -45,6 +49,7 @@ class SimulatorCanvas(SkelarmCanvas):
         """Initialize the simulator canvas."""
         super().__init__(skeleton)
         self._drag_world: tuple[float, float] | None = None
+        self.target: NDArray[np.float64] | None = None  # optional task-space goal marker
 
     def external_force(self, stiffness: float) -> NDArray[np.float64]:
         """Return the spring force pulling the tip toward the drag point.
@@ -82,38 +87,62 @@ class SimulatorCanvas(SkelarmCanvas):
         self.update()
 
     def paintEvent(self, a0: QPaintEvent | None) -> None:  # noqa: N802
-        """Draw the arm, then the red force arrow from the tip to the cursor."""
+        """Draw the arm, then the task target (if any) and the drag force arrow."""
         super().paintEvent(a0)
-        if self._drag_world is None:
-            return
         center_x = self.width() / 2
         center_y = self.height() / 2
-        tip = self.skeleton.links[-1]
-        start = self._world_to_screen(tip.xe, tip.ye, center_x, center_y)
-        end = self._world_to_screen(self._drag_world[0], self._drag_world[1], center_x, center_y)
-
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        draw_arrow(painter, start, end, color=_ARROW_COLOR)
+
+        # Task-space goal: a filled dot inside a hollow ring (purple).
+        if self.target is not None:
+            point = self._world_to_screen(float(self.target[0]), float(self.target[1]), center_x, center_y)
+            painter.setPen(QPen(_GOAL_COLOR))
+            painter.setBrush(QBrush(_GOAL_COLOR))
+            painter.drawEllipse(point, _GOAL_DOT_PX, _GOAL_DOT_PX)
+            painter.setBrush(QBrush())  # hollow ring
+            painter.drawEllipse(point, _GOAL_RING_PX, _GOAL_RING_PX)
+
+        # Interactive drag force: a red arrow from the tip to the cursor.
+        if self._drag_world is not None:
+            tip = self.skeleton.links[-1]
+            start = self._world_to_screen(tip.xe, tip.ye, center_x, center_y)
+            end = self._world_to_screen(self._drag_world[0], self._drag_world[1], center_x, center_y)
+            draw_arrow(painter, start, end, color=_ARROW_COLOR)
 
 
 class SkelarmSimulator(QMainWindow):
     """A real-time dynamics viewer with interactive tip forces.
 
-    The arm runs under zero-torque control; press and drag the left mouse button
-    in the canvas to apply an external force at the tip (shown as a red arrow).
-    The elapsed time is displayed prominently, the joint sliders are read-only and
-    show the simulated angles, and a checkbox toggles the link centers of mass.
-    Joint limits act as hard stops.
+    By default the arm runs under zero-torque control; pass a ``controller`` to
+    drive it (e.g. a reaching controller tracking a ``target``). Press and drag the
+    left mouse button in the canvas to apply an external force at the tip (shown as
+    a red arrow), which is added on top of the control torque. The elapsed time is
+    displayed prominently, the joint sliders are read-only and show the simulated
+    angles, and a checkbox toggles the link centers of mass. Joint limits act as
+    hard stops.
     """
 
-    def __init__(self, skeleton: Skeleton, *, stiffness: float = _DEFAULT_STIFFNESS, friction: float = 0.0) -> None:
+    def __init__(
+        self,
+        skeleton: Skeleton,
+        *,
+        controller: Controller | None = None,
+        target: ArrayLike | None = None,
+        stiffness: float = _DEFAULT_STIFFNESS,
+        friction: float = 0.0,
+    ) -> None:
         """Build the simulator window for the given skeleton.
 
         Parameters
         ----------
         skeleton : Skeleton
             The arm to simulate (its initial ``q`` / ``dq`` are the start state).
+        controller : Controller | None, optional
+            Torque controller to drive the arm; ``None`` runs it under zero torque.
+            Its ``update`` / ``control`` hooks are called each physics substep.
+        target : ArrayLike | None, optional
+            A task-space goal ``(x, y)`` drawn as a marker on the canvas.
         stiffness : float, optional
             Force per meter of tip-to-cursor distance for the interactive drag.
         friction : float, optional
@@ -124,6 +153,7 @@ class SkelarmSimulator(QMainWindow):
         super().__init__()
         self.skeleton = skeleton
         self.time = 0.0
+        self._controller = controller
         self._stiffness = stiffness
         self._friction = friction
         self._lower = np.array([link.prop.qmin for link in skeleton.links[1:]], dtype=np.float64)
@@ -134,8 +164,11 @@ class SkelarmSimulator(QMainWindow):
         self._recording = False
 
         self.canvas = SimulatorCanvas(skeleton)
+        self.canvas.target = None if target is None else np.asarray(target, dtype=np.float64)
         self.setWindowTitle("Skelarm Simulator")
         self.resize(1024, 768)
+        if self._controller is not None:
+            self._controller.reset(skeleton)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -251,23 +284,37 @@ class SkelarmSimulator(QMainWindow):
         self._recording = False
 
     def reset(self) -> None:
-        """Restore the initial pose and velocity and zero the clock."""
+        """Restore the initial pose and velocity, reset any controller, and zero the clock."""
         for link, q_value, dq_value in zip(self.skeleton.links[1:], self._initial_q, self._initial_dq, strict=True):
             link.q = float(q_value)
             link.dq = float(dq_value)
         compute_forward_kinematics(self.skeleton)
         self.time = 0.0
+        if self._controller is not None:
+            self._controller.reset(self.skeleton)
         if self._recording:
             self.start_recording()  # restart the log for the fresh run
         self._update_displays()
 
+    def _control_torque(self, dt: float) -> NDArray[np.float64]:
+        """Active control torque for the current substep (zero unless a controller is set).
+
+        Advances any stateful controller and returns its torque, mirroring the
+        ``update`` then ``control`` order of :func:`skelarm.simulate_controlled`.
+        """
+        if self._controller is None:
+            return np.zeros(self.skeleton.num_joints, dtype=np.float64)
+        self._controller.update(self.time, self.skeleton, dt)
+        return self._controller.control(self.time, self.skeleton)
+
     def step(self) -> None:
-        """Advance the dynamics by one render tick under zero-torque control + tip force."""
+        """Advance the dynamics by one render tick under the controller (if any) plus the tip force."""
         dt = _TIMER_MS / 1000.0 / _SUBSTEPS
         for _ in range(_SUBSTEPS):
-            # Zero control torque; torques come from the external tip force and
-            # joint viscous friction (-friction * dq), which dissipates energy.
-            tau = compute_jacobian(self.skeleton).T @ self.canvas.external_force(self._stiffness)
+            # Total torque = active control (zero by default) + the external tip
+            # force mapped to joints - joint viscous friction (-friction * dq).
+            tau = self._control_torque(dt)
+            tau = tau + compute_jacobian(self.skeleton).T @ self.canvas.external_force(self._stiffness)
             tau = tau - self._friction * self.skeleton.dq
             ddq = compute_forward_dynamics(self.skeleton, tau)
             # Semi-implicit (symplectic) Euler keeps the undamped system bounded.

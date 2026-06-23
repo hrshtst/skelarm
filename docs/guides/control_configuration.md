@@ -7,8 +7,9 @@ adds `[task]` and `[controller]` sections on top of the
 loaded by `skelarm.load_scenario`.
 
 ```bash
-uv run python tools/reach.py examples/reach.toml   # simulate the reach, export a log
-uv run python tools/replay.py reach.sklog.npz      # replay and analyze it
+uv run python tools/reach.py examples/reach.toml             # interactive reach GUI (drag to perturb)
+uv run python tools/reach.py examples/reach.toml --save reach.sklog.npz   # headless batch run + log
+uv run python tools/replay.py reach.sklog.npz                # replay and analyze a saved run
 ```
 
 A scenario combines four sections:
@@ -133,22 +134,25 @@ t_adapt = 5.0
 `tools/reach.py` can override the `[initial]`, `[task]`, and `[controller]`
 sections from separate files, so one base config can be reused across a comparison
 sweep without editing it. Each override file supplies the named table (e.g. a file
-with just a `[controller]` block):
+with just a `[controller]` block). With `--save PATH` the run is headless (no GUI)
+and the log is written directly, which is convenient for a scripted sweep:
 
 ```bash
 # Same robot and task, different controllers:
-uv run python tools/reach.py base.toml --controller computed_torque.toml --output ct.sklog.npz
-uv run python tools/reach.py base.toml --controller mpc.toml            --output mpc.sklog.npz
+uv run python tools/reach.py base.toml --controller computed_torque.toml --save ct.sklog.npz
+uv run python tools/reach.py base.toml --controller mpc.toml             --save mpc.sklog.npz
 
 # Same controller, different tasks:
-uv run python tools/reach.py base.toml --task near.toml --output near.sklog.npz
-uv run python tools/reach.py base.toml --task far.toml  --output far.sklog.npz
+uv run python tools/reach.py base.toml --task near.toml --save near.sklog.npz
+uv run python tools/reach.py base.toml --task far.toml  --save far.sklog.npz
 ```
 
-`--initial FILE` replaces the initial pose from a file's `[initial]` table, and
-`--pose 20,45` then overrides just the joint angles (degrees) — matching the
-kinematics and dynamics tools. The override values are merged into the scenario, so
-each run's log still embeds its exact (overridden) config for reproduction.
+Without `--save`, the same overrides configure the interactive GUI instead — e.g.
+`tools/reach.py base.toml --controller pd.toml` opens the reach GUI driven by the
+PD controller. `--initial FILE` replaces the initial pose from a file's `[initial]`
+table, and `--pose 20,45` then overrides just the joint angles (degrees) — matching
+the kinematics and dynamics tools. The override values are merged into the scenario,
+so each saved run's log still embeds its exact (overridden) config for reproduction.
 
 ## Using it from Python
 
@@ -209,7 +213,8 @@ From the command line, `tools/export_config.py` writes the config from a saved l
 
 ```bash
 uv run python tools/export_config.py reach.sklog.npz --output edited.toml
-uv run python tools/reach.py edited.toml   # re-run the (edited) scenario
+uv run python tools/reach.py edited.toml                       # explore the edited scenario in the GUI
+uv run python tools/reach.py edited.toml --save edited.sklog.npz   # or re-run it headlessly
 ```
 
 !!! note "What is not captured"

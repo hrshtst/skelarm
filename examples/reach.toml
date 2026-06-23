@@ -1,6 +1,10 @@
 # A complete reaching scenario: robot + start state + task + controller.
-# Run it with:  uv run python tools/reach.py examples/reach.toml
-# then replay the recorded run with:  uv run python tools/replay.py reach.sklog.npz
+# Interactive GUI (drag to apply external forces):
+#   uv run python tools/reach.py examples/reach.toml
+# Headless run that saves a log to replay:
+#   uv run python tools/reach.py examples/reach.toml --save reach.sklog.npz
+#   uv run python tools/replay.py reach.sklog.npz
+# Scripted version that plots the reach:  uv run python examples/reaching.py
 
 [skeleton]
 base_length = 0.0

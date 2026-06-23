@@ -1,7 +1,8 @@
-"""Tests for the reach scenario runner tool (tools/reach.py)."""
+"""Tests for the reach scenario tool (tools/reach.py): headless batch and GUI."""
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -9,9 +10,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+# Importing the tool pulls in PyQt6; run headless.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 from skelarm.recording import StateLog
 from skelarm.scenario import rerun_log
-from tools.reach import build_parser, run_reach
+from tools.reach import ReachSimulator, build_parser, build_scenario, run_reach
 
 _SCENARIO_TOML = (
     "[skeleton]\n"
@@ -21,6 +25,14 @@ _SCENARIO_TOML = (
     "[task]\ntarget = [0.55, 1.21]\nduration = 2.0\ndt = 0.002\n"
     '[controller]\ntype = "computed_torque"\nkp = 200.0\nkd = 30.0\n'
 )
+
+
+@pytest.fixture(scope="module")
+def qapp():  # noqa: ANN201
+    """Provide a single QApplication instance for the GUI test."""
+    from PyQt6.QtWidgets import QApplication
+
+    return QApplication.instance() or QApplication([])
 
 
 def test_parser_requires_config() -> None:
@@ -122,6 +134,25 @@ def test_run_reach_missing_override_file_errors(tmp_path: Path) -> None:
     config.write_text(_SCENARIO_TOML, encoding="utf-8")
     with pytest.raises(FileNotFoundError, match="override file not found"):
         run_reach(config, duration=0.02, controller=tmp_path / "missing.toml")
+
+
+@pytest.mark.integration
+def test_reach_gui_drives_controller_to_target(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The reach GUI runs the controller toward the target, marks it, and records frames."""
+    config = tmp_path / "reach.toml"
+    config.write_text(_SCENARIO_TOML, encoding="utf-8")
+
+    window = ReachSimulator(build_scenario(config))
+    target = np.asarray(window.canvas.target)
+    assert window.canvas.target is not None
+
+    for _ in range(160):  # ~3.2 s of simulated time
+        window.step()
+
+    tip = window.skeleton.links[-1]
+    assert float(np.hypot(tip.xe - target[0], tip.ye - target[1])) < 0.05  # noqa: PLR2004  # within 5 cm
+    assert window.state_log is not None
+    assert len(window.state_log) > 1  # recorded the run
 
 
 def test_runs_as_a_standalone_script() -> None:

@@ -123,11 +123,13 @@ Scrub the timeline, play/pause at a chosen speed (`--speed`), toggle the centers
 
 ### Reaching & Trajectory Control
 
-A combined scenario file describes the robot (`[skeleton]` / `[initial]`), the reaching goal (`[task]`), and the controller (`[controller]`) in one place. Run it to simulate the reach and export a `*.sklog.npz` for replay:
+A combined scenario file describes the robot (`[skeleton]` / `[initial]`), the reaching goal (`[task]`), and the controller (`[controller]`) in one place. `examples/reaching.py` runs a scripted reach and plots it; `tools/reach.py` opens an interactive GUI where the controller drives the arm to the target (a purple marker) and you press/drag the left mouse button to apply an external force at the tip. Add `--save PATH` to run headlessly and write a `*.sklog.npz` for replay (handy for batch comparison):
 
 ```bash
-uv run python tools/reach.py examples/reach.toml
-uv run python tools/replay.py reach.sklog.npz
+uv run python examples/reaching.py                            # scripted reach + plot
+uv run python tools/reach.py examples/reach.toml              # interactive GUI
+uv run python tools/reach.py examples/reach.toml --save reach.sklog.npz   # headless batch
+uv run python tools/replay.py reach.sklog.npz                 # replay a saved run
 ```
 
 The `[controller].type` selects the control law — trajectory tracking (`computed_torque`, `inverse_dynamics_pd`, `joint_pd`), human-like reaching (`virtual_spring_damper`, `time_varying_stiffness`, `online_shaping`, `position_dependent_shaping`, `adaptive_shaping`), or `mpc` — and the remaining keys are its gains. The control library is also usable directly via `skelarm.load_scenario` and `skelarm.run_scenario`. The exported log embeds the full scenario config, so a run can be re-simulated later with `skelarm.rerun_log` (exactly for the deterministic controllers, within a small tolerance for MPC), or exported as an editable config (`skelarm.export_scenario_toml`, or `tools/export_config.py`) to tweak a parameter and re-run for comparison. See the [Control Configuration](guides/control_configuration.md) guide for the full scenario schema and per-controller config keys, and the [Trajectory Tracking](reference/07_control.md) and [Reaching Control](reference/08_reaching_control.md) references for the theory.
