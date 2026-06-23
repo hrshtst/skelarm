@@ -56,8 +56,11 @@ class ReachSimulator(SkelarmSimulator):
             scenario.skeleton,
             controller=scenario.controller,
             target=scenario.task.target,
+            target_color=scenario.task.color,
+            target_tolerance=scenario.task.tolerance,
             stiffness=stiffness,
         )
+        self._task = scenario.task
         self.setWindowTitle("Skelarm Reach")
 
         self.reset_button = QPushButton("Reset")
@@ -111,15 +114,18 @@ class ReachSimulator(SkelarmSimulator):
                 self.state_log.save(path)
 
     def _update_status(self) -> None:
-        """Show the target, the tip, and the tip-to-target error."""
+        """Show the target (with its label), the tip, the error, and success."""
         tip = self.skeleton.links[-1]
         target = self.canvas.target
         assert target is not None  # always set for a reach scenario
         error = float(np.hypot(tip.xe - target[0], tip.ye - target[1]))
+        name = f" “{self._task.label}”" if self._task.label else ""
+        error_line = f"Error: {error * 1000:.1f} mm"
+        if self._task.tolerance is not None:
+            within = error <= self._task.tolerance
+            error_line += "  ✓ reached" if within else f"  (tol {self._task.tolerance * 1000:.0f} mm)"
         self.status_label.setText(
-            f"Target: ({target[0]:.3f}, {target[1]:.3f}) m\n"
-            f"Tip: ({tip.xe:.3f}, {tip.ye:.3f}) m\n"
-            f"Error: {error * 1000:.1f} mm"
+            f"Target{name}: ({target[0]:.3f}, {target[1]:.3f}) m\nTip: ({tip.xe:.3f}, {tip.ye:.3f}) m\n{error_line}"
         )
 
 

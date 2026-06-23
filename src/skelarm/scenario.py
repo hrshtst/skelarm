@@ -54,16 +54,29 @@ if TYPE_CHECKING:
 
 _REFERENCE_DT = 0.02  # sampling step for the IK-converted joint reference (interpolated)
 _TASK_DIM = 2  # planar endpoint target (x, y)
+_TASK_TYPES = ("reaching",)  # supported [task].type values (more to come)
+_DEFAULT_TARGET_COLOR = "purple"  # marker color when a target omits one
 
 
 @dataclass
 class Task:
-    """A reaching task: a task-space target and the run conditions for the reach.
+    """A task and the run conditions for it.
 
     Parameters
     ----------
     target : NDArray[np.float64]
-        The endpoint goal ``(x, y)`` in meters.
+        The endpoint goal ``(x, y)`` in meters (the target's position).
+    type : str
+        The task kind; currently only ``"reaching"``.
+    label : str | None
+        Optional name for the target, used to select it among multiple targets
+        (multi-target tasks are defined later).
+    color : str
+        Marker color for the target (any Qt/SVG color name or ``#rrggbb``).
+    tolerance : float | None
+        Optional success distance in meters: the reach succeeds when the tip is
+        within this distance of the target, and the target marker's ring is drawn
+        at this radius. ``None`` applies no success criterion.
     duration : float
         Total simulated time (seconds).
     dt : float
@@ -73,6 +86,10 @@ class Task:
     """
 
     target: NDArray[np.float64]
+    type: str = "reaching"  # mirrors the [task].type config key
+    label: str | None = None
+    color: str = _DEFAULT_TARGET_COLOR
+    tolerance: float | None = None
     duration: float = 2.0
     dt: float = 0.002
     schedule: str = "minimum_jerk"
@@ -91,24 +108,53 @@ class Task:
     def from_dict(cls, section: Mapping[str, Any]) -> Task:
         """Build a Task from a ``[task]`` mapping.
 
+        ``target`` may be a ``[x, y]`` array (position only) or a table with a
+        ``pos`` and optional ``label`` / ``color`` / ``tolerance``.
+
         Raises
         ------
         ValueError
-            If ``target`` is missing or is not a two-element ``(x, y)`` vector.
+            If ``target`` is missing/ill-shaped or ``type`` is unknown.
         """
         if "target" not in section:
             msg = "[task] requires a 'target' endpoint"
             raise ValueError(msg)
-        target = np.asarray(section["target"], dtype=np.float64)
-        if target.shape != (_TASK_DIM,):
-            msg = f"[task].target must have {_TASK_DIM} elements (x, y), got shape {target.shape}"
+        pos, label, color, tolerance = _parse_target(section["target"])
+
+        task_type = str(section.get("type", "reaching"))
+        if task_type not in _TASK_TYPES:
+            msg = f"unknown task type {task_type!r}; choose from {list(_TASK_TYPES)}"
             raise ValueError(msg)
+
         return cls(
-            target=target,
+            target=pos,
+            type=task_type,
+            label=label,
+            color=color,
+            tolerance=tolerance,
             duration=float(section.get("duration", 2.0)),
             dt=float(section.get("dt", 0.002)),
             schedule=str(section.get("schedule", "minimum_jerk")),
         )
+
+
+def _parse_target(raw: Any) -> tuple[NDArray[np.float64], str | None, str, float | None]:  # noqa: ANN401
+    """Parse a ``[task].target`` (array or table) into ``(pos, label, color, tolerance)``."""
+    if isinstance(raw, Mapping):
+        if "pos" not in raw:
+            msg = "[task].target table requires a 'pos' (x, y)"
+            raise ValueError(msg)
+        pos = np.asarray(raw["pos"], dtype=np.float64)
+        label = None if raw.get("label") is None else str(raw["label"])
+        color = str(raw.get("color", _DEFAULT_TARGET_COLOR))
+        tolerance = None if raw.get("tolerance") is None else float(raw["tolerance"])
+    else:
+        pos = np.asarray(raw, dtype=np.float64)
+        label, color, tolerance = None, _DEFAULT_TARGET_COLOR, None
+    if pos.shape != (_TASK_DIM,):
+        msg = f"[task].target must have {_TASK_DIM} elements (x, y), got shape {pos.shape}"
+        raise ValueError(msg)
+    return pos, label, color, tolerance
 
 
 @dataclass

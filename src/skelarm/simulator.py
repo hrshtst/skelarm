@@ -50,6 +50,8 @@ class SimulatorCanvas(SkelarmCanvas):
         super().__init__(skeleton)
         self._drag_world: tuple[float, float] | None = None
         self.target: NDArray[np.float64] | None = None  # optional task-space goal marker
+        self.target_color = _GOAL_COLOR  # marker color
+        self.target_tolerance: float | None = None  # success radius (m); sizes the ring
 
     def external_force(self, stiffness: float) -> NDArray[np.float64]:
         """Return the spring force pulling the tip toward the drag point.
@@ -94,14 +96,19 @@ class SimulatorCanvas(SkelarmCanvas):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Task-space goal: a filled dot inside a hollow ring (purple).
+        # Task-space goal: a filled dot inside a hollow ring. When a success
+        # tolerance is set, the ring radius is that distance in world units;
+        # otherwise it is a small fixed marker.
         if self.target is not None:
             point = self._world_to_screen(float(self.target[0]), float(self.target[1]), center_x, center_y)
-            painter.setPen(QPen(_GOAL_COLOR))
-            painter.setBrush(QBrush(_GOAL_COLOR))
+            painter.setPen(QPen(self.target_color))
+            painter.setBrush(QBrush(self.target_color))
             painter.drawEllipse(point, _GOAL_DOT_PX, _GOAL_DOT_PX)
+            ring_px = (
+                self.target_tolerance * self.scale_factor if self.target_tolerance is not None else float(_GOAL_RING_PX)
+            )
             painter.setBrush(QBrush())  # hollow ring
-            painter.drawEllipse(point, _GOAL_RING_PX, _GOAL_RING_PX)
+            painter.drawEllipse(point, ring_px, ring_px)
 
         # Interactive drag force: a red arrow from the tip to the cursor.
         if self._drag_world is not None:
@@ -129,6 +136,8 @@ class SkelarmSimulator(QMainWindow):
         *,
         controller: Controller | None = None,
         target: ArrayLike | None = None,
+        target_color: str | None = None,
+        target_tolerance: float | None = None,
         stiffness: float = _DEFAULT_STIFFNESS,
         friction: float = 0.0,
     ) -> None:
@@ -143,6 +152,11 @@ class SkelarmSimulator(QMainWindow):
             Its ``update`` / ``control`` hooks are called each physics substep.
         target : ArrayLike | None, optional
             A task-space goal ``(x, y)`` drawn as a marker on the canvas.
+        target_color : str | None, optional
+            Marker color for ``target`` (any Qt/SVG color name); defaults to purple.
+        target_tolerance : float | None, optional
+            Success radius (m): when set, the target marker's ring is drawn at this
+            distance in world units.
         stiffness : float, optional
             Force per meter of tip-to-cursor distance for the interactive drag.
         friction : float, optional
@@ -165,6 +179,9 @@ class SkelarmSimulator(QMainWindow):
 
         self.canvas = SimulatorCanvas(skeleton)
         self.canvas.target = None if target is None else np.asarray(target, dtype=np.float64)
+        if target_color is not None:
+            self.canvas.target_color = QColor(target_color)
+        self.canvas.target_tolerance = target_tolerance
         self.setWindowTitle("Skelarm Simulator")
         self.resize(1024, 768)
         if self._controller is not None:

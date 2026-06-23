@@ -49,20 +49,45 @@ def _write_scenario(path: Path, controller_block: str, *, target: tuple[float, f
 
 
 def test_task_from_dict_parses_fields() -> None:
-    """A [task] mapping yields the target, duration, dt, and schedule."""
+    """A [task] mapping yields the target, duration, dt, and schedule, with defaults."""
     task = Task.from_dict({"target": [0.5, 0.4], "duration": 3.0, "dt": 0.01, "schedule": "quintic"})
     assert task.target == pytest.approx([0.5, 0.4])
     assert task.duration == pytest.approx(3.0)
     assert task.dt == pytest.approx(0.01)
     assert task.schedule == "quintic"
+    # Defaults for the target attributes and the task type.
+    assert task.type == "reaching"
+    assert task.label is None
+    assert task.color == "purple"
+    assert task.tolerance is None
+
+
+def test_task_target_table_parses_attributes() -> None:
+    """A [task].target table yields the position plus label, color, and tolerance."""
+    task = Task.from_dict(
+        {"type": "reaching", "target": {"pos": [0.4, 0.9], "label": "goal", "color": "green", "tolerance": 0.02}}
+    )
+    assert task.target == pytest.approx([0.4, 0.9])
+    assert task.type == "reaching"
+    assert task.label == "goal"
+    assert task.color == "green"
+    assert task.tolerance == pytest.approx(0.02)
 
 
 def test_task_requires_two_element_target() -> None:
-    """A missing or wrong-shaped target is rejected."""
+    """A missing or wrong-shaped target (array or table) is rejected."""
     with pytest.raises(ValueError, match="target"):
         Task.from_dict({"duration": 1.0})
     with pytest.raises(ValueError, match="target"):
         Task.from_dict({"target": [0.5, 0.4, 0.3]})
+    with pytest.raises(ValueError, match="pos"):
+        Task.from_dict({"target": {"label": "x"}})
+
+
+def test_task_rejects_unknown_type() -> None:
+    """An unimplemented task type is reported."""
+    with pytest.raises(ValueError, match="unknown task type"):
+        Task.from_dict({"type": "tracking", "target": [0.5, 0.4]})
 
 
 def test_task_from_toml_requires_task_section(tmp_path: Path) -> None:

@@ -155,6 +155,23 @@ def test_reach_gui_drives_controller_to_target(qapp, tmp_path: Path) -> None:  #
     assert len(window.state_log) > 1  # recorded the run
 
 
+@pytest.mark.integration
+def test_reach_gui_applies_target_color_and_tolerance(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """A table-form target's color and tolerance reach the canvas marker."""
+    config = tmp_path / "reach.toml"
+    config.write_text(
+        _SCENARIO_TOML.replace(
+            "[task]\ntarget = [0.55, 1.21]\nduration = 2.0\ndt = 0.002\n",
+            '[task]\ntarget = { pos = [0.55, 1.21], color = "green", tolerance = 0.03 }\nduration = 2.0\ndt = 0.002\n',
+        ),
+        encoding="utf-8",
+    )
+
+    window = ReachSimulator(build_scenario(config))
+    assert window.canvas.target_color.name() == "#008000"  # green
+    assert window.canvas.target_tolerance == pytest.approx(0.03)
+
+
 def test_runs_as_a_standalone_script() -> None:
     """Running the file directly (script mode) must resolve all of its imports."""
     script = Path(__file__).resolve().parents[1] / "tools" / "reaching_simulator.py"

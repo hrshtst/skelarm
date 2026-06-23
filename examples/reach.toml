@@ -27,7 +27,11 @@ limits = [-180.0, 180.0]
 q = [34.4, 57.3]  # degrees; endpoint starts near (0.80, 1.36) m
 
 [task]
-target = [0.55, 1.21]  # endpoint goal (x, y) in meters
+type = "reaching"      # task kind (currently only "reaching")
+# The target may be a plain [x, y] array, or a table with optional
+# label / color (default purple) / tolerance. The tolerance (meters) is the
+# admittable tip-to-target error; the marker's ring is drawn at that radius.
+target = { pos = [0.55, 1.21], tolerance = 0.02 }  # endpoint goal (m), 2 cm success
 duration = 2.0         # simulated time (s)
 dt = 0.002             # control / integration step (s)
 schedule = "minimum_jerk"

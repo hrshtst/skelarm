@@ -28,7 +28,8 @@ See [Trajectory Tracking Control](../reference/07_control.md) and
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `target` | `[x, y]` | *required* | Endpoint goal in meters. |
+| `type` | str | `"reaching"` | Task kind. Only `reaching` is implemented today; more are planned. |
+| `target` | `[x, y]` or table | *required* | Endpoint goal in meters (see below). |
 | `duration` | float | `2.0` | Total simulated time, in seconds. |
 | `dt` | float | `0.002` | Control / integration step, in seconds. |
 | `schedule` | str | `"minimum_jerk"` | Time scaling for planned trajectories: `linear`, `cubic`, `quintic`, or `minimum_jerk`. |
@@ -37,6 +38,26 @@ See [Trajectory Tracking Control](../reference/07_control.md) and
 by the *trajectory-tracking* controllers; the *reaching* controllers use only
 `target` and generate motion online. `dt` is the fixed step of the simulation loop
 ([`simulate_controlled`](../reference/07_control.md)).
+
+### Target
+
+`target` is either a plain `[x, y]` array (position only) or a table that carries
+the position plus optional attributes:
+
+| Target key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `pos` | `[x, y]` | *required* | Endpoint position in meters. |
+| `label` | str | none | Name for the target (used to pick one among several; multi-target tasks come later). |
+| `color` | str | `"purple"` | Marker color (any Qt/SVG name or `#rrggbb`). |
+| `tolerance` | float | none | Admittable tip-to-target distance (m). The reach is "reached" within it, and the marker's hollow ring is drawn at this radius. |
+
+```toml
+[task]
+type = "reaching"
+target = { pos = [0.55, 1.21], label = "goal", color = "purple", tolerance = 0.02 }
+# array shorthand (position only) also works:
+# target = [0.55, 1.21]
+```
 
 ## The `[controller]` section
 
