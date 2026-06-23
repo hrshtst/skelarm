@@ -1,17 +1,17 @@
 """
 Export the embedded scenario config from a skelarm state log.
 
-Load a ``.sklog.npz`` recording produced by ``run_scenario`` / ``tools/reach.py``
+Load a ``.sklog.npz`` recording produced by ``run_scenario`` / ``tools/reaching_simulator.py``
 and write its embedded scenario config — the editable ``[skeleton]`` / ``[initial]``
 / ``[task]`` / ``[controller]`` tables — to a TOML file. Edit a value and re-run it
-with ``tools/reach.py`` to compare; an unedited re-run reproduces the original
+with ``tools/reaching_simulator.py`` to compare; an unedited re-run reproduces the original
 exactly for the deterministic controllers.
 
 Usage::
 
     uv run python tools/export_config.py run.sklog.npz
     uv run python tools/export_config.py run.sklog.npz --output edited.toml
-    uv run python tools/reach.py edited.toml   # re-run the (edited) scenario
+    uv run python tools/reaching_simulator.py edited.toml   # re-run the (edited) scenario
 """
 
 from __future__ import annotations

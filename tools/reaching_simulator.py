@@ -15,11 +15,11 @@ reach and writing the log to PATH -- handy for batch comparisons across controll
 
 Usage::
 
-    uv run python tools/reach.py examples/reach.toml                       # interactive GUI
-    uv run python tools/reach.py examples/reach.toml --controller pd.toml  # GUI, other controller
-    uv run python tools/reach.py examples/reach.toml --save run.sklog.npz  # headless batch run
-    uv run python tools/reach.py examples/reach.toml --save far.sklog.npz --task far.toml
-    uv run python tools/replay.py run.sklog.npz                            # replay a saved run
+    uv run python tools/reaching_simulator.py examples/reach.toml                       # interactive GUI
+    uv run python tools/reaching_simulator.py examples/reach.toml --controller pd.toml  # GUI, other controller
+    uv run python tools/reaching_simulator.py examples/reach.toml --save run.sklog.npz  # headless batch run
+    uv run python tools/reaching_simulator.py examples/reach.toml --save far.sklog.npz --task far.toml
+    uv run python tools/player.py run.sklog.npz                            # replay a saved run
 """
 
 from __future__ import annotations

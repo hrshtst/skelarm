@@ -1,4 +1,4 @@
-"""Tests for the playback/analysis tool (tools/replay.py)."""
+"""Tests for the playback/analysis tool (tools/player.py)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from skelarm.recording import StateLog
 from skelarm.skeleton import LinkProp, Skeleton
-from tools.replay import PlaybackWindow, build_parser
+from tools.player import PlaybackWindow, build_parser
 
 pytestmark = pytest.mark.integration
 
@@ -168,7 +168,7 @@ def test_force_toggle_hides_arrow(qapp) -> None:  # noqa: ANN001, ARG001
 
 def test_runs_as_a_standalone_script() -> None:
     """Running the file directly (script mode) must resolve all of its imports."""
-    script = Path(__file__).resolve().parents[1] / "tools" / "replay.py"
+    script = Path(__file__).resolve().parents[1] / "tools" / "player.py"
     result = subprocess.run(  # noqa: S603  # trusted: our own interpreter and script path
         [sys.executable, str(script), "--help"],
         capture_output=True,

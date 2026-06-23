@@ -4,7 +4,7 @@ Loads the combined scenario in ``reach.toml`` (robot + start pose + task +
 controller), simulates the controlled reach toward the task-space target, prints
 the final endpoint error, and plots the tip trajectory with the goal and final
 pose. For an interactive version (drag to apply external forces), run the
-``tools/reach.py`` GUI on the same config.
+``tools/reaching_simulator.py`` GUI on the same config.
 """
 
 from __future__ import annotations

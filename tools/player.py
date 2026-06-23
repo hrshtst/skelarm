@@ -12,8 +12,8 @@ does), it is drawn as a red arrow at the tip and toggled by "Show external force
 
 Usage::
 
-    uv run python tools/replay.py run.sklog.npz
-    uv run python tools/replay.py run.sklog.npz --show-com --speed 0.5
+    uv run python tools/player.py run.sklog.npz
+    uv run python tools/player.py run.sklog.npz --show-com --speed 0.5
 """
 
 from __future__ import annotations

@@ -116,20 +116,20 @@ Like the kinematics inspector it accepts `--show-com`, `--pose`, and `--initial`
 The dynamics simulator records the run (joint angles, velocities, torque, and the external tip force) and can export it as a `*.sklog.npz` state log (recording is on by default; use the **Export…** button). Replay it later — the motion is reconstructed and animated from the log *without* re-running the dynamics — and plot any channel versus time for analysis:
 
 ```bash
-uv run python tools/replay.py run.sklog.npz
+uv run python tools/player.py run.sklog.npz
 ```
 
 Scrub the timeline, play/pause at a chosen speed (`--speed`), toggle the centers of mass (`--show-com`), and open per-channel plots with the **Plot channels…** button. When the log recorded an external tip force, it is drawn as a red arrow at the tip (toggle it with **Show external force**). The log embeds the robot geometry, so the file replays on its own.
 
 ### Reaching & Trajectory Control
 
-A combined scenario file describes the robot (`[skeleton]` / `[initial]`), the reaching goal (`[task]`), and the controller (`[controller]`) in one place. `examples/reaching.py` runs a scripted reach and plots it; `tools/reach.py` opens an interactive GUI where the controller drives the arm to the target (a purple marker) and you press/drag the left mouse button to apply an external force at the tip. Add `--save PATH` to run headlessly and write a `*.sklog.npz` for replay (handy for batch comparison):
+A combined scenario file describes the robot (`[skeleton]` / `[initial]`), the reaching goal (`[task]`), and the controller (`[controller]`) in one place. `examples/reaching.py` runs a scripted reach and plots it; `tools/reaching_simulator.py` opens an interactive GUI where the controller drives the arm to the target (a purple marker) and you press/drag the left mouse button to apply an external force at the tip. Add `--save PATH` to run headlessly and write a `*.sklog.npz` for replay (handy for batch comparison):
 
 ```bash
 uv run python examples/reaching.py                            # scripted reach + plot
-uv run python tools/reach.py examples/reach.toml              # interactive GUI
-uv run python tools/reach.py examples/reach.toml --save reach.sklog.npz   # headless batch
-uv run python tools/replay.py reach.sklog.npz                 # replay a saved run
+uv run python tools/reaching_simulator.py examples/reach.toml              # interactive GUI
+uv run python tools/reaching_simulator.py examples/reach.toml --save reach.sklog.npz   # headless batch
+uv run python tools/player.py reach.sklog.npz                 # replay a saved run
 ```
 
 The `[controller].type` selects the control law — trajectory tracking (`computed_torque`, `inverse_dynamics_pd`, `joint_pd`), human-like reaching (`virtual_spring_damper`, `time_varying_stiffness`, `online_shaping`, `position_dependent_shaping`, `adaptive_shaping`), or `mpc` — and the remaining keys are its gains. The control library is also usable directly via `skelarm.load_scenario` and `skelarm.run_scenario`. The exported log embeds the full scenario config, so a run can be re-simulated later with `skelarm.rerun_log` (exactly for the deterministic controllers, within a small tolerance for MPC), or exported as an editable config (`skelarm.export_scenario_toml`, or `tools/export_config.py`) to tweak a parameter and re-run for comparison. See the [Control Configuration](guides/control_configuration.md) guide for the full scenario schema and per-controller config keys, and the [Trajectory Tracking](reference/07_control.md) and [Reaching Control](reference/08_reaching_control.md) references for the theory.

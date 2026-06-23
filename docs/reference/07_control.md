@@ -370,4 +370,4 @@ as MPC and the online reference shaping of the next chapter, instead use the
 
 These controllers can also be configured from a single TOML scenario file and run
 without writing code; see the [Control Configuration](../guides/control_configuration.md)
-guide, the `skelarm.scenario` loader, and the `tools/reach.py` runner.
+guide, the `skelarm.scenario` loader, and the `tools/reaching_simulator.py` runner.

@@ -1,4 +1,4 @@
-"""Tests for the reach scenario tool (tools/reach.py): headless batch and GUI."""
+"""Tests for the reach scenario tool (tools/reaching_simulator.py): headless batch and GUI."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from skelarm.recording import StateLog
 from skelarm.scenario import rerun_log
-from tools.reach import ReachSimulator, build_parser, build_scenario, run_reach
+from tools.reaching_simulator import ReachSimulator, build_parser, build_scenario, run_reach
 
 _SCENARIO_TOML = (
     "[skeleton]\n"
@@ -157,7 +157,7 @@ def test_reach_gui_drives_controller_to_target(qapp, tmp_path: Path) -> None:  #
 
 def test_runs_as_a_standalone_script() -> None:
     """Running the file directly (script mode) must resolve all of its imports."""
-    script = Path(__file__).resolve().parents[1] / "tools" / "reach.py"
+    script = Path(__file__).resolve().parents[1] / "tools" / "reaching_simulator.py"
     result = subprocess.run(  # noqa: S603  # trusted: our own interpreter and script path
         [sys.executable, str(script), "--help"],
         capture_output=True,
