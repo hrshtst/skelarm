@@ -25,8 +25,8 @@ Coriolis helpers) solve the equations of motion with no knowledge of `qmin` /
 | Path | Limit handling |
 | --- | --- |
 | `Skeleton.q` / `set_state` (kinematics) | Clamp into range **with a warning** |
-| `simulate_controlled` (fixed step) | **Hard stop**: clip angle, zero velocity |
-| `SkelarmSimulator` GUI (fixed step) | **Hard stop**: clip angle, zero velocity |
+| `simulate_controlled` (fixed step) | **Hard stop**: clip angle, zero velocity (toggleable via `enforce_limits`) |
+| `SkelarmSimulator` GUI (fixed step) | **Hard stop**: clip angle, zero velocity (toggleable via `enforce_limits`) |
 | `simulate_robot` (adaptive `solve_ivp`) | **None** — unconstrained integration |
 | `JointSpaceMPC` | Soft penalty in the rollout (+ plant clamp via the driving loop) |
 
@@ -52,18 +52,31 @@ The shared one-step integrator `integrate_with_limits(skeleton, tau, dt, lower,
 upper)` takes the bounds as arguments; passing `lower=upper=None` (the default)
 **skips** the clamp/zero block entirely, integrating the unconstrained step.
 
-### Disabling the hard stop in the GUI tools
+### Disabling the hard stop
 
-The interactive dynamics tools accept a `--no-joint-limits` flag (and the
-`SkelarmSimulator` / recorder classes an `enforce_limits=False` argument) that
-omits the bounds from the integrator, so the limits then constrain only the
-kinematics (posing and IK) — not the dynamics:
+Both fixed-step paths can drop the hard stop so the limits constrain only the
+kinematics (posing and IK) — not the dynamics. There are three ways in, ordered
+from most to least reproducible:
+
+1. **Scenario config** — set `enforce_limits = false` in the `[task]` table. This
+   is the reproducible toggle: `run_scenario` embeds the resolved value in the
+   log's run metadata, so `rerun_log` and an exported config re-run with the same
+   choice. See [Control Configuration](control_configuration.md#the-task-section).
+2. **`run_scenario(..., enforce_limits=...)` / `simulate_controlled(..., enforce_limits=False)`** —
+   the programmatic override; `None` (the `run_scenario` default) defers to the
+   task's value. The resolved value is what gets recorded.
+3. **`--no-joint-limits` CLI flag** on the interactive tools (and the
+   `SkelarmSimulator` / recorder classes' `enforce_limits=False` argument), which
+   omits the bounds from the integrator for that run:
 
 ```bash
 uv run python tools/dynamics_simulator.py examples/four_dof_robot.toml --no-joint-limits
-uv run python tools/reaching_simulator.py examples/reach.toml --no-joint-limits
+uv run python tools/reaching_simulator.py examples/reach.toml --no-joint-limits   # also the --save path
 uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --mode dynamics --no-joint-limits
 ```
+
+For `reaching_simulator.py` the flag *overrides* `[task].enforce_limits` off, and
+the resolved value is recorded for a reproducible re-run.
 
 The default keeps the hard stop on. In the recorder this only affects `dynamics`
 mode; `ik` mode always poses through the clamping kinematic setter regardless.

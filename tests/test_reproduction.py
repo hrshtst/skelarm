@@ -60,7 +60,36 @@ def test_run_scenario_embeds_the_source_config(tmp_path: Path) -> None:
     assert source["initial"]["q"] == pytest.approx([34.4, 57.3])  # degrees, exactly as written
     assert log.extra["run"]["duration"] == pytest.approx(0.1)
     assert log.extra["run"]["dt"] == pytest.approx(0.01)
+    assert log.extra["run"]["enforce_limits"] is True  # the actual joint-limit setting used
     assert "skelarm" in log.extra["provenance"]
+
+
+def test_run_scenario_honors_task_enforce_limits(tmp_path: Path) -> None:
+    """A ``[task].enforce_limits = false`` config disables the hard stop and is reproducible."""
+    config = tmp_path / "free.toml"
+    config.write_text(
+        _SKELETON_TOML
+        + "[initial]\nq = [34.4, 57.3]\n"
+        + "[task]\ntarget = [0.55, 1.21]\nduration = 0.2\ndt = 0.01\nenforce_limits = false\n"
+        + '[controller]\ntype = "computed_torque"\nkp = 200.0\nkd = 30.0\n',
+        encoding="utf-8",
+    )
+    original = run_scenario(load_scenario(config))
+
+    assert original.extra["run"]["enforce_limits"] is False
+    replayed = rerun_log(original)
+    np.testing.assert_array_equal(replayed.channel("q"), original.channel("q"))
+
+
+def test_run_scenario_enforce_limits_override_is_recorded_and_reproduced(tmp_path: Path) -> None:
+    """A call-time ``enforce_limits`` override (e.g. ``--no-joint-limits``) is captured for re-run."""
+    config = tmp_path / "reach.toml"
+    _computed_torque(config)  # [task] defaults enforce_limits to True
+    original = run_scenario(load_scenario(config), duration=0.1, dt=0.01, enforce_limits=False)
+
+    assert original.extra["run"]["enforce_limits"] is False  # the override, not the task default
+    replayed = rerun_log(original)
+    np.testing.assert_array_equal(replayed.channel("q"), original.channel("q"))
 
 
 def test_scenario_from_log_rebuilds_scenario(tmp_path: Path) -> None:
@@ -131,6 +160,26 @@ def test_export_scenario_toml_round_trips_exactly(tmp_path: Path) -> None:
 
     np.testing.assert_array_equal(replayed.channel("q"), original.channel("q"))
     np.testing.assert_array_equal(replayed.channel("tau"), original.channel("tau"))
+
+
+def test_export_scenario_toml_preserves_enforce_limits(tmp_path: Path) -> None:
+    """A ``[task].enforce_limits = false`` survives the editable export round-trip."""
+    config = tmp_path / "free.toml"
+    config.write_text(
+        _SKELETON_TOML
+        + "[initial]\nq = [34.4, 57.3]\n"
+        + "[task]\ntarget = [0.55, 1.21]\nduration = 0.1\ndt = 0.01\nenforce_limits = false\n"
+        + '[controller]\ntype = "computed_torque"\nkp = 200.0\nkd = 30.0\n',
+        encoding="utf-8",
+    )
+    original = run_scenario(load_scenario(config))
+
+    exported = tmp_path / "exported.toml"
+    export_scenario_toml(original, exported)
+
+    assert load_scenario(exported).task.enforce_limits is False  # the bool survived dump_toml
+    replayed = run_scenario(load_scenario(exported))
+    np.testing.assert_array_equal(replayed.channel("q"), original.channel("q"))
 
 
 def test_edited_export_changes_the_result(tmp_path: Path) -> None:

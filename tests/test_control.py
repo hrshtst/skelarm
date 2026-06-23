@@ -67,6 +67,28 @@ def test_joint_pd_converges_to_the_target_without_gravity() -> None:
     assert log.channel("q")[-1] == pytest.approx(target, abs=3e-2)
 
 
+def test_simulate_controlled_enforce_limits_toggle() -> None:
+    """``enforce_limits=False`` lets a joint pass the bound the default hard stop pins it at."""
+    limit = 0.2
+
+    def _final_q(*, enforce_limits: bool) -> np.ndarray:
+        link_props = [
+            LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-limit, qmax=limit),
+            LinkProp(length=0.8, m=0.8, i=0.05, rgx=0.4, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+        ]
+        skeleton = Skeleton(link_props)
+        skeleton.q = np.array([0.0, 0.0])
+        reference = Trajectory([0.0, 0.0], np.array([0.5, 0.0]), duration=1.0)
+        controller = JointPD(reference, kp=300.0, kd=40.0)
+        log = simulate_controlled(skeleton, controller, duration=2.0, dt=0.002, enforce_limits=enforce_limits)
+        return log.channel("q")[-1]
+
+    clamped = _final_q(enforce_limits=True)
+    free = _final_q(enforce_limits=False)
+    assert clamped[0] == pytest.approx(limit, abs=1e-2)  # pinned at the bound
+    assert free[0] == pytest.approx(0.5, abs=3e-2)  # sails past it to the reference
+
+
 def test_inverse_dynamics_feedforward_tracks_the_target() -> None:
     """Inverse-dynamics feedforward plus PD reaches the reference target."""
     skeleton = _two_link()

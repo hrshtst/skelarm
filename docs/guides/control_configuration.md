@@ -33,11 +33,21 @@ See [Trajectory Tracking Control](../reference/07_control.md) and
 | `duration` | float | `2.0` | Total simulated time, in seconds. |
 | `dt` | float | `0.002` | Control / integration step, in seconds. |
 | `schedule` | str | `"minimum_jerk"` | Time scaling for planned trajectories: `linear`, `cubic`, `quintic`, or `minimum_jerk`. |
+| `enforce_limits` | bool | `true` | Apply the joint limits as hard stops in the dynamics. Set `false` to let the limits constrain only the kinematics (see below). |
 
 `duration`, `schedule`, and `target` define the planned task-space trajectory used
 by the *trajectory-tracking* controllers; the *reaching* controllers use only
 `target` and generate motion online. `dt` is the fixed step of the simulation loop
 ([`simulate_controlled`](../reference/07_control.md)).
+
+`enforce_limits` is a *run condition* of the simulation: with the default `true`
+the fixed-step loop pins each joint at its `[qmin, qmax]` bound (a hard stop);
+with `false` the bounds are dropped from the dynamics and apply only to the
+kinematics (posing and inverse kinematics). Because it lives in the scenario
+config, the setting is embedded in the run's reproduction metadata, so a saved log
+re-runs with the same choice. `tools/reaching_simulator.py --no-joint-limits`
+overrides it off for a single run (and that resolved value is what gets recorded).
+See the [Joint Limits](joint_limits.md) guide for the underlying mechanics.
 
 ### Target
 
@@ -196,7 +206,9 @@ A log written by `run_scenario` (and by `tools/reaching_simulator.py`) is a self
 re-runnable record. It embeds — in the log's `[extra]` metadata — the **original
 source config** (the full `[skeleton]` / `[initial]` / `[task]` / `[controller]`
 tables, exactly as loaded), the actual run parameters (`duration` / `dt` /
-`grav_vec`), and the `skelarm` / `numpy` / `scipy` versions.
+`grav_vec` / `enforce_limits`), and the `skelarm` / `numpy` / `scipy` versions.
+`enforce_limits` records the *resolved* joint-limit choice, so a `--no-joint-limits`
+override is reproduced on re-run even though the source config still reads `true`.
 
 `rerun_log` reconstructs the scenario and re-simulates it:
 

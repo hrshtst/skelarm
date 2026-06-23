@@ -64,6 +64,20 @@ def test_run_reach_exports_a_replayable_log(tmp_path: Path) -> None:
     assert tip == pytest.approx(np.array([0.55, 1.21]), abs=2e-2)
 
 
+def test_run_reach_no_joint_limits_override_is_recorded(tmp_path: Path) -> None:
+    """``enforce_limits=False`` (the --no-joint-limits override) is captured in the log for re-run."""
+    config = tmp_path / "reach.toml"
+    config.write_text(_SCENARIO_TOML, encoding="utf-8")  # [task] omits enforce_limits -> defaults True
+    output = tmp_path / "run.sklog.npz"
+
+    run_reach(config, output=output, duration=0.1, enforce_limits=False)
+
+    log = StateLog.load(output)
+    assert log.extra["run"]["enforce_limits"] is False  # override recorded, not the task default
+    replayed = rerun_log(log)
+    np.testing.assert_array_equal(replayed.channel("q"), log.channel("q"))
+
+
 def test_run_reach_exports_a_rerunnable_log(tmp_path: Path) -> None:
     """The exported log embeds the scenario, so it re-simulates to the same motion."""
     config = tmp_path / "reach.toml"

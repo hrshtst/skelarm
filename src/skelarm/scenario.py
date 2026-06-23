@@ -83,6 +83,10 @@ class Task:
         Control / integration step (seconds).
     schedule : str
         Time-scaling schedule for planned-trajectory controllers.
+    enforce_limits : bool
+        Apply the joint limits as hard stops in the dynamics (default). When
+        ``False``, the limits constrain only the kinematics (posing and inverse
+        kinematics), not the simulated motion.
     """
 
     target: NDArray[np.float64]
@@ -93,6 +97,7 @@ class Task:
     duration: float = 2.0
     dt: float = 0.002
     schedule: str = "minimum_jerk"
+    enforce_limits: bool = True
 
     @classmethod
     def from_toml(cls, file_path: str | Path) -> Task:
@@ -135,6 +140,7 @@ class Task:
             duration=float(section.get("duration", 2.0)),
             dt=float(section.get("dt", 0.002)),
             schedule=str(section.get("schedule", "minimum_jerk")),
+            enforce_limits=bool(section.get("enforce_limits", True)),
         )
 
 
@@ -376,19 +382,26 @@ def _reproduction_metadata(
     duration: float,
     dt: float,
     grav_vec: NDArray[np.float64],
+    enforce_limits: bool,
 ) -> dict[str, Any] | None:
     """Assemble the ``[extra]`` payload that lets a run be reconstructed and re-run.
 
     Embeds the original source config (the editable ``[skeleton]`` / ``[initial]`` /
     ``[task]`` / ``[controller]`` tables, exactly as loaded), the actual run
-    parameters, and the package versions. Returns ``None`` when the scenario carries
+    parameters (including the resolved ``enforce_limits``, so a call-time override is
+    captured), and the package versions. Returns ``None`` when the scenario carries
     no ``source_config`` (e.g. a programmatically built controller).
     """
     if scenario.source_config is None:
         return None
     return {
         "source_config": dict(scenario.source_config),
-        "run": {"duration": float(duration), "dt": float(dt), "grav_vec": grav_vec.tolist()},
+        "run": {
+            "duration": float(duration),
+            "dt": float(dt),
+            "grav_vec": grav_vec.tolist(),
+            "enforce_limits": bool(enforce_limits),
+        },
         "provenance": _provenance(),
     }
 
@@ -399,6 +412,7 @@ def run_scenario(
     duration: float | None = None,
     dt: float | None = None,
     grav_vec: NDArray[np.float64] | None = None,
+    enforce_limits: bool | None = None,
 ) -> StateLog:
     """Simulate a scenario and embed its full config for later reproduction.
 
@@ -417,6 +431,11 @@ def run_scenario(
         Control / integration step; defaults to ``scenario.task.dt``.
     grav_vec : NDArray[np.float64] | None, optional
         Gravity vector; defaults to zero (planar motion).
+    enforce_limits : bool | None, optional
+        Apply the joint limits as hard stops in the dynamics. ``None`` (the default)
+        uses the scenario's ``task.enforce_limits``; an explicit value overrides it
+        (e.g. a ``--no-joint-limits`` CLI flag). The resolved value is recorded in
+        the run metadata so the override is reproduced on re-run.
 
     Returns
     -------
@@ -426,9 +445,18 @@ def run_scenario(
     run_duration = scenario.task.duration if duration is None else float(duration)
     run_dt = scenario.task.dt if dt is None else float(dt)
     grav = np.zeros(_TASK_DIM, dtype=np.float64) if grav_vec is None else np.asarray(grav_vec, dtype=np.float64)
-    extra = _reproduction_metadata(scenario, duration=run_duration, dt=run_dt, grav_vec=grav)
+    run_enforce_limits = scenario.task.enforce_limits if enforce_limits is None else bool(enforce_limits)
+    extra = _reproduction_metadata(
+        scenario, duration=run_duration, dt=run_dt, grav_vec=grav, enforce_limits=run_enforce_limits
+    )
     return simulate_controlled(
-        scenario.skeleton, scenario.controller, duration=run_duration, dt=run_dt, grav_vec=grav, extra=extra
+        scenario.skeleton,
+        scenario.controller,
+        duration=run_duration,
+        dt=run_dt,
+        grav_vec=grav,
+        enforce_limits=run_enforce_limits,
+        extra=extra,
     )
 
 
@@ -454,7 +482,12 @@ def scenario_from_log(log: StateLog) -> tuple[Scenario, Mapping[str, Any]]:
     scenario = scenario_from_config(config)
     run = log.extra.get(
         "run",
-        {"duration": scenario.task.duration, "dt": scenario.task.dt, "grav_vec": [0.0, 0.0]},
+        {
+            "duration": scenario.task.duration,
+            "dt": scenario.task.dt,
+            "grav_vec": [0.0, 0.0],
+            "enforce_limits": scenario.task.enforce_limits,
+        },
     )
     return scenario, run
 
@@ -475,7 +508,11 @@ def rerun_log(log: StateLog) -> StateLog:
     """
     scenario, run = scenario_from_log(log)
     grav_vec = np.asarray(run["grav_vec"], dtype=np.float64)
-    return run_scenario(scenario, duration=run["duration"], dt=run["dt"], grav_vec=grav_vec)
+    # Older logs may predate the recorded enforce_limits; fall back to the task's value.
+    enforce_limits = run.get("enforce_limits", scenario.task.enforce_limits)
+    return run_scenario(
+        scenario, duration=run["duration"], dt=run["dt"], grav_vec=grav_vec, enforce_limits=enforce_limits
+    )
 
 
 def export_scenario_toml(log: StateLog, path: str | Path) -> None:

@@ -271,14 +271,15 @@ def simulate_controlled(
     duration: float,
     dt: float = 1e-3,
     grav_vec: NDArray[np.float64] | None = None,
+    enforce_limits: bool = True,
     extra: Mapping[str, Any] | None = None,
 ) -> StateLog:
     """Run a controller against the dynamics with a fixed time step.
 
-    Uses semi-implicit (symplectic) Euler with joint limits as hard stops, the
-    same integration as the GUI simulator. A clone of ``skeleton`` is simulated,
-    so the caller's skeleton is not mutated. Each frame records ``q``, ``dq``, the
-    applied ``tau``, and any channels from ``controller.log_channels()``.
+    Uses semi-implicit (symplectic) Euler, the same integration as the GUI
+    simulator. A clone of ``skeleton`` is simulated, so the caller's skeleton is
+    not mutated. Each frame records ``q``, ``dq``, the applied ``tau``, and any
+    channels from ``controller.log_channels()``.
 
     Parameters
     ----------
@@ -292,6 +293,10 @@ def simulate_controlled(
         Fixed control/integration step (seconds).
     grav_vec : NDArray[np.float64] | None, optional
         Gravity vector; defaults to zero (planar motion).
+    enforce_limits : bool, optional
+        Apply the joint limits as hard stops in the dynamics (default). When
+        ``False``, the limits no longer constrain the simulation, so they apply
+        only to the kinematics (posing and inverse kinematics).
     extra : Mapping[str, Any] | None, optional
         Free-form metadata to embed in the returned log's ``[extra]`` table (e.g.
         the scenario config that produced the run, for later reproduction).
@@ -302,8 +307,10 @@ def simulate_controlled(
         The recorded run (``duration / dt`` rounded, plus the initial frame).
     """
     model = skeleton.clone()
-    lower = np.array([link.prop.qmin for link in model.links[1:]], dtype=np.float64)
-    upper = np.array([link.prop.qmax for link in model.links[1:]], dtype=np.float64)
+    lower = upper = None
+    if enforce_limits:
+        lower = np.array([link.prop.qmin for link in model.links[1:]], dtype=np.float64)
+        upper = np.array([link.prop.qmax for link in model.links[1:]], dtype=np.float64)
     joints = [f"j{i + 1}" for i in range(model.num_joints)]
     channel_meta = {
         "q": {"unit": "rad", "label": "joint angle", "columns": joints},

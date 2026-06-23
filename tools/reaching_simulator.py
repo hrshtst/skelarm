@@ -163,7 +163,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-joint-limits",
         action="store_true",
-        help="do not enforce joint limits in the dynamics (limits then apply to kinematics only; GUI only)",
+        help="override [task].enforce_limits off: no dynamics hard stop (limits apply to kinematics only)",
     )
     return parser
 
@@ -238,6 +238,7 @@ def run_reach(
     pose: str | None = None,
     task: str | Path | None = None,
     controller: str | Path | None = None,
+    enforce_limits: bool | None = None,
 ) -> Path:
     """Headlessly simulate the planned reach (with optional overrides) and save the log.
 
@@ -251,6 +252,9 @@ def run_reach(
         Override the task's simulated duration (seconds).
     initial, pose, task, controller
         Section overrides; see :func:`build_scenario`.
+    enforce_limits : bool | None, optional
+        Override the joint-limit hard stop; ``None`` uses the scenario's
+        ``[task].enforce_limits``. The resolved value is embedded for reproducible re-runs.
 
     Returns
     -------
@@ -258,7 +262,7 @@ def run_reach(
         The path the state log was written to.
     """
     scenario = build_scenario(config, initial=initial, pose=pose, task=task, controller=controller)
-    log = run_scenario(scenario, duration=duration)
+    log = run_scenario(scenario, duration=duration, enforce_limits=enforce_limits)
 
     out_path = Path(output) if output is not None else Path(config).with_suffix(".sklog.npz")
     log.save(out_path)
@@ -280,6 +284,9 @@ def main() -> None:
     if not args.config.exists():
         parser.error(f"config file not found: {args.config}")
 
+    # The CLI flag overrides the config; absent, the scenario's [task].enforce_limits applies.
+    enforce_override = False if args.no_joint_limits else None
+
     if args.save is not None:
         try:
             run_reach(
@@ -290,6 +297,7 @@ def main() -> None:
                 pose=args.pose,
                 task=args.task,
                 controller=args.controller,
+                enforce_limits=enforce_override,
             )
         except (FileNotFoundError, ValueError) as exc:
             parser.error(str(exc))
@@ -303,7 +311,8 @@ def main() -> None:
         parser.error(str(exc))
 
     app = QApplication(sys.argv)
-    window = ReachSimulator(scenario, stiffness=args.stiffness, enforce_limits=not args.no_joint_limits)
+    enforce_limits = scenario.task.enforce_limits if enforce_override is None else enforce_override
+    window = ReachSimulator(scenario, stiffness=args.stiffness, enforce_limits=enforce_limits)
     window.show()
     sys.exit(app.exec())
 

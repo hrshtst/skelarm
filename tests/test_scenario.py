@@ -60,6 +60,13 @@ def test_task_from_dict_parses_fields() -> None:
     assert task.label is None
     assert task.color == "purple"
     assert task.tolerance is None
+    assert task.enforce_limits is True  # joint-limit hard stop on by default
+
+
+def test_task_from_dict_reads_enforce_limits() -> None:
+    """``[task].enforce_limits`` toggles the dynamics joint-limit hard stop (default True)."""
+    assert Task.from_dict({"target": [0.5, 0.4]}).enforce_limits is True
+    assert Task.from_dict({"target": [0.5, 0.4], "enforce_limits": False}).enforce_limits is False
 
 
 def test_task_target_table_parses_attributes() -> None:
