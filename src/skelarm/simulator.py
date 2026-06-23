@@ -55,6 +55,8 @@ class SimulatorCanvas(SkelarmCanvas):
         # When set, a left-press only starts a drag if it is within this distance
         # (meters) of the tip ("grab near the tip"); None grabs anywhere.
         self.grab_radius: float | None = None
+        # Whether to draw the red drag arrow (a force cue); off for kinematic drags.
+        self.show_drag_arrow = True
 
     @property
     def drag_point(self) -> tuple[float, float] | None:
@@ -133,7 +135,7 @@ class SimulatorCanvas(SkelarmCanvas):
             painter.drawEllipse(point, ring_px, ring_px)
 
         # Interactive drag force: a red arrow from the tip to the cursor.
-        if self._drag_world is not None:
+        if self._drag_world is not None and self.show_drag_arrow:
             tip = self.skeleton.links[-1]
             start = self._world_to_screen(tip.xe, tip.ye, center_x, center_y)
             end = self._world_to_screen(self._drag_world[0], self._drag_world[1], center_x, center_y)

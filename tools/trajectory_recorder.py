@@ -104,6 +104,7 @@ class RecorderWindow(QMainWindow):
 
         self.canvas = SimulatorCanvas(skeleton)
         self.canvas.show_com = show_com
+        self.canvas.show_drag_arrow = mode == "dynamics"  # no force cue for the kinematic IK drag
         reach = sum(link.prop.length for link in skeleton.links)
         self.canvas.grab_radius = max(0.12 * reach, 0.05)  # grab near the tip
         if task is not None:

@@ -78,6 +78,7 @@ def test_ik_mode_records_q_and_tip_and_replays(qapp, tmp_path: Path) -> None:  #
     """IK mode records joint angles + tip at the sample rate; the log replays."""
     out = tmp_path / "ik.sklog.npz"
     window = RecorderWindow(Skeleton.from_toml(_FOUR_DOF), mode="ik", sample_rate=50.0, duration=1.0, output=out)
+    assert not window.canvas.show_drag_arrow  # no force cue in the kinematic IK drag
     _drive(window)
 
     assert window.finished
@@ -93,6 +94,7 @@ def test_dynamics_mode_records_force_and_replays(qapp, tmp_path: Path) -> None: 
     """Dynamics mode also records dq and the external force; the log replays."""
     out = tmp_path / "dyn.sklog.npz"
     window = RecorderWindow(Skeleton.from_toml(_FOUR_DOF), mode="dynamics", sample_rate=100.0, duration=0.4, output=out)
+    assert window.canvas.show_drag_arrow  # the force arrow is shown in dynamics mode
     _drive(window)
 
     assert window.saved
