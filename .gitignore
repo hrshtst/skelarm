@@ -1,3 +1,7 @@
+### skelarm ###
+# Recorded run artifacts produced by tools/reach.py and the dynamics simulator.
+*.sklog.npz
+
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
