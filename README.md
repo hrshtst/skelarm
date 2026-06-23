@@ -77,7 +77,7 @@ Skeleton keys live under the `[skeleton]` table so the robot can later share a s
 
 The initial state is a *run condition* in its own `[initial]` section, so you can compare the same robot from different starting postures by swapping just that block. `q` (degrees) and the optional `dq` (degrees/second) each take one value per joint, and a length mismatch with the robot's DOF raises an error. `[initial].q` supersedes the older per-link `q0` keys.
 
-Joint `limits` are enforced: setting joint angles clamps them into each joint's `[min, max]` range and warns when a value is out of range. A link that omits `limits` defaults to `[-180, 180]` degrees, i.e. one full revolution — so an unspecified joint is capped at ±180°, not left unbounded.
+Joint `limits` are enforced: setting joint angles clamps them into each joint's `[min, max]` range and warns when a value is out of range. A link that omits `limits` defaults to `[-180, 180]` degrees, i.e. one full revolution — so an unspecified joint is capped at ±180°, not left unbounded. How limits behave during a dynamic run — hard stops in the fixed-step simulators, but unconstrained under `simulate_robot` — is covered in the [Joint Limits](docs/guides/joint_limits.md) guide.
 
 Load it using `Skeleton.from_toml`:
 
