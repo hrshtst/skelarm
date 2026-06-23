@@ -69,11 +69,15 @@ target = { pos = [0.55, 1.21], label = "goal", color = "purple", tolerance = 0.0
 # target = [0.55, 1.21]
 ```
 
+Only `reaching` is built in. To add a goal that is not a single target point, see
+[Defining a Task](defining_a_task.md).
+
 ## The `[controller]` section
 
 `type` selects the control law; the remaining keys are its gains (any omitted key
 falls back to the default below). Diagonal PD gains (`kp`, `kd`) and task-space
-gains (`k_task`, `d_task`, `c_joint`) are isotropic scalars.
+gains (`k_task`, `d_task`, `c_joint`) are isotropic scalars. To plug in a control
+law of your own, see [Defining a Controller](defining_a_controller.md).
 
 ### Trajectory tracking
 

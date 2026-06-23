@@ -78,6 +78,8 @@ nav:
   - Guides:
       - Robot Configuration: guides/robot_configuration.md
       - Control Configuration: guides/control_configuration.md
+      - Defining a Task: guides/defining_a_task.md
+      - Defining a Controller: guides/defining_a_controller.md
       - Joint Limits: guides/joint_limits.md
   - API Reference:
       - Architecture: api/architecture.md

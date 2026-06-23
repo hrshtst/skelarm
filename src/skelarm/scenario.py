@@ -23,7 +23,7 @@ from __future__ import annotations
 import importlib.metadata
 import tomllib
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -54,8 +54,31 @@ if TYPE_CHECKING:
 
 _REFERENCE_DT = 0.02  # sampling step for the IK-converted joint reference (interpolated)
 _TASK_DIM = 2  # planar endpoint target (x, y)
-_TASK_TYPES = ("reaching",)  # supported [task].type values (more to come)
+_TASK_TYPES: set[str] = {"reaching"}  # supported [task].type values; extend via register_task_type
+# Top-level [task] keys consumed by Task; any others are kept on Task.params for custom tasks.
+_KNOWN_TASK_KEYS = frozenset({"type", "target", "duration", "dt", "schedule", "enforce_limits"})
 _DEFAULT_TARGET_COLOR = "purple"  # marker color when a target omits one
+
+
+def register_task_type(name: str) -> None:
+    """Allow ``name`` as a ``[task].type``.
+
+    Task types are a label that a controller interprets; a custom task carries its
+    parameters on :attr:`Task.params` (any extra ``[task]`` keys). Register the type
+    so :meth:`Task.from_dict` accepts it, then read ``task.params`` from a matching
+    controller built via :func:`register_controller`.
+
+    Parameters
+    ----------
+    name : str
+        The task-type string to allow (idempotent).
+    """
+    _TASK_TYPES.add(name)
+
+
+def task_types() -> tuple[str, ...]:
+    """Return the registered ``[task].type`` values, sorted."""
+    return tuple(sorted(_TASK_TYPES))
 
 
 @dataclass
@@ -87,6 +110,10 @@ class Task:
         Apply the joint limits as hard stops in the dynamics (default). When
         ``False``, the limits constrain only the kinematics (posing and inverse
         kinematics), not the simulated motion.
+    params : dict[str, Any]
+        Any extra ``[task]`` keys not recognized above, kept verbatim. A custom
+        task type (see :func:`register_task_type`) carries its own parameters here
+        for a matching controller builder to read (e.g. ``task.params["radius"]``).
     """
 
     target: NDArray[np.float64]
@@ -98,6 +125,7 @@ class Task:
     dt: float = 0.002
     schedule: str = "minimum_jerk"
     enforce_limits: bool = True
+    params: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_toml(cls, file_path: str | Path) -> Task:
@@ -114,7 +142,8 @@ class Task:
         """Build a Task from a ``[task]`` mapping.
 
         ``target`` may be a ``[x, y]`` array (position only) or a table with a
-        ``pos`` and optional ``label`` / ``color`` / ``tolerance``.
+        ``pos`` and optional ``label`` / ``color`` / ``tolerance``. Any keys beyond
+        the recognized ones are kept on :attr:`params` for custom task types.
 
         Raises
         ------
@@ -128,9 +157,10 @@ class Task:
 
         task_type = str(section.get("type", "reaching"))
         if task_type not in _TASK_TYPES:
-            msg = f"unknown task type {task_type!r}; choose from {list(_TASK_TYPES)}"
+            msg = f"unknown task type {task_type!r}; choose from {sorted(_TASK_TYPES)} (or register_task_type)"
             raise ValueError(msg)
 
+        params = {key: value for key, value in section.items() if key not in _KNOWN_TASK_KEYS}
         return cls(
             target=pos,
             type=task_type,
@@ -140,6 +170,7 @@ class Task:
             duration=float(section.get("duration", 2.0)),
             dt=float(section.get("dt", 0.002)),
             schedule=str(section.get("schedule", "minimum_jerk")),
+            params=params,
             enforce_limits=bool(section.get("enforce_limits", True)),
         )
 
@@ -275,7 +306,11 @@ def _build_mpc(params: Mapping[str, Any], skeleton: Skeleton, task: Task) -> Con
     )
 
 
-_BUILDERS: dict[str, Callable[[Mapping[str, Any], Skeleton, Task], Controller]] = {
+# A controller builder turns the [controller] params (plus the robot and task) into a
+# Controller. Register your own with register_controller to drive it from a config type.
+ControllerBuilder = Callable[[Mapping[str, Any], Skeleton, Task], Controller]
+
+_BUILDERS: dict[str, ControllerBuilder] = {
     "computed_torque": _build_computed_torque,
     "joint_pd": _build_joint_pd,
     "inverse_dynamics_pd": _build_inverse_dynamics_pd,
@@ -287,7 +322,30 @@ _BUILDERS: dict[str, Callable[[Mapping[str, Any], Skeleton, Task], Controller]] 
     "mpc": _build_mpc,
 }
 
-CONTROLLER_TYPES = tuple(_BUILDERS)
+
+def register_controller(name: str, builder: ControllerBuilder) -> None:
+    """Register a controller builder so ``[controller].type = name`` builds it.
+
+    The builder receives the ``[controller]`` table (without ``type``) as a mapping,
+    the posed ``Skeleton``, and the ``Task``, and returns a :class:`~skelarm.Controller`.
+    Re-registering an existing name replaces it. Custom controllers are also usable
+    directly (construct the instance and pass it to :func:`run_scenario` /
+    :func:`~skelarm.simulate_controlled`); registration is only needed for the
+    config-driven path.
+
+    Parameters
+    ----------
+    name : str
+        The ``[controller].type`` value to bind.
+    builder : ControllerBuilder
+        A callable ``(params, skeleton, task) -> Controller``.
+    """
+    _BUILDERS[name] = builder
+
+
+def controller_types() -> tuple[str, ...]:
+    """Return the registered ``[controller].type`` values, sorted."""
+    return tuple(sorted(_BUILDERS))
 
 
 def build_controller(source: str | Path | Mapping[str, Any], *, skeleton: Skeleton, task: Task) -> Controller:
@@ -315,7 +373,7 @@ def build_controller(source: str | Path | Mapping[str, Any], *, skeleton: Skelet
     config = source if isinstance(source, Mapping) else _read_controller_section(source)
     controller_type = config.get("type")
     if controller_type not in _BUILDERS:
-        msg = f"unknown controller type {controller_type!r}; choose from {list(CONTROLLER_TYPES)}"
+        msg = f"unknown controller type {controller_type!r}; choose from {list(controller_types())}"
         raise ValueError(msg)
     params = {key: value for key, value in config.items() if key != "type"}
     return _BUILDERS[controller_type](params, skeleton, task)

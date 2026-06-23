@@ -47,15 +47,20 @@ from .reaching import (
 )
 from .recording import StateLog
 from .scenario import (
+    ControllerBuilder,
     Scenario,
     Task,
     build_controller,
+    controller_types,
     export_scenario_toml,
     load_scenario,
+    register_controller,
+    register_task_type,
     rerun_log,
     run_scenario,
     scenario_from_config,
     scenario_from_log,
+    task_types,
 )
 from .simulator import SimulatorCanvas, SkelarmSimulator
 from .skeleton import Link, LinkProp, Skeleton
@@ -65,6 +70,7 @@ __all__ = [
     "AdaptiveReferenceShaping",
     "ComputedTorque",
     "Controller",
+    "ControllerBuilder",
     "EndpointController",
     "IKResult",
     "InverseDynamicsFeedforwardPD",
@@ -101,6 +107,7 @@ __all__ = [
     "compute_kinetic_energy",
     "compute_kinetic_energy_rate",
     "compute_mass_matrix",
+    "controller_types",
     "draw_skeleton",
     "evaluate_schedule",
     "export_scenario_toml",
@@ -109,6 +116,8 @@ __all__ = [
     "integrate_with_limits",
     "load_scenario",
     "plot_trajectory",
+    "register_controller",
+    "register_task_type",
     "rerun_log",
     "resolved_rate_joint_reference",
     "run_scenario",
@@ -117,6 +126,7 @@ __all__ = [
     "shaping_ratio",
     "simulate_controlled",
     "simulate_robot",
+    "task_types",
 ]
 
 

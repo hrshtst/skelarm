@@ -7,9 +7,18 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from skelarm.control import ComputedTorque, simulate_controlled
+import skelarm.scenario as scenario_mod
+from skelarm.control import ComputedTorque, Controller, simulate_controlled
 from skelarm.reaching import VirtualSpringDamper
-from skelarm.scenario import Task, build_controller, load_scenario
+from skelarm.scenario import (
+    Task,
+    build_controller,
+    controller_types,
+    load_scenario,
+    register_controller,
+    register_task_type,
+    task_types,
+)
 from skelarm.skeleton import LinkProp, Skeleton
 
 _SKELETON_TOML = (
@@ -133,6 +142,62 @@ def test_build_controller_rejects_unknown_type() -> None:
     task = Task(target=np.array([0.5, 0.5]))
     with pytest.raises(ValueError, match="unknown controller type"):
         build_controller({"type": "bogus"}, skeleton=skeleton, task=task)
+
+
+@pytest.fixture
+def _registries():  # noqa: ANN202
+    """Snapshot and restore the controller / task-type registries around a test."""
+    builders = dict(scenario_mod._BUILDERS)  # noqa: SLF001
+    types = set(scenario_mod._TASK_TYPES)  # noqa: SLF001
+    yield
+    scenario_mod._BUILDERS.clear()  # noqa: SLF001
+    scenario_mod._BUILDERS.update(builders)  # noqa: SLF001
+    scenario_mod._TASK_TYPES.clear()  # noqa: SLF001
+    scenario_mod._TASK_TYPES.update(types)  # noqa: SLF001
+
+
+def test_task_from_dict_captures_extra_keys_as_params() -> None:
+    """Unrecognized [task] keys are preserved on ``task.params`` for custom tasks/controllers."""
+    task = Task.from_dict({"target": [0.5, 0.4], "radius": 0.3, "period": 2.0})
+    assert task.params["radius"] == pytest.approx(0.3)
+    assert task.params["period"] == pytest.approx(2.0)
+    assert "duration" not in task.params  # known keys stay off params
+    assert "target" not in task.params
+
+
+@pytest.mark.usefixtures("_registries")
+def test_register_task_type_allows_a_new_type() -> None:
+    """A registered task type passes validation and carries its custom parameters."""
+    register_task_type("tracing")
+    assert "tracing" in task_types()
+
+    task = Task.from_dict({"type": "tracing", "target": [0.5, 0.4], "radius": 0.3})
+    assert task.type == "tracing"
+    assert task.params["radius"] == pytest.approx(0.3)
+
+
+@pytest.mark.usefixtures("_registries")
+def test_register_controller_makes_it_usable_via_config() -> None:
+    """A registered builder is dispatched by ``build_controller`` from its ``[controller].type``."""
+
+    class ConstantTorque(Controller):
+        def __init__(self, value: float) -> None:
+            self.value = value
+
+        def control(self, t: float, skeleton: Skeleton) -> np.ndarray:  # noqa: ARG002
+            return np.full(skeleton.num_joints, self.value)
+
+    def build(params, skeleton, task):  # noqa: ANN001, ANN202, ARG001
+        return ConstantTorque(params.get("value", 1.0))
+
+    register_controller("constant_torque", build)
+    assert "constant_torque" in controller_types()
+
+    skeleton = _two_link()
+    task = Task(target=np.array([0.5, 0.5]))
+    controller = build_controller({"type": "constant_torque", "value": 2.0}, skeleton=skeleton, task=task)
+    assert isinstance(controller, ConstantTorque)
+    assert controller.value == pytest.approx(2.0)
 
 
 def test_load_scenario_returns_robot_task_and_controller(tmp_path: Path) -> None:
