@@ -159,6 +159,25 @@ def test_step_respects_joint_limits(qapp) -> None:  # noqa: ANN001, ARG001
     assert np.all(sim.skeleton.q <= limit + 1e-9)
 
 
+def test_enforce_limits_false_lets_the_arm_pass_its_joint_limits(qapp) -> None:  # noqa: ANN001, ARG001
+    """With ``enforce_limits=False`` the dynamics ignore the configured joint limits."""
+    from skelarm.simulator import SkelarmSimulator
+
+    limit = np.deg2rad(15.0)
+    link_props = [LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-limit, qmax=limit) for _ in range(2)]
+    skeleton = Skeleton(link_props)
+    skeleton.q = np.zeros(2)
+    skeleton.dq = np.zeros(2)
+    sim = SkelarmSimulator(skeleton, enforce_limits=False)
+    tip = sim.skeleton.links[-1]
+    _press(sim.canvas, (tip.xe + 5.0, tip.ye + 5.0))  # far away -> strong pull past the limits
+
+    for _ in range(100):
+        sim.step()
+
+    assert np.any(np.abs(sim.skeleton.q) > limit + 1e-3)  # at least one joint sailed past its bound
+
+
 def test_add_control_inserts_widget_before_the_stretch(qapp) -> None:  # noqa: ANN001, ARG001
     """Subclasses can append controls, which land just above the trailing stretch."""
     from PyQt6.QtWidgets import QLabel

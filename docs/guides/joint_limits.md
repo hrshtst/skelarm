@@ -48,6 +48,26 @@ the kinetic energy in that joint is removed at contact. These loops write
 `link.q` / `link.dq` directly, bypassing the warning-emitting setter, so a run
 that rides a limit does not flood the log with warnings.
 
+The shared one-step integrator `integrate_with_limits(skeleton, tau, dt, lower,
+upper)` takes the bounds as arguments; passing `lower=upper=None` (the default)
+**skips** the clamp/zero block entirely, integrating the unconstrained step.
+
+### Disabling the hard stop in the GUI tools
+
+The interactive dynamics tools accept a `--no-joint-limits` flag (and the
+`SkelarmSimulator` / recorder classes an `enforce_limits=False` argument) that
+omits the bounds from the integrator, so the limits then constrain only the
+kinematics (posing and IK) — not the dynamics:
+
+```bash
+uv run python tools/dynamics_simulator.py examples/four_dof_robot.toml --no-joint-limits
+uv run python tools/reaching_simulator.py examples/reach.toml --no-joint-limits
+uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --mode dynamics --no-joint-limits
+```
+
+The default keeps the hard stop on. In the recorder this only affects `dynamics`
+mode; `ik` mode always poses through the clamping kinematic setter regardless.
+
 ### Adaptive `solve_ivp`: no enforcement
 
 !!! warning "`simulate_robot` does not enforce joint limits"

@@ -109,7 +109,7 @@ To simulate an arbitrary robot, use the generalized tool in `tools/`, which adds
 uv run python tools/dynamics_simulator.py examples/four_dof_robot.toml
 ```
 
-Like the kinematics inspector it accepts `--show-com`, `--pose`, and `--initial`, plus `--stiffness <N/m>`, `--friction <N·m·s/rad>`, and `--no-plot`.
+Like the kinematics inspector it accepts `--show-com`, `--pose`, and `--initial`, plus `--stiffness <N/m>`, `--friction <N·m·s/rad>`, and `--no-plot`. By default the joint limits act as hard stops in the dynamics; pass `--no-joint-limits` to disable that and let the limits apply to kinematics (IK) only.
 
 ### Replaying a Recorded Run
 
@@ -131,7 +131,7 @@ uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --mode d
 uv run python tools/player.py teach.sklog.npz                                            # replay the recording
 ```
 
-In `ik` mode the tip tracks the cursor via the IK solver (`--method`); in `dynamics` mode the drag applies a tip force integrated under forward dynamics with viscous friction (`--stiffness`, `--friction`). `--sample-rate` and `--duration` configure the logger; `--initial`/`--pose` set the start pose, and an optional `[task]` draws a target. The log records per-joint angles and the tip path.
+In `ik` mode the tip tracks the cursor via the IK solver (`--method`); in `dynamics` mode the drag applies a tip force integrated under forward dynamics with viscous friction (`--stiffness`, `--friction`, with `--no-joint-limits` to drop the dynamics hard stop). `--sample-rate` and `--duration` configure the logger; `--initial`/`--pose` set the start pose, and an optional `[task]` draws a target. The log records per-joint angles and the tip path.
 
 ### Reaching & Trajectory Control
 

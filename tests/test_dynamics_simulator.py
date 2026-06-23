@@ -59,6 +59,12 @@ def test_friction_defaults_to_zero() -> None:
     assert args.friction == pytest.approx(0.0)
 
 
+def test_no_joint_limits_flag_defaults_off_and_parses() -> None:
+    """Joint limits are enforced unless ``--no-joint-limits`` is given."""
+    assert build_parser().parse_args(["robot.toml"]).no_joint_limits is False
+    assert build_parser().parse_args(["robot.toml", "--no-joint-limits"]).no_joint_limits is True
+
+
 def test_runs_as_a_standalone_script() -> None:
     """Running the file directly (script mode) must resolve all of its imports.
 

@@ -80,6 +80,7 @@ class RecorderWindow(QMainWindow):
         friction: float = _FRICTION,
         task: Task | None = None,
         show_com: bool = False,
+        enforce_limits: bool = True,
     ) -> None:
         """Build the recorder window."""
         super().__init__()
@@ -92,8 +93,14 @@ class RecorderWindow(QMainWindow):
         self._stiffness = stiffness
         self._friction = friction
         self._task = task
-        self._lower = np.array([link.prop.qmin for link in skeleton.links[1:]], dtype=np.float64)
-        self._upper = np.array([link.prop.qmax for link in skeleton.links[1:]], dtype=np.float64)
+        # When limits are not enforced in the dynamics, the hard stop is disabled and
+        # joint limits apply only to the kinematic (IK) path, which always clamps.
+        self._lower = (
+            np.array([link.prop.qmin for link in skeleton.links[1:]], dtype=np.float64) if enforce_limits else None
+        )
+        self._upper = (
+            np.array([link.prop.qmax for link in skeleton.links[1:]], dtype=np.float64) if enforce_limits else None
+        )
 
         self.time = 0.0
         self._recording = False
@@ -310,6 +317,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--task", type=Path, default=None, help="TOML file whose [task] target is drawn")
     parser.add_argument("--show-com", action="store_true", help="overlay each link's center of mass")
     parser.add_argument("--no-plot", action="store_true", help="do not plot the trajectory after recording")
+    parser.add_argument(
+        "--no-joint-limits",
+        action="store_true",
+        help="do not enforce joint limits in the dynamics (dynamics mode; limits still clamp the IK path)",
+    )
     return parser
 
 
@@ -381,6 +393,7 @@ def main() -> None:
         friction=args.friction,
         task=task,
         show_com=args.show_com,
+        enforce_limits=not args.no_joint_limits,
     )
     window.show()
     app.exec()

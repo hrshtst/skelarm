@@ -164,6 +164,7 @@ class SkelarmSimulator(QMainWindow):
         target_tolerance: float | None = None,
         stiffness: float = _DEFAULT_STIFFNESS,
         friction: float = 0.0,
+        enforce_limits: bool = True,
     ) -> None:
         """Build the simulator window for the given skeleton.
 
@@ -187,6 +188,10 @@ class SkelarmSimulator(QMainWindow):
             Joint viscous friction coefficient (N·m·s/rad). Each joint feels a
             damping torque ``-friction * dq`` that dissipates energy; the default
             of ``0`` leaves the arm frictionless.
+        enforce_limits : bool, optional
+            Apply the joint limits as hard stops in the dynamics (default). When
+            ``False``, the limits no longer constrain the simulation (they still
+            apply to the kinematics setters and inverse kinematics).
         """
         super().__init__()
         self.skeleton = skeleton
@@ -194,8 +199,13 @@ class SkelarmSimulator(QMainWindow):
         self._controller = controller
         self._stiffness = stiffness
         self._friction = friction
-        self._lower = np.array([link.prop.qmin for link in skeleton.links[1:]], dtype=np.float64)
-        self._upper = np.array([link.prop.qmax for link in skeleton.links[1:]], dtype=np.float64)
+        # Joint limits passed to the integrator each step; None disables the hard stop.
+        self._lower = (
+            np.array([link.prop.qmin for link in skeleton.links[1:]], dtype=np.float64) if enforce_limits else None
+        )
+        self._upper = (
+            np.array([link.prop.qmax for link in skeleton.links[1:]], dtype=np.float64) if enforce_limits else None
+        )
         self._initial_q = skeleton.q.copy()  # restored by reset()
         self._initial_dq = skeleton.dq.copy()
         self.state_log: StateLog | None = None  # set by start_recording()

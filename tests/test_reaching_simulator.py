@@ -41,6 +41,12 @@ def test_parser_requires_config() -> None:
         build_parser().parse_args([])
 
 
+def test_no_joint_limits_flag_defaults_off_and_parses() -> None:
+    """Joint limits are enforced in the GUI unless ``--no-joint-limits`` is given."""
+    assert build_parser().parse_args(["reach.toml"]).no_joint_limits is False
+    assert build_parser().parse_args(["reach.toml", "--no-joint-limits"]).no_joint_limits is True
+
+
 def test_run_reach_exports_a_replayable_log(tmp_path: Path) -> None:
     """Running a reach writes a .sklog.npz that loads back with the expected channels."""
     config = tmp_path / "reach.toml"

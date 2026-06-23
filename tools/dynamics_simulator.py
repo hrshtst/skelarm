@@ -48,12 +48,14 @@ class DynamicsSimulator(SkelarmSimulator):
     the tip trajectory (see :attr:`trajectory`) for plotting after the GUI closes.
     """
 
-    def __init__(self, skeleton: Skeleton, *, stiffness: float | None = None, friction: float = 0.0) -> None:
+    def __init__(
+        self, skeleton: Skeleton, *, stiffness: float | None = None, friction: float = 0.0, enforce_limits: bool = True
+    ) -> None:
         """Build the simulator controls on top of the base simulator."""
         if stiffness is None:
-            super().__init__(skeleton, friction=friction)
+            super().__init__(skeleton, friction=friction, enforce_limits=enforce_limits)
         else:
-            super().__init__(skeleton, stiffness=stiffness, friction=friction)
+            super().__init__(skeleton, stiffness=stiffness, friction=friction, enforce_limits=enforce_limits)
 
         self._trajectory_x: list[float] = []
         self._trajectory_y: list[float] = []
@@ -225,6 +227,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="initial joint angles in degrees, e.g. 20,45,60,30 (overrides --initial)",
     )
     parser.add_argument("--no-plot", action="store_true", help="do not plot the tip trajectory when the GUI closes")
+    parser.add_argument(
+        "--no-joint-limits",
+        action="store_true",
+        help="do not enforce joint limits in the dynamics (limits then apply to kinematics only)",
+    )
     return parser
 
 
@@ -282,7 +289,9 @@ def main() -> None:
         parser.error(str(exc))
 
     app = QApplication(sys.argv)
-    simulator = DynamicsSimulator(skeleton, stiffness=args.stiffness, friction=args.friction)
+    simulator = DynamicsSimulator(
+        skeleton, stiffness=args.stiffness, friction=args.friction, enforce_limits=not args.no_joint_limits
+    )
     if args.show_com:
         simulator.com_checkbox.setChecked(True)
 

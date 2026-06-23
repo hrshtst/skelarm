@@ -50,7 +50,7 @@ class ReachSimulator(SkelarmSimulator):
     simulator, and starts recording so the run can be exported to a ``.sklog.npz``.
     """
 
-    def __init__(self, scenario: Scenario, *, stiffness: float = _DRAG_STIFFNESS) -> None:
+    def __init__(self, scenario: Scenario, *, stiffness: float = _DRAG_STIFFNESS, enforce_limits: bool = True) -> None:
         """Build the reach GUI for a loaded scenario."""
         super().__init__(
             scenario.skeleton,
@@ -59,6 +59,7 @@ class ReachSimulator(SkelarmSimulator):
             target_color=scenario.task.color,
             target_tolerance=scenario.task.tolerance,
             stiffness=stiffness,
+            enforce_limits=enforce_limits,
         )
         self._task = scenario.task
         self.setWindowTitle("Skelarm Reach")
@@ -158,6 +159,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="TOML file whose [controller] table overrides the base controller",
+    )
+    parser.add_argument(
+        "--no-joint-limits",
+        action="store_true",
+        help="do not enforce joint limits in the dynamics (limits then apply to kinematics only; GUI only)",
     )
     return parser
 
@@ -297,7 +303,7 @@ def main() -> None:
         parser.error(str(exc))
 
     app = QApplication(sys.argv)
-    window = ReachSimulator(scenario, stiffness=args.stiffness)
+    window = ReachSimulator(scenario, stiffness=args.stiffness, enforce_limits=not args.no_joint_limits)
     window.show()
     sys.exit(app.exec())
 

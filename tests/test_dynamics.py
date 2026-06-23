@@ -558,3 +558,16 @@ def test_integrate_with_limits_advances_within_range() -> None:
 
     assert skeleton.q[0] == pytest.approx(0.1)  # q += dq*dt
     assert skeleton.dq[0] == pytest.approx(1.0)  # unchanged (zero torque, no Coriolis)
+
+
+def test_integrate_with_limits_omitting_limits_disables_the_hard_stop() -> None:
+    """With ``lower``/``upper`` omitted, a joint passes its configured limit unstopped."""
+    link = LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-1.0, qmax=1.0)
+    skeleton = Skeleton([link])
+    skeleton.q = np.array([0.99])
+    skeleton.dq = np.array([5.0])  # would overshoot the qmax=1.0 limit in one step
+
+    integrate_with_limits(skeleton, np.zeros(1), 0.1)  # no limits -> no hard stop
+
+    assert skeleton.q[0] == pytest.approx(0.99 + 5.0 * 0.1)  # sails past 1.0
+    assert skeleton.dq[0] == pytest.approx(5.0)  # velocity not zeroed

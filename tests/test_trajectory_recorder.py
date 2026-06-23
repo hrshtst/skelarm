@@ -103,6 +103,25 @@ def test_dynamics_mode_records_force_and_replays(qapp, tmp_path: Path) -> None: 
     PlaybackWindow(StateLog.load(out))
 
 
+def test_dynamics_enforce_limits_toggles_the_hard_stop(qapp) -> None:  # noqa: ANN001, ARG001
+    """``enforce_limits`` controls whether the integrator gets joint bounds (default on)."""
+    skeleton = Skeleton.from_toml(_FOUR_DOF)
+    enforced = RecorderWindow(skeleton, mode="dynamics", enforce_limits=True)
+    assert enforced._lower is not None  # noqa: SLF001
+    assert enforced._upper is not None  # noqa: SLF001
+
+    free = RecorderWindow(Skeleton.from_toml(_FOUR_DOF), mode="dynamics", enforce_limits=False)
+    assert free._lower is None  # noqa: SLF001
+    assert free._upper is None  # noqa: SLF001
+
+
+def test_no_joint_limits_flag_disables_enforcement() -> None:
+    """The ``--no-joint-limits`` flag parses and defaults to enforcing limits."""
+    parser = build_parser()
+    assert parser.parse_args([str(_FOUR_DOF)]).no_joint_limits is False
+    assert parser.parse_args([str(_FOUR_DOF), "--no-joint-limits"]).no_joint_limits is True
+
+
 def test_no_recording_without_a_grab(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
     """Ticking with no grab records nothing and saves nothing."""
     out = tmp_path / "none.sklog.npz"
