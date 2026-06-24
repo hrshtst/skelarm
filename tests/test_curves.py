@@ -73,6 +73,14 @@ def test_periodic_reference_rejects_nonpositive_period() -> None:
         PeriodicTaskReference(build_curve("circle", {}), period=0.0, duration=1.0)
 
 
+def test_example_periodic_curve_config_loads() -> None:
+    """The shipped examples/periodic_curve.toml is a valid periodic-curve scenario."""
+    config = Path(__file__).resolve().parents[1] / "examples" / "periodic_curve.toml"
+    scenario = load_scenario(config)
+    assert scenario.task.type == "periodic_curve"
+    assert scenario.task.params["curve"] == "ellipse"
+
+
 def test_periodic_curve_task_traces_a_circle(tmp_path: Path) -> None:
     """A periodic_curve scenario drives the tip around the configured circle."""
     center = (0.9, 0.4)
