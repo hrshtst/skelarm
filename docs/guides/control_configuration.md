@@ -80,6 +80,7 @@ track a reference loaded from a `.sklog.npz` file (e.g. one recorded with
 | `type` | Reference | Tracked by |
 | --- | --- | --- |
 | `reaching` | A planned point-to-point reach to `target`. | any controller |
+| `multi_target_reaching` | Several candidate targets; the active one is reached (switchable live in the GUI). | any controller |
 | `periodic_curve` | A closed task-space curve traced repeatedly, converted to joint angles by IK. | trajectory-tracking controllers |
 | `trajectory_tracking` | The recorded **tip** `(x, y)` path, converted to joint angles by IK. | trajectory-tracking controllers |
 | `joint_trajectory_tracking` | The recorded **per-joint** `q(t)` series directly (no IK). | joint-space controllers |
@@ -105,6 +106,22 @@ k = 3
 period = 4.0     # seconds per loop
 duration = 12.0  # three loops
 dt = 0.002
+```
+
+A `multi_target_reaching` task lists several candidate `targets` (each a `[x, y]` or a
+`{ pos, label, color, tolerance }` table) and an `active` index (default 0). The active
+target flows through the ordinary reaching pipeline; `tools/multi_target_simulator.py`
+draws all candidates and switches the active one live when you press a number key
+(`1`..`N`), retargeting a reaching controller (e.g. `virtual_spring_damper`) on the fly.
+
+```toml
+[task]
+type = "multi_target_reaching"
+active = 0
+targets = [
+  { pos = [1.2, 0.4], label = "A", tolerance = 0.03 },
+  { pos = [0.3, 1.2], label = "B", color = "teal" },
+]
 ```
 
 The trajectory-tracking types take these extra `[task]` keys:

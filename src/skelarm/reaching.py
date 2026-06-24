@@ -99,12 +99,21 @@ class EndpointController(Controller):
 
     def __init__(self, target: ArrayLike, *, k_task: float, d_task: float, c_joint: float = 0.0) -> None:
         """Store the target and the stiffness / damping gains."""
-        self.target = np.asarray(target, dtype=np.float64)
+        self.target = target  # via the property setter below
         self.k_task = float(k_task)
         self.d_task = float(d_task)
         self.c_joint = float(c_joint)
         self._endpoint: NDArray[np.float64] | None = None
         self._equilibrium: NDArray[np.float64] | None = None
+
+    @property
+    def target(self) -> NDArray[np.float64]:
+        """The task-space target ``p*``. Reassign it (then :meth:`reset`) to switch goals live."""
+        return self._target
+
+    @target.setter
+    def target(self, value: ArrayLike) -> None:
+        self._target = np.asarray(value, dtype=np.float64)
 
     def _endpoint_torque(self, skeleton: Skeleton, equilibrium: NDArray[np.float64], k: float) -> NDArray[np.float64]:
         """Compute the spring-damper joint torque toward ``equilibrium`` with stiffness ``k``."""

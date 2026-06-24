@@ -49,9 +49,11 @@ class SimulatorCanvas(SkelarmCanvas):
         """Initialize the simulator canvas."""
         super().__init__(skeleton)
         self._drag_world: tuple[float, float] | None = None
-        self.target: NDArray[np.float64] | None = None  # optional task-space goal marker
+        self.target: NDArray[np.float64] | None = None  # optional task-space goal marker (the active one)
         self.target_color = _GOAL_COLOR  # marker color
         self.target_tolerance: float | None = None  # success radius (m); sizes the ring
+        # Inactive candidate goals for multi-target tasks, drawn as faint hollow rings.
+        self.secondary_targets: list[tuple[NDArray[np.float64], QColor]] = []
         # When set, a left-press only starts a drag if it is within this distance
         # (meters) of the tip ("grab near the tip"); None grabs anywhere.
         self.grab_radius: float | None = None
@@ -119,6 +121,15 @@ class SimulatorCanvas(SkelarmCanvas):
         center_y = self.height() / 2
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Inactive multi-target candidates: small hollow rings, no fill.
+        for pos, color in self.secondary_targets:
+            spot = self._world_to_screen(float(pos[0]), float(pos[1]), center_x, center_y)
+            pen = QPen(color)
+            pen.setStyle(Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.setBrush(QBrush())
+            painter.drawEllipse(spot, _GOAL_RING_PX, _GOAL_RING_PX)
 
         # Task-space goal: a filled dot inside a hollow ring. When a success
         # tolerance is set, the ring radius is that distance in world units;

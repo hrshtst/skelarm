@@ -1,0 +1,35 @@
+# Multiple-target reaching: several candidate goals, one active at a time.
+# Open with the GUI and press number keys 1-3 to switch the active target live:
+#   uv run python tools/multi_target_simulator.py examples/multi_target.toml
+
+[skeleton]
+[[skeleton.link]]
+length = 1.0
+mass = 1.0
+inertia = 0.1
+com = [0.5, 0.0]
+limits = [-180.0, 180.0]
+
+[[skeleton.link]]
+length = 0.8
+mass = 0.8
+inertia = 0.05
+com = [0.4, 0.0]
+limits = [-180.0, 180.0]
+
+[initial]
+q = [30.0, 30.0]   # degrees
+
+[task]
+type = "multi_target_reaching"
+active = 0          # which target is active at startup
+targets = [
+  { pos = [1.2, 0.4], label = "A", color = "purple", tolerance = 0.03 },
+  { pos = [0.3, 1.2], label = "B", color = "teal", tolerance = 0.03 },
+  { pos = [-0.4, 0.9], label = "C", color = "orange", tolerance = 0.03 },
+]
+
+[controller]
+type = "virtual_spring_damper"   # a reaching controller; its target switches live
+k_task = 150.0
+d_task = 25.0

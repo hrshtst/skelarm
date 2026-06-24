@@ -62,6 +62,7 @@ if TYPE_CHECKING:
 _REFERENCE_DT = 0.02  # sampling step for the IK-converted joint reference (interpolated)
 _TASK_DIM = 2  # planar endpoint target (x, y)
 _REACHING_TYPE = "reaching"  # the built-in task type; the one that requires a target
+_MULTI_TARGET_TYPE = "multi_target_reaching"  # several candidate targets; one active, switchable in the GUI
 _TASK_TYPES: set[str] = {_REACHING_TYPE}  # supported [task].type values; extend via register_task_type
 # Top-level [task] keys consumed by Task; any others are kept on Task.params for custom tasks.
 _KNOWN_TASK_KEYS = frozenset({"type", "target", "duration", "dt", "schedule", "enforce_limits"})
@@ -232,6 +233,46 @@ def _parse_target(raw: Any) -> tuple[NDArray[np.float64], str | None, str, float
         msg = f"[task].target must have {_TASK_DIM} elements (x, y), got shape {pos.shape}"
         raise ValueError(msg)
     return pos, label, color, tolerance
+
+
+def multi_target_specs(task: Task) -> list[tuple[NDArray[np.float64], str | None, str, float | None]]:
+    """Parse a multi-target task's ``targets`` list into ``(pos, label, color, tolerance)`` tuples.
+
+    Raises
+    ------
+    ValueError
+        If the task carries no ``targets`` list.
+    """
+    raw = task.params.get("targets")
+    if not raw:
+        msg = "[task] of type 'multi_target_reaching' requires a non-empty 'targets' list"
+        raise ValueError(msg)
+    return [_parse_target(entry) for entry in raw]
+
+
+def active_target_index(task: Task) -> int:
+    """The configured active-target index of a multi-target task (default 0)."""
+    return int(task.params.get("active", 0))
+
+
+def apply_active_target(task: Task) -> None:
+    """Set a multi-target task's first-class ``target`` (and marker attrs) to its active candidate.
+
+    Lets the active goal flow through the ordinary reaching pipeline (controller build,
+    marker drawing); the GUI switches it live by reassigning ``task.target`` / the
+    controller's target.
+
+    Raises
+    ------
+    ValueError
+        If the active index is out of range.
+    """
+    specs = multi_target_specs(task)
+    index = active_target_index(task)
+    if not 0 <= index < len(specs):
+        msg = f"active target index {index} is out of range for {len(specs)} targets"
+        raise ValueError(msg)
+    task.target, task.label, task.color, task.tolerance = specs[index]
 
 
 @dataclass
@@ -409,6 +450,8 @@ register_task_type("joint_trajectory_tracking")
 register_reference_builder("joint_trajectory_tracking", _joint_trajectory_tracking_reference)
 register_task_type("periodic_curve")
 register_reference_builder("periodic_curve", _periodic_curve_reference)
+register_task_type(_MULTI_TARGET_TYPE)
+register_reference_builder(_MULTI_TARGET_TYPE, _reaching_reference)  # tracks the active target
 
 
 def _build_computed_torque(params: Mapping[str, Any], skeleton: Skeleton, task: Task) -> Controller:
@@ -596,6 +639,8 @@ def scenario_from_config(data: Mapping[str, Any]) -> Scenario:
     resolved = _inline_reference_samples(data)
     skeleton = Skeleton.from_config(resolved)
     task = Task.from_dict(resolved["task"])
+    if task.type == _MULTI_TARGET_TYPE:
+        apply_active_target(task)  # set the first-class target to the active candidate
     controller = build_controller(resolved["controller"], skeleton=skeleton, task=task)
     return Scenario(skeleton=skeleton, task=task, controller=controller, source_config=dict(resolved))
 
