@@ -5,12 +5,14 @@ controllers, the configuration glue, and the PyQt6 GUI relate to one another. It
 complements the per-module API pages (starting with [Skeleton](skeleton.md)) and
 the theory chapters that derive each piece.
 
-The codebase has four structures worth seeing together:
+The codebase has five structures worth seeing together:
 
 - the **robot model** (`Skeleton` / `Link` / `LinkProp`);
 - the **controller** hierarchy (the trackers of
   [Trajectory Tracking Control](../reference/07_control.md) and the endpoint
   controllers of [Reaching Control](../reference/08_reaching_control.md));
+- the **task / joint references** the controllers track (`TaskReference` /
+  `JointReference` protocols and their realizations);
 - the **scenario glue** that turns a TOML config into a runnable controller;
 - the **PyQt6 GUI** widgets and windows.
 
@@ -60,12 +62,21 @@ classDiagram
     EndpointController ..> Skeleton : reads endpoint
     StateLog ..> Skeleton : records / rebuilds
 
-    %% ── Joint reference (structural Protocol) ────
+    %% ── Task & joint references (structural Protocols) ──
+    class TaskReference {
+        <<protocol>>
+        +duration
+        +sample(t) tuple
+    }
     class JointReference {
         <<protocol>>
         +sample(t) tuple
     }
+    TaskReference <|.. Trajectory : realizes
+    TaskReference <|.. SampledTaskReference : realizes
+    TaskReference <|.. PeriodicTaskReference : realizes
     JointReference <|.. SampledJointReference : realizes
+    TaskReference ..> SampledJointReference : ik_joint_reference()
     TrackingController ..> JointReference : tracks
     JointSpaceMPC ..> JointReference : tracks
 
@@ -75,12 +86,13 @@ classDiagram
     }
     class Task {
         <<dataclass>>
-        +target duration dt schedule
+        +type  target  params
+        +duration  dt  schedule  enforce_limits
     }
     Scenario *-- Skeleton
     Scenario *-- Task
     Scenario *-- Controller
-    Scenario ..> Trajectory : plans
+    Scenario ..> JointReference : builds per task type
 
     %% ── PyQt6 GUI ───────────────────────────────
     class QWidget {
@@ -131,14 +143,31 @@ The trackers and MPC read a joint reference through the `JointReference`
 is not an explicit subclass), so any object with a matching `sample(t)` method
 can serve as a reference.
 
+## Task references
+
+A task-space reference is anything satisfying the `TaskReference` `Protocol`
+(`sample(t)` plus a `duration`): a planned [`Trajectory`](trajectory.md), a
+`SampledTaskReference` (a smoothed/interpolated recorded tip path), or a
+[`PeriodicTaskReference`](curves.md) (a closed curve). `ik_joint_reference`
+converts any of them into a `SampledJointReference` by samplewise inverse
+kinematics, so the trackers and MPC need no knowledge of where the reference came
+from. The [Trajectory Filtering & Interpolation](../reference/09_trajectory_filtering.md)
+chapter covers the smoothing (`skelarm.filtering`) and resampling
+(`skelarm.interpolation`) applied to recorded references.
+
 ## Scenario glue
 
 [`Scenario`](scenario.md) is the runnable bundle assembled from one TOML file: a
-`Skeleton`, a `Task` (target, duration, control step, schedule), and a
-ready-to-run `Controller`. The loader plans a `Trajectory` to build the joint
-reference for the planned trackers. See the
-[Control Configuration](../guides/control_configuration.md) guide for the config
-schema.
+`Skeleton`, a `Task` (its required `type` plus the target / run conditions /
+type-specific `params`), and a ready-to-run `Controller`. The loader builds the
+joint reference for the trackers by **dispatching on the task type** (a registry
+opened by `register_reference_builder`): `reaching` plans a point-to-point
+`Trajectory`, `periodic_curve` builds a `PeriodicTaskReference`, and the
+trajectory-tracking tasks load a recorded reference — each converted via
+`ik_joint_reference`, except `joint_trajectory_tracking`, which yields a
+`SampledJointReference` directly. See the
+[Control Configuration](../guides/control_configuration.md) and
+[Defining a Task](../guides/defining_a_task.md) guides for the config schema.
 
 ## PyQt6 GUI
 
@@ -149,6 +178,6 @@ The interactive tools subclass PyQt6 base classes. [`SkelarmCanvas`](canvas.md)
 
 !!! note "Value types not shown"
     A few standalone value types are omitted from the diagram to keep it
-    readable: `IKResult` (returned by `compute_inverse_kinematics`),
-    [`Trajectory`](trajectory.md), and [`StateLog`](recording.md) (the recorded
-    run produced by `simulate_controlled`).
+    readable: `IKResult` (returned by `compute_inverse_kinematics`) and
+    [`StateLog`](recording.md) (the recorded run produced by `simulate_controlled`
+    and by the interactive simulators).

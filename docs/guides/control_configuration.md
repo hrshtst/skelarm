@@ -85,6 +85,14 @@ track a reference loaded from a `.sklog.npz` file (e.g. one recorded with
 | `trajectory_tracking` | The recorded **tip** `(x, y)` path, converted to joint angles by IK. | trajectory-tracking controllers |
 | `joint_trajectory_tracking` | The recorded **per-joint** `q(t)` series directly (no IK). | joint-space controllers |
 
+Each task type has a dedicated interactive simulator —
+`tools/reaching_simulator.py`, `tools/multi_target_simulator.py`,
+`tools/periodic_curve_simulator.py`, and `tools/trajectory_tracking_simulator.py` —
+sharing the same controls (drag to apply disturbance forces, **Record** / **Export…**,
+the `--initial` / `--pose` / `--task` / `--controller` overrides, and `--save` for a
+headless batch). Their runs replay in `tools/player.py`, which draws the task overlay
+(target, curve, or reference).
+
 A `periodic_curve` task names a `curve` kind plus its parameters and a `period` (one
 loop); `duration` sets how many loops are traced. Built-in curves:
 
@@ -285,11 +293,11 @@ so controllers can be constructed without a file.
 
 ## Reproducible runs
 
-A log written by `run_scenario` (and by `tools/reaching_simulator.py`) is a self-contained,
-re-runnable record. It embeds — in the log's `[extra]` metadata — the **original
-source config** (the full `[skeleton]` / `[initial]` / `[task]` / `[controller]`
-tables, exactly as loaded), the actual run parameters (`duration` / `dt` /
-`grav_vec` / `enforce_limits`), and the `skelarm` / `numpy` / `scipy` versions.
+A log written by `run_scenario` (and by the interactive scenario simulators) is a
+self-contained, re-runnable record. It embeds — in the log's `[extra]` metadata — the
+**original source config** (the full `[skeleton]` / `[initial]` / `[task]` /
+`[controller]` tables, exactly as loaded), the actual run parameters (`duration` /
+`dt` / `grav_vec` / `enforce_limits`), and the `skelarm` / `numpy` / `scipy` versions.
 `enforce_limits` records the *resolved* joint-limit choice, so a `--no-joint-limits`
 override is reproduced on re-run even though the source config still reads `true`.
 

@@ -21,11 +21,15 @@ For the full `[task]` schema (target, `duration`, `dt`, `schedule`, `tolerance`,
 | `enforce_limits` | Whether the joint limits act as a dynamics hard stop (see [Joint Limits](joint_limits.md)). |
 | `params` | **Any extra `[task]` keys**, kept verbatim — how a custom task carries its own data. |
 
-`type` is the only universally required key. The single built-in type is `reaching`
-(move the endpoint to `target`, which it requires). Because the task type is a
-*label that a controller interprets*, "defining a new task" means two things
-together: **registering the type** so configs validate, and **giving a controller
-the logic** that reads the task's `target` / `params`.
+`type` is the only universally required key. The built-in types are `reaching`,
+`multi_target_reaching`, `periodic_curve`, `trajectory_tracking`, and
+`joint_trajectory_tracking` (see
+[Control Configuration](control_configuration.md#task-types)); only `reaching` (and
+the multi-target variant) requires a `target`. Because the task type is a *label that
+a controller interprets*, "defining a new task" means two things together:
+**registering the type** so configs validate, and **giving a controller the logic**
+that reads the task's `target` / `params` (or supplying a joint reference for the
+tracking controllers — see [below](#trajectory-tracking-tasks-reusing-the-controllers)).
 
 ## Option 1 — configure the built-in reaching task
 

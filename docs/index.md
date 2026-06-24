@@ -11,11 +11,15 @@ A lightweight, physics-based dynamics simulator for a configurable planar robot 
 *   **Dynamics (Planar, No Gravity):**
     *   Inverse Dynamics (ID) using Recursive Newton-Euler algorithm.
     *   Forward Dynamics (FD) using mass matrix and Coriolis/centrifugal terms.
-    *   Physics integration using `scipy.integrate.solve_ivp`.
+    *   Fixed-step (`simulate_controlled`) and adaptive (`scipy.integrate.solve_ivp`) integration.
     *   **Note:** Gravity is explicitly ignored as the robot operates on a horizontal plane.
+*   **Control:** Trajectory-tracking laws (joint PD, inverse-dynamics feedforward, computed torque), human-like reaching controllers (virtual spring-damper and reference shaping), and joint-space MPC, configured from one combined TOML scenario and extensible at runtime.
+*   **Tasks:** Reaching to a target, multiple-target reaching with live switching, periodic curve tracing (circle, ellipse, lemniscate, rose), and reference-trajectory tracking in task space or per joint — each a registered `[task].type`.
+*   **Trajectory tools:** From-scratch interpolation (linear, natural cubic spline, barycentric Lagrange) and smoothing filters (first-order low-pass, Butterworth) for resampling recorded references.
+*   **Recording & Replay:** Runs are recorded to a self-contained `*.sklog.npz` state log (geometry + channels + config) that re-runs reproducibly and replays in an analysis player.
 *   **Visualization:**
     *   Static plotting with `matplotlib`.
-    *   Interactive `PyQt6` GUI: pose by joint sliders (FK) or click/drag the tip (IK).
+    *   Interactive `PyQt6` GUIs: pose by joint sliders (FK) or click/drag the tip (IK); real-time dynamics and per-task simulators where you drag to apply disturbance forces; and a timeline player that draws the task overlay (target, curve, or reference).
 *   **Quality Assurance:** Fully typed, tested with `pytest` and `hypothesis`, and linted with `ruff`.
 
 ## Getting Started
