@@ -37,7 +37,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from skelarm import SkelarmCanvas, StateLog, compute_forward_kinematics
+from skelarm import SkelarmCanvas, StateLog, Task, compute_forward_kinematics
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # allow `tools.` imports when run as a script
+from tools._scenario_cli import task_overlays
 
 _TIMER_MS = 20  # playback/render period in milliseconds
 
@@ -88,6 +91,11 @@ class PlaybackWindow(QMainWindow):
         self.canvas.show_com = show_com
         if self._force is not None:
             self.canvas.force_scale = self._force_arrow_scale()
+
+        # Reconstruct the task from the embedded config to draw its overlays (target /
+        # active-target emphasis / periodic curve / reference trajectory).
+        self._has_targets, self._has_reference = self._build_task_overlays()
+
         self.setWindowTitle("Skelarm Replay")
         self.resize(1024, 768)
 
@@ -138,6 +146,18 @@ class PlaybackWindow(QMainWindow):
         if self._force is not None:
             controls.addWidget(self.force_checkbox)
             controls.addWidget(self.force_label)
+
+        # Task-overlay toggles, shown only when the log embeds the matching data.
+        self.target_checkbox = QCheckBox("Show target(s)")
+        self.target_checkbox.setChecked(True)
+        self.target_checkbox.toggled.connect(self._on_show_targets_toggled)
+        if self._has_targets:
+            controls.addWidget(self.target_checkbox)
+        self.reference_checkbox = QCheckBox("Show reference")
+        self.reference_checkbox.setChecked(True)
+        self.reference_checkbox.toggled.connect(self._on_show_reference_toggled)
+        if self._has_reference:
+            controls.addWidget(self.reference_checkbox)
 
         self.plot_button = QPushButton("Plot channels…")
         self.plot_button.clicked.connect(self._on_plot_channels)
@@ -273,6 +293,16 @@ class PlaybackWindow(QMainWindow):
         self._show_force = self.force_checkbox.isChecked()
         self._show_frame(self._frame)
 
+    def _on_show_targets_toggled(self) -> None:
+        """Toggle the task target markers and redraw."""
+        self.canvas.show_overlay_targets = self.target_checkbox.isChecked()
+        self.canvas.update_skeleton()
+
+    def _on_show_reference_toggled(self) -> None:
+        """Toggle the reference curve / trajectory overlay and redraw."""
+        self.canvas.show_overlay_path = self.reference_checkbox.isChecked()
+        self.canvas.update_skeleton()
+
     def _force_arrow_scale(self) -> float:
         """Meters per Newton so the largest recorded force spans ~40% of the arm's reach."""
         assert self._force is not None  # only called when a force channel is present
@@ -282,6 +312,24 @@ class PlaybackWindow(QMainWindow):
             return 0.0
         reach = sum(link.prop.length for link in self.skeleton.links)
         return 0.4 * reach / peak
+
+    def _build_task_overlays(self) -> tuple[bool, bool]:
+        """Reconstruct the task from the embedded config and set the canvas overlays.
+
+        Returns ``(has_targets, has_reference)`` so the GUI only adds the toggles whose
+        data is present. Logs without an embedded task draw no overlays.
+        """
+        task_cfg = self.log.extra.get("source_config", {}).get("task")
+        if not task_cfg:
+            return False, False
+        try:
+            task = Task.from_dict(task_cfg)
+        except (ValueError, KeyError):
+            return False, False
+        targets, path = task_overlays(task, self.skeleton)
+        self.canvas.overlay_targets = targets
+        self.canvas.overlay_path = path
+        return bool(targets), path is not None
 
     def _on_plot_channels(self) -> None:
         """Open the per-channel analysis plots without blocking the player."""

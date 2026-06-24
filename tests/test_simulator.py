@@ -264,6 +264,19 @@ def test_recording_is_off_by_default(qapp) -> None:  # noqa: ANN001, ARG001
     assert sim.state_log is None
 
 
+def test_recording_embeds_log_extra(qapp) -> None:  # noqa: ANN001, ARG001
+    """The ``log_extra`` constructor metadata lands in the recorded log's ``extra``."""
+    from skelarm.simulator import SkelarmSimulator
+
+    link_props = [LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi) for _ in range(2)]
+    skeleton = Skeleton(link_props)
+    skeleton.q = np.array([0.2, 0.2])
+    sim = SkelarmSimulator(skeleton, log_extra={"source_config": {"task": {"type": "reaching"}}})
+    sim.start_recording()
+    assert sim.state_log is not None
+    assert sim.state_log.extra["source_config"]["task"]["type"] == "reaching"
+
+
 def test_start_recording_captures_initial_frame_and_each_step(qapp) -> None:  # noqa: ANN001, ARG001
     """Recording seeds an initial frame and appends one frame per step."""
     sim = _simulator()

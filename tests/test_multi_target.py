@@ -106,6 +106,8 @@ def test_gui_switch_retargets_the_controller(qapp) -> None:  # noqa: ANN001, ARG
     assert window.active_index == 0
     assert window.canvas.target == pytest.approx([1.2, 0.4])
     assert len(window.canvas.secondary_targets) == 2  # noqa: PLR2004
+    assert window.state_log is not None
+    assert window.state_log.extra["source_config"]["task"]["type"] == "multi_target_reaching"  # embedded for the player
 
     window.switch_to(2)  # target C
     assert window.active_index == 2  # noqa: PLR2004
@@ -113,6 +115,28 @@ def test_gui_switch_retargets_the_controller(qapp) -> None:  # noqa: ANN001, ARG
     controller = window._controller  # noqa: SLF001
     assert isinstance(controller, VirtualSpringDamper)
     assert controller.target == pytest.approx([-0.4, 0.9])  # live retarget
+
+
+def test_parser_has_override_and_save_flags() -> None:
+    """The multi-target tool gained the shared override flags and --save (like reaching)."""
+    from tools.multi_target_simulator import build_parser
+
+    args = build_parser().parse_args([str(_EXAMPLE), "--save", "out.npz", "--controller", "pd.toml"])
+    assert args.save == Path("out.npz")
+    assert args.controller == Path("pd.toml")
+    assert args.no_joint_limits is False
+
+
+def test_headless_save_writes_a_replayable_log(tmp_path: Path) -> None:
+    """The headless save runs the active-target reach and embeds the config."""
+    from skelarm.recording import StateLog
+    from tools._scenario_cli import run_headless
+
+    out = tmp_path / "mt.sklog.npz"
+    run_headless(_EXAMPLE, output=out, duration=0.2)
+    log = StateLog.load(out)
+    assert "q" in log.channel_names
+    assert log.extra["source_config"]["task"]["type"] == "multi_target_reaching"
 
 
 def test_runs_as_a_standalone_script() -> None:

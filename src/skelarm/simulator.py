@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QBrush, QColor, QMouseEvent, QPainter, QPaintEvent, QPen
+from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent
 from PyQt6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
@@ -18,12 +18,15 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from skelarm.canvas import SkelarmCanvas, draw_arrow
+from skelarm.canvas import _GOAL_COLOR, SkelarmCanvas, draw_arrow
 from skelarm.dynamics import integrate_with_limits
 from skelarm.kinematics import compute_forward_kinematics, compute_jacobian
 from skelarm.recording import StateLog
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+    from typing import Any
+
     from numpy.typing import ArrayLike, NDArray
 
     from skelarm.control import Controller
@@ -33,9 +36,6 @@ _TIMER_MS = 20  # GUI/render period in milliseconds
 _SUBSTEPS = 4  # physics steps per render tick (integration stability)
 _DEFAULT_STIFFNESS = 0.1  # N/m: external tip force = stiffness * (cursor - tip)
 _ARROW_COLOR = QColor(220, 0, 0)  # red
-_GOAL_COLOR = QColor(170, 0, 170)  # purple (task target marker)
-_GOAL_DOT_PX = 4  # filled center of the target marker
-_GOAL_RING_PX = 9  # hollow ring around the target marker
 
 
 class SimulatorCanvas(SkelarmCanvas):
@@ -122,28 +122,21 @@ class SimulatorCanvas(SkelarmCanvas):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Inactive multi-target candidates: small hollow rings, no fill.
+        # Inactive multi-target candidates: dashed hollow rings, no fill.
         for pos, color in self.secondary_targets:
-            spot = self._world_to_screen(float(pos[0]), float(pos[1]), center_x, center_y)
-            pen = QPen(color)
-            pen.setStyle(Qt.PenStyle.DashLine)
-            painter.setPen(pen)
-            painter.setBrush(QBrush())
-            painter.drawEllipse(spot, _GOAL_RING_PX, _GOAL_RING_PX)
+            self._draw_target_marker(painter, pos, center_x, center_y, color=color, tolerance=None, active=False)
 
-        # Task-space goal: a filled dot inside a hollow ring. When a success
-        # tolerance is set, the ring radius is that distance in world units;
-        # otherwise it is a small fixed marker.
+        # Task-space goal: a filled dot inside a hollow ring sized by the tolerance.
         if self.target is not None:
-            point = self._world_to_screen(float(self.target[0]), float(self.target[1]), center_x, center_y)
-            painter.setPen(QPen(self.target_color))
-            painter.setBrush(QBrush(self.target_color))
-            painter.drawEllipse(point, _GOAL_DOT_PX, _GOAL_DOT_PX)
-            ring_px = (
-                self.target_tolerance * self.scale_factor if self.target_tolerance is not None else float(_GOAL_RING_PX)
+            self._draw_target_marker(
+                painter,
+                self.target,
+                center_x,
+                center_y,
+                color=self.target_color,
+                tolerance=self.target_tolerance,
+                active=True,
             )
-            painter.setBrush(QBrush())  # hollow ring
-            painter.drawEllipse(point, ring_px, ring_px)
 
         # Interactive drag force: a red arrow from the tip to the cursor.
         if self._drag_world is not None and self.show_drag_arrow:
@@ -176,6 +169,7 @@ class SkelarmSimulator(QMainWindow):
         stiffness: float = _DEFAULT_STIFFNESS,
         friction: float = 0.0,
         enforce_limits: bool = True,
+        log_extra: Mapping[str, Any] | None = None,
     ) -> None:
         """Build the simulator window for the given skeleton.
 
@@ -203,6 +197,9 @@ class SkelarmSimulator(QMainWindow):
             Apply the joint limits as hard stops in the dynamics (default). When
             ``False``, the limits no longer constrain the simulation (they still
             apply to the kinematics setters and inverse kinematics).
+        log_extra : Mapping[str, Any] | None, optional
+            Free-form metadata embedded in the recorded log's ``[extra]`` table (e.g.
+            ``{"source_config": ...}`` so a later player can reconstruct the task).
         """
         super().__init__()
         self.skeleton = skeleton
@@ -210,6 +207,7 @@ class SkelarmSimulator(QMainWindow):
         self._controller = controller
         self._stiffness = stiffness
         self._friction = friction
+        self._log_extra = log_extra
         # Joint limits passed to the integrator each step; None disables the hard stop.
         self._lower = (
             np.array([link.prop.qmin for link in skeleton.links[1:]], dtype=np.float64) if enforce_limits else None
@@ -331,7 +329,9 @@ class SkelarmSimulator(QMainWindow):
             "tau": {"unit": "N*m", "label": "applied joint torque", "columns": joints},
             "ext_force": {"unit": "N", "label": "external tip force", "columns": ["fx", "fy"]},
         }
-        self.state_log = StateLog(self.skeleton, producer="skelarm_simulator", channel_meta=channel_meta)
+        self.state_log = StateLog(
+            self.skeleton, producer="skelarm_simulator", channel_meta=channel_meta, extra=self._log_extra
+        )
         self.state_log.record(
             self.time,
             q=self.skeleton.q,

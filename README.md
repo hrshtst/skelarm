@@ -116,7 +116,7 @@ The dynamics simulator records the run (joint angles, velocities, torque, and th
 uv run python tools/player.py run.sklog.npz
 ```
 
-Scrub the timeline, play/pause at a chosen speed (`--speed`), toggle the centers of mass (`--show-com`), and open per-channel plots with the **Plot channels…** button. When the log recorded an external tip force, it is drawn as a red arrow at the tip (toggle it with **Show external force**). The log embeds the robot geometry, so the file replays on its own.
+Scrub the timeline, play/pause at a chosen speed (`--speed`), toggle the centers of mass (`--show-com`), and open per-channel plots with the **Plot channels…** button. When the log recorded an external tip force, it is drawn as a red arrow at the tip (toggle it with **Show external force**). The log embeds the robot geometry, so the file replays on its own. When the log embeds a task (any scenario simulator records it), the player also draws the task context — the target (the active one emphasized for multi-target tasks), the periodic curve, or the reference trajectory (the per-joint reference is shown in task space via forward kinematics) — each toggled with **Show target(s)** / **Show reference**.
 
 ### Teaching a Trajectory
 
@@ -146,6 +146,14 @@ The `[initial]`, `[task]`, and `[controller]` sections can be overridden from se
 uv run python tools/reaching_simulator.py examples/reach.toml --controller pd.toml          # GUI, different controller
 uv run python tools/reaching_simulator.py examples/reach.toml --task far.toml --save far.sklog.npz   # headless batch
 uv run python tools/reaching_simulator.py examples/reach.toml --initial pose.toml --pose 20,45
+```
+
+Dedicated interactive simulators exist for the other task types, all sharing the same controls (drag to perturb, **Record** / **Export…**, the `--initial`/`--pose`/`--task`/`--controller` overrides, and `--save` for a headless batch run). Their runs replay in `tools/player.py` with the task overlay drawn:
+
+```bash
+uv run python tools/multi_target_simulator.py examples/multi_target.toml        # several targets; press 1–N to switch the active one live
+uv run python tools/periodic_curve_simulator.py examples/periodic_curve.toml    # trace a closed curve (drawn behind the arm)
+uv run python tools/trajectory_tracking_simulator.py track.toml                 # track a recorded tip / per-joint reference
 ```
 
 The `[controller].type` selects the control law — trajectory tracking (`computed_torque`, `inverse_dynamics_pd`, `joint_pd`), human-like reaching (`virtual_spring_damper`, `time_varying_stiffness`, `online_shaping`, `position_dependent_shaping`, `adaptive_shaping`), or `mpc` — and the remaining keys are its gains. A `[task].enforce_limits = false` keeps the joint limits on the kinematics only, dropping the dynamics hard stop for the run (the resolved value is embedded for reproducibility; `--no-joint-limits` overrides it off for one run). The control library is also usable directly via `skelarm.load_scenario` and `skelarm.run_scenario`. The exported log embeds the full scenario config (robot, task, controller, initial state, and run parameters), so a run can be re-simulated later with `skelarm.rerun_log` — exactly for the deterministic controllers, and within a small numerical tolerance for MPC. You can also export an editable config from a log (`skelarm.export_scenario_toml`, or `tools/export_config.py`) to tweak a parameter and re-run for comparison. See the [Control Configuration](docs/guides/control_configuration.md) guide for the full scenario schema and per-controller config keys, and the [Trajectory Tracking](docs/reference/07_control.md) and [Reaching Control](docs/reference/08_reaching_control.md) references for the theory.

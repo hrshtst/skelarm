@@ -173,6 +173,8 @@ def test_reach_gui_drives_controller_to_target(qapp, tmp_path: Path) -> None:  #
     assert float(np.hypot(tip.xe - target[0], tip.ye - target[1])) < 0.05  # noqa: PLR2004  # within 5 cm
     assert window.state_log is not None
     assert len(window.state_log) > 1  # recorded the run
+    # The recording embeds the task config so the player can draw the target.
+    assert window.state_log.extra["source_config"]["task"]["type"] == "reaching"
 
 
 @pytest.mark.integration

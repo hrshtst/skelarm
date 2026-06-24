@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import itertools
 import math
 from typing import TYPE_CHECKING
 
@@ -29,6 +30,12 @@ if TYPE_CHECKING:
 _MARGIN_PX = 20.0  # Empty border kept between the arm and the widget edge.
 _DEFAULT_SCALE = 100.0  # Pixels per meter, used before the reach/size are known.
 _ARROW_HEAD_PX = 10.0  # Length of the arrowhead strokes, in pixels.
+
+# Task-overlay marker styling, shared by the interactive simulators and the player.
+_GOAL_COLOR = QColor(170, 0, 170)  # purple (task target marker)
+_GOAL_DOT_PX = 4.0  # filled target-dot radius (px)
+_GOAL_RING_PX = 9.0  # hollow ring radius (px) when no success tolerance is set
+_REFERENCE_COLOR = QColor(120, 120, 120)  # gray (reference curve / trajectory path)
 
 
 def draw_arrow(
@@ -126,6 +133,14 @@ class SkelarmCanvas(QWidget):
         # force * force_scale (meters per Newton). None hides the arrow.
         self.tip_force: NDArray[np.float64] | None = None
         self.force_scale = 1.0
+        # Task overlays (set by the player / scenario simulators), each toggleable:
+        # a reference polyline (curve / tracked trajectory) and target markers, where
+        # each target is (position, color, success tolerance | None, active?).
+        self.overlay_path: NDArray[np.float64] | None = None
+        self.overlay_path_color = _REFERENCE_COLOR
+        self.show_overlay_path = True
+        self.overlay_targets: list[tuple[NDArray[np.float64], QColor, float | None, bool]] = []
+        self.show_overlay_targets = True
         # Set background color to white
         self.setAutoFillBackground(True)
         p = self.palette()
@@ -179,6 +194,8 @@ class SkelarmCanvas(QWidget):
                 com = self._world_to_screen(link.xg, link.yg, center_x, center_y)
                 painter.drawEllipse(com, self._COM_RADIUS_PX, self._COM_RADIUS_PX)
 
+        self._draw_task_overlays(painter, center_x, center_y)
+
         # Show the latest IK click target: a hollow orange ring, plus a dashed line
         # to the tip so an unreachable target's residual gap is visible.
         if self._ik_target is not None:
@@ -212,6 +229,61 @@ class SkelarmCanvas(QWidget):
         # Invert Y because screen Y is down
         sy = cy - wy * self.scale_factor
         return QPointF(sx, sy)
+
+    def _draw_target_marker(
+        self,
+        painter: QPainter,
+        pos: NDArray[np.float64],
+        cx: float,
+        cy: float,
+        *,
+        color: QColor,
+        tolerance: float | None,
+        active: bool,
+    ) -> None:
+        """Draw a task target: a filled dot + ring when active, a dashed ring otherwise."""
+        point = self._world_to_screen(float(pos[0]), float(pos[1]), cx, cy)
+        if active:
+            painter.setPen(QPen(color))
+            painter.setBrush(QBrush(color))
+            painter.drawEllipse(point, _GOAL_DOT_PX, _GOAL_DOT_PX)
+            ring_px = tolerance * self.scale_factor if tolerance is not None else _GOAL_RING_PX
+            painter.setBrush(QBrush())  # hollow ring
+            painter.drawEllipse(point, ring_px, ring_px)
+        else:
+            pen = QPen(color)
+            pen.setStyle(Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.setBrush(QBrush())
+            painter.drawEllipse(point, _GOAL_RING_PX, _GOAL_RING_PX)
+
+    def _draw_path(
+        self,
+        painter: QPainter,
+        points: NDArray[np.float64],
+        cx: float,
+        cy: float,
+        color: QColor,
+    ) -> None:
+        """Draw a world-space polyline (a reference curve / trajectory) as a dashed line."""
+        if len(points) < 2:  # noqa: PLR2004 — need at least a segment to draw
+            return
+        pen = QPen(color)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        pen.setWidth(2)
+        painter.setPen(pen)
+        painter.setBrush(QBrush())
+        screen = [self._world_to_screen(float(p[0]), float(p[1]), cx, cy) for p in points]
+        for start, end in itertools.pairwise(screen):
+            painter.drawLine(start, end)
+
+    def _draw_task_overlays(self, painter: QPainter, cx: float, cy: float) -> None:
+        """Draw the optional reference path and task target markers (each toggleable)."""
+        if self.overlay_path is not None and self.show_overlay_path:
+            self._draw_path(painter, self.overlay_path, cx, cy, self.overlay_path_color)
+        if self.show_overlay_targets:
+            for pos, color, tolerance, active in self.overlay_targets:
+                self._draw_target_marker(painter, pos, cx, cy, color=color, tolerance=tolerance, active=active)
 
     def update_skeleton(self) -> None:
         """Trigger a repaint."""

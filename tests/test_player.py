@@ -41,6 +41,38 @@ def _log(frames: int = 5) -> StateLog:
     return log
 
 
+_EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
+
+
+def _embedded_log(config_name: str, tmp_path: Path) -> StateLog:
+    """Run an example scenario headlessly to get a log embedding its task config."""
+    from tools._scenario_cli import build_scenario, save_scenario_run
+
+    out = tmp_path / "run.sklog.npz"
+    save_scenario_run(build_scenario(_EXAMPLES / config_name), out, duration=0.2, enforce_limits=True)
+    return StateLog.load(out)
+
+
+def test_player_draws_curve_overlay_and_toggles(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """A periodic-curve log draws the reference path, toggleable via the checkbox."""
+    window = PlaybackWindow(_embedded_log("periodic_curve.toml", tmp_path))
+    assert window._has_reference  # noqa: SLF001
+    assert window.canvas.overlay_path is not None
+    assert window.canvas.overlay_path.shape[1] == 2  # noqa: PLR2004
+    window.reference_checkbox.setChecked(False)
+    assert window.canvas.show_overlay_path is False
+
+
+def test_player_emphasizes_the_active_target(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """A multi-target log draws every candidate with exactly one active."""
+    window = PlaybackWindow(_embedded_log("multi_target.toml", tmp_path))
+    assert window._has_targets  # noqa: SLF001
+    assert len(window.canvas.overlay_targets) == 3  # noqa: PLR2004
+    assert sum(1 for *_rest, active in window.canvas.overlay_targets if active) == 1
+    window.target_checkbox.setChecked(False)
+    assert window.canvas.show_overlay_targets is False
+
+
 def _force_log(frames: int = 5) -> StateLog:
     """A small two-link log that also records an external tip force per frame."""
     link_props = [LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi) for _ in range(2)]

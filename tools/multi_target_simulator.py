@@ -5,16 +5,18 @@ Load a scenario whose ``[task]`` is ``multi_target_reaching`` (a list of candida
 targets, one active) driven by a reaching controller. The active target is filled; the
 others are drawn as dashed rings. Press a **number key** ``1``..``N`` to switch the
 active target live — the controller is retargeted and re-homed on the fly. Press/drag
-the left mouse button to apply an external force at the tip, as in the reaching
-simulator.
+the left mouse button to apply an external force at the tip, and Record / Export the run
+for replay. ``--initial`` / ``--pose`` / ``--task`` / ``--controller`` override config
+sections; ``--save PATH`` runs headlessly and writes a replayable log.
 
 Switching live retargets the spring-damper *reaching* controllers (their target is a
-settable property); trajectory-tracking controllers ignore the live switch (their plan
-is fixed at build time).
+settable property); trajectory-tracking controllers ignore the live switch.
 
 Usage::
 
     uv run python tools/multi_target_simulator.py examples/multi_target.toml
+    uv run python tools/multi_target_simulator.py examples/multi_target.toml --controller pd.toml
+    uv run python tools/multi_target_simulator.py examples/multi_target.toml --save run.sklog.npz
 """
 
 from __future__ import annotations
@@ -29,32 +31,31 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QApplication, QLabel
 
-from skelarm import EndpointController, SkelarmSimulator, load_scenario
-from skelarm.scenario import active_target_index, multi_target_specs
+from skelarm import EndpointController, active_target_index, multi_target_specs
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # allow `tools.` imports when run as a script
+from tools._scenario_cli import (
+    ScenarioSimulator,
+    add_override_arguments,
+    build_scenario,
+    resolve_enforce_limits,
+    run_headless,
+)
 
 if TYPE_CHECKING:
     from PyQt6.QtGui import QKeyEvent
 
-    from skelarm.scenario import Scenario
+    from skelarm import Scenario
 
 _DRAG_STIFFNESS = 20.0  # N/m for the mouse drag
 
 
-class MultiTargetReachSimulator(SkelarmSimulator):
+class MultiTargetReachSimulator(ScenarioSimulator):
     """Reaching GUI over several candidate targets, with live number-key switching."""
 
     def __init__(self, scenario: Scenario, *, stiffness: float = _DRAG_STIFFNESS, enforce_limits: bool = True) -> None:
         """Build the multi-target reach GUI for a loaded scenario."""
-        super().__init__(
-            scenario.skeleton,
-            controller=scenario.controller,
-            target=scenario.task.target,
-            target_color=scenario.task.color,
-            target_tolerance=scenario.task.tolerance,
-            stiffness=stiffness,
-            enforce_limits=enforce_limits,
-        )
-        self._task = scenario.task
+        super().__init__(scenario, stiffness=stiffness, enforce_limits=enforce_limits)
         self._specs = multi_target_specs(scenario.task)
         self._active = active_target_index(scenario.task)
         self.setWindowTitle("Skelarm Multi-Target Reach")
@@ -103,28 +104,52 @@ class MultiTargetReachSimulator(SkelarmSimulator):
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the command-line argument parser for the tool."""
-    parser = argparse.ArgumentParser(description="Interactive multiple-target reaching simulator.")
-    parser.add_argument("config", type=Path, help="multi-target scenario TOML")
-    parser.add_argument("--stiffness", type=float, default=_DRAG_STIFFNESS, help="mouse-drag force per meter (N/m)")
+    parser = argparse.ArgumentParser(description="Interactive (or headless) multiple-target reaching simulator.")
+    parser.add_argument("config", type=Path, help="path to a multi-target scenario TOML config")
     parser.add_argument(
-        "--no-joint-limits",
-        action="store_true",
-        help="do not enforce joint limits in the dynamics (limits apply to kinematics only)",
+        "--save", type=Path, default=None, metavar="PATH", help="run headlessly and write the run to this .sklog.npz"
     )
+    parser.add_argument("--duration", type=float, default=None, help="override the simulated duration (s; --save only)")
+    parser.add_argument("--stiffness", type=float, default=_DRAG_STIFFNESS, help="mouse-drag force per meter (N/m)")
+    add_override_arguments(parser)
     return parser
 
 
 def main() -> None:
-    """Parse arguments and open the multi-target reaching GUI."""
+    """Parse arguments and either run headlessly (``--save``) or open the GUI."""
     parser = build_parser()
     args = parser.parse_args()
-    config: Path = args.config
-    if not config.exists():
-        parser.error(f"config file not found: {config}")
+    if not args.config.exists():
+        parser.error(f"config file not found: {args.config}")
+
+    enforce_override = False if args.no_joint_limits else None
+    if args.save is not None:
+        try:
+            run_headless(
+                args.config,
+                output=args.save,
+                duration=args.duration,
+                initial=args.initial,
+                pose=args.pose,
+                task=args.task,
+                controller=args.controller,
+                enforce_limits=enforce_override,
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            parser.error(str(exc))
+        return
+
+    try:
+        scenario = build_scenario(
+            args.config, initial=args.initial, pose=args.pose, task=args.task, controller=args.controller
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        parser.error(str(exc))
 
     app = QApplication(sys.argv)
-    scenario = load_scenario(config)
-    window = MultiTargetReachSimulator(scenario, stiffness=args.stiffness, enforce_limits=not args.no_joint_limits)
+    window = MultiTargetReachSimulator(
+        scenario, stiffness=args.stiffness, enforce_limits=resolve_enforce_limits(args, scenario)
+    )
     window.show()
     sys.exit(app.exec())
 
