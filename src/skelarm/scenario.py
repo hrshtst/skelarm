@@ -41,6 +41,7 @@ from skelarm.control import (
     ik_joint_reference,
     simulate_controlled,
 )
+from skelarm.curves import PeriodicTaskReference, build_curve
 from skelarm.filtering import smooth
 from skelarm.interpolation import resample_with_derivatives
 from skelarm.mpc import JointSpaceMPC
@@ -329,6 +330,19 @@ def _joint_trajectory_tracking_reference(skeleton: Skeleton, task: Task) -> Samp
     return SampledJointReference(grid, qg, dqg, ddqg)
 
 
+def _periodic_curve_reference(skeleton: Skeleton, task: Task) -> SampledJointReference:
+    """Joint reference for a periodic curve: trace a closed task-space curve via IK."""
+    kind = task.params.get("curve")
+    if kind is None:
+        msg = "[task] of type 'periodic_curve' requires a 'curve' kind"
+        raise ValueError(msg)
+    period = float(task.params.get("period", task.duration))
+    curve = build_curve(str(kind), task.params)
+    curve_ref = PeriodicTaskReference(curve, period=period, duration=task.duration)
+    method = str(task.params.get("ik_method", "lm_sugihara"))
+    return ik_joint_reference(skeleton, curve_ref, dt=_REFERENCE_DT, method=method)
+
+
 def _resolve_reference_series(task: Task, channel: str) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """Return ``(times, values)`` for a reference (values 2-D), from inlined samples or a file."""
     embedded = task.params.get("reference_samples")
@@ -393,6 +407,8 @@ register_task_type("trajectory_tracking")
 register_reference_builder("trajectory_tracking", _trajectory_tracking_reference)
 register_task_type("joint_trajectory_tracking")
 register_reference_builder("joint_trajectory_tracking", _joint_trajectory_tracking_reference)
+register_task_type("periodic_curve")
+register_reference_builder("periodic_curve", _periodic_curve_reference)
 
 
 def _build_computed_torque(params: Mapping[str, Any], skeleton: Skeleton, task: Task) -> Controller:

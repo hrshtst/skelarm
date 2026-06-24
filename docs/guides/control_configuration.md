@@ -80,8 +80,32 @@ track a reference loaded from a `.sklog.npz` file (e.g. one recorded with
 | `type` | Reference | Tracked by |
 | --- | --- | --- |
 | `reaching` | A planned point-to-point reach to `target`. | any controller |
+| `periodic_curve` | A closed task-space curve traced repeatedly, converted to joint angles by IK. | trajectory-tracking controllers |
 | `trajectory_tracking` | The recorded **tip** `(x, y)` path, converted to joint angles by IK. | trajectory-tracking controllers |
 | `joint_trajectory_tracking` | The recorded **per-joint** `q(t)` series directly (no IK). | joint-space controllers |
+
+A `periodic_curve` task names a `curve` kind plus its parameters and a `period` (one
+loop); `duration` sets how many loops are traced. Built-in curves:
+
+| `curve` | Parameters | Shape |
+| --- | --- | --- |
+| `circle` | `center`, `radius`, `phase` | a circle |
+| `ellipse` | `center`, `a`, `b`, `phase` | an axis-aligned ellipse |
+| `lemniscate` | `center`, `a` | the Bernoulli ∞ (horizontal) |
+| `vertical_lemniscate` | `center`, `a`, `b` | an upright figure-eight |
+| `rose` | `center`, `a`, `k` | a rhodonea (`k` petals if odd, `2k` if even) |
+
+```toml
+[task]
+type = "periodic_curve"
+curve = "rose"
+center = [0.8, 0.0]
+a = 0.4
+k = 3
+period = 4.0     # seconds per loop
+duration = 12.0  # three loops
+dt = 0.002
+```
 
 The trajectory-tracking types take these extra `[task]` keys:
 

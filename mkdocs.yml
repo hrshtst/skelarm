@@ -88,6 +88,7 @@ nav:
       - Kinematics: api/kinematics.md
       - Dynamics: api/dynamics.md
       - Trajectory: api/trajectory.md
+      - Curves: api/curves.md
       - Interpolation: api/interpolation.md
       - Filtering: api/filtering.md
       - Control: api/control.md

@@ -17,6 +17,7 @@ from .control import (
     resolved_rate_joint_reference,
     simulate_controlled,
 )
+from .curves import PeriodicTaskReference, build_curve, curve_kinds, register_curve
 from .dynamics import (
     compute_coriolis_gravity_vector,
     compute_forward_dynamics,
@@ -90,6 +91,7 @@ __all__ = [
     "Link",
     "LinkProp",
     "OnlineReferenceShaping",
+    "PeriodicTaskReference",
     "PositionDependentShaping",
     "SampledJointReference",
     "SampledTaskReference",
@@ -108,6 +110,7 @@ __all__ = [
     "VirtualSpringDamper",
     "adaptive_shaping_ratio",
     "build_controller",
+    "build_curve",
     "butterworth_lowpass",
     "compute_coriolis_basis",
     "compute_coriolis_gravity_vector",
@@ -122,6 +125,7 @@ __all__ = [
     "compute_kinetic_energy_rate",
     "compute_mass_matrix",
     "controller_types",
+    "curve_kinds",
     "draw_skeleton",
     "evaluate_schedule",
     "export_scenario_toml",
@@ -135,6 +139,7 @@ __all__ = [
     "plot_trajectory",
     "reference_builders",
     "register_controller",
+    "register_curve",
     "register_reference_builder",
     "register_task_type",
     "rerun_log",

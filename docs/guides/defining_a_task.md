@@ -38,6 +38,13 @@ guide and override the `[task]` per run with `tools/reaching_simulator.py --task
 Use this when the goal is not a single reaching point — for example tracing a
 circle, where the task needs a center, radius, and period.
 
+!!! tip "Periodic curves are built in"
+    Tracing a closed curve (circle, ellipse, lemniscate, rose, …) is already provided
+    by the `periodic_curve` task type
+    ([Control Configuration](control_configuration.md#task-types)); register a new
+    *curve* with `skelarm.register_curve` rather than a whole task type. The worked
+    example below is kept as a from-scratch illustration of the task + controller pattern.
+
 ### 1. Register the type and carry parameters
 
 Allow the new `type` with `register_task_type`. Any `[task]` keys beyond the
