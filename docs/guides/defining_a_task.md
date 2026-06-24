@@ -119,6 +119,32 @@ log = run_scenario(load_scenario("tracing.toml"))
 log.save("tracing.sklog.npz")   # replay with tools/player.py
 ```
 
+## Trajectory-tracking tasks (reusing the controllers)
+
+The example above gives a custom controller the task's logic. The other route is to
+give a **tracking controller** (computed torque, joint PD, inverse-dynamics PD, MPC)
+a custom *reference* — the built-in `trajectory_tracking` and
+`joint_trajectory_tracking` tasks work this way (see
+[Control Configuration](control_configuration.md#task-types)). A tracking controller
+builds its reference by calling the reference builder registered for the task type:
+
+```python
+from skelarm import register_reference_builder, register_task_type, SampledJointReference
+
+def build_my_reference(skeleton, task):
+    # return a JointReference, e.g. a SampledJointReference(times, q, dq, ddq)
+    ...
+
+register_task_type("my_reference_task")
+register_reference_builder("my_reference_task", build_my_reference)
+```
+
+Then any tracking controller (`[controller].type = "computed_torque"`, …) drives it,
+no controller code needed. The `skelarm.interpolation` and `skelarm.filtering`
+utilities are reusable for resampling/smoothing a sampled reference (see the
+[theory](../reference/09_trajectory_filtering.md)). List reference task types with
+`reference_builders()`.
+
 ## Reproducibility note
 
 The custom `[task]` keys live in the scenario config, which `run_scenario` embeds

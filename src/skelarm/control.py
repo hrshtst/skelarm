@@ -33,7 +33,11 @@ if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
 
     from skelarm.skeleton import Skeleton
-    from skelarm.trajectory import Trajectory
+
+
+def _interp_columns(t: float, times: NDArray[np.float64], data: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Linearly interpolate each column of ``data`` at time ``t`` (held at the endpoints)."""
+    return np.array([np.interp(t, times, data[:, j]) for j in range(data.shape[1])], dtype=np.float64)
 
 
 class JointReference(Protocol):
@@ -41,6 +45,21 @@ class JointReference(Protocol):
 
     def sample(self, t: float) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
         """Return the reference angles, velocities, and accelerations at time ``t``."""
+        ...
+
+
+class TaskReference(Protocol):
+    """A task-space reference ``p_r(t)`` sampled for ``(p, dp, ddp)``.
+
+    Anything exposing ``.sample(t)`` and a ``.duration`` is a task reference, so
+    :class:`~skelarm.Trajectory`, :class:`SampledTaskReference`, and the periodic
+    curves all qualify and can feed :func:`ik_joint_reference`.
+    """
+
+    duration: float
+
+    def sample(self, t: float) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+        """Return the reference position, velocity, and acceleration at time ``t``."""
         ...
 
 
@@ -64,15 +83,48 @@ class SampledJointReference:
 
     def sample(self, t: float) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
         """Linearly interpolate the reference at time ``t`` (held at the endpoints)."""
-        return self._interp(t, self.q), self._interp(t, self.dq), self._interp(t, self.ddq)
+        return (
+            _interp_columns(t, self.times, self.q),
+            _interp_columns(t, self.times, self.dq),
+            _interp_columns(t, self.times, self.ddq),
+        )
 
-    def _interp(self, t: float, data: NDArray[np.float64]) -> NDArray[np.float64]:
-        return np.array([np.interp(t, self.times, data[:, j]) for j in range(data.shape[1])], dtype=np.float64)
+
+class SampledTaskReference:
+    """A task-space reference stored as time-sampled arrays, read by linear interpolation.
+
+    Use this when a (typically pre-smoothed) endpoint path ``p_r(t)`` is supplied as
+    samples; it satisfies :class:`TaskReference`, so :func:`ik_joint_reference` can turn
+    it into a joint reference for the tracking controllers.
+
+    Parameters
+    ----------
+    times : ArrayLike
+        Sample times, shape ``(N,)``, increasing and starting at ``0``.
+    p, dp, ddp : ArrayLike
+        Endpoint position, velocity, and acceleration, each shape ``(N, dim)``.
+    """
+
+    def __init__(self, times: ArrayLike, p: ArrayLike, dp: ArrayLike, ddp: ArrayLike) -> None:
+        """Store the sampled task-space arrays and derive the duration."""
+        self.times = np.asarray(times, dtype=np.float64)
+        self.p = np.asarray(p, dtype=np.float64)
+        self.dp = np.asarray(dp, dtype=np.float64)
+        self.ddp = np.asarray(ddp, dtype=np.float64)
+        self.duration = float(self.times[-1]) if self.times.size else 0.0
+
+    def sample(self, t: float) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+        """Linearly interpolate the endpoint reference at time ``t`` (held at the endpoints)."""
+        return (
+            _interp_columns(t, self.times, self.p),
+            _interp_columns(t, self.times, self.dp),
+            _interp_columns(t, self.times, self.ddp),
+        )
 
 
 def ik_joint_reference(
     skeleton: Skeleton,
-    task_trajectory: Trajectory,
+    task_trajectory: TaskReference,
     *,
     dt: float,
     method: str = "lm_sugihara",
@@ -87,8 +139,10 @@ def ik_joint_reference(
     ----------
     skeleton : Skeleton
         The arm to solve for; its current pose seeds the first IK solve.
-    task_trajectory : Trajectory
-        The desired endpoint trajectory ``p_r(t)``.
+    task_trajectory : TaskReference
+        The desired endpoint trajectory ``p_r(t)`` (any :class:`TaskReference`:
+        a planned :class:`~skelarm.Trajectory`, a :class:`SampledTaskReference`, or a
+        periodic curve).
     dt : float
         Sampling interval (seconds).
     method : str, optional
@@ -117,7 +171,7 @@ def ik_joint_reference(
 
 def resolved_rate_joint_reference(
     skeleton: Skeleton,
-    task_trajectory: Trajectory,
+    task_trajectory: TaskReference,
     *,
     dt: float,
     damping: float = 1e-3,
@@ -133,7 +187,7 @@ def resolved_rate_joint_reference(
     ----------
     skeleton : Skeleton
         The arm to convert for; its current pose is the integration start.
-    task_trajectory : Trajectory
+    task_trajectory : TaskReference
         The desired endpoint trajectory.
     dt : float
         Integration step (seconds).

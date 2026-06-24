@@ -75,6 +75,7 @@ nav:
       - Numerical Inverse Kinematics: reference/06_numerical_inverse_kinematics.md
       - Trajectory Tracking Control: reference/07_control.md
       - Reaching Control: reference/08_reaching_control.md
+      - Trajectory Filtering & Interpolation: reference/09_trajectory_filtering.md
   - Guides:
       - Robot Configuration: guides/robot_configuration.md
       - Control Configuration: guides/control_configuration.md
@@ -87,6 +88,8 @@ nav:
       - Kinematics: api/kinematics.md
       - Dynamics: api/dynamics.md
       - Trajectory: api/trajectory.md
+      - Interpolation: api/interpolation.md
+      - Filtering: api/filtering.md
       - Control: api/control.md
       - Reaching: api/reaching.md
       - MPC: api/mpc.md

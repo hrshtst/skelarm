@@ -35,9 +35,14 @@ from skelarm.control import (
     Controller,
     InverseDynamicsFeedforwardPD,
     JointPD,
+    JointReference,
+    SampledJointReference,
+    SampledTaskReference,
     ik_joint_reference,
     simulate_controlled,
 )
+from skelarm.filtering import smooth
+from skelarm.interpolation import resample_with_derivatives
 from skelarm.mpc import JointSpaceMPC
 from skelarm.reaching import (
     AdaptiveReferenceShaping,
@@ -250,10 +255,144 @@ def _endpoint(skeleton: Skeleton) -> NDArray[np.float64]:
     return np.array([tip.xe, tip.ye], dtype=np.float64)
 
 
-def _joint_reference(skeleton: Skeleton, task: Task) -> Any:  # noqa: ANN401  # SampledJointReference
-    """Build a joint reference by converting a planned task-space reach with IK."""
+# A reference builder turns a task into the joint reference a tracking controller tracks.
+ReferenceBuilder = Callable[[Skeleton, "Task"], JointReference]
+
+_REFERENCE_BUILDERS: dict[str, ReferenceBuilder] = {}
+# Which recorded channel a task-space / joint-space tracking task reads from a .sklog.npz.
+_TRACKING_CHANNELS = {"trajectory_tracking": "tip", "joint_trajectory_tracking": "q"}
+
+
+def register_reference_builder(task_type: str, builder: ReferenceBuilder) -> None:
+    """Register a joint-reference builder for a ``[task].type``.
+
+    A tracking controller (computed torque, joint PD, inverse-dynamics PD, MPC) builds
+    its reference by calling the builder registered for the scenario's task type. Use
+    this to add a new trajectory-style task that drives the existing controllers.
+
+    Parameters
+    ----------
+    task_type : str
+        The ``[task].type`` value to bind.
+    builder : ReferenceBuilder
+        A callable ``(skeleton, task) -> JointReference``.
+    """
+    _REFERENCE_BUILDERS[task_type] = builder
+
+
+def reference_builders() -> tuple[str, ...]:
+    """Return the task types that provide a joint reference, sorted."""
+    return tuple(sorted(_REFERENCE_BUILDERS))
+
+
+def _joint_reference(skeleton: Skeleton, task: Task) -> JointReference:
+    """Build the joint reference for ``task`` by dispatching on its type.
+
+    Raises
+    ------
+    ValueError
+        If the task type provides no joint reference (so it cannot drive a
+        trajectory-tracking controller).
+    """
+    builder = _REFERENCE_BUILDERS.get(task.type)
+    if builder is None:
+        msg = (
+            f"task type {task.type!r} provides no joint reference; it cannot drive a "
+            f"trajectory-tracking controller (reference tasks: {list(reference_builders())})"
+        )
+        raise ValueError(msg)
+    return builder(skeleton, task)
+
+
+def _reaching_reference(skeleton: Skeleton, task: Task) -> SampledJointReference:
+    """Joint reference for a reaching task: a planned point-to-point reach via IK."""
     trajectory = Trajectory(_endpoint(skeleton), task.require_target(), task.duration, task.schedule)
     return ik_joint_reference(skeleton, trajectory, dt=_REFERENCE_DT)
+
+
+def _trajectory_tracking_reference(skeleton: Skeleton, task: Task) -> SampledJointReference:
+    """Joint reference for a task-space trajectory: smooth/interpolate the tip path, then IK."""
+    times, tip = _resolve_reference_series(task, "tip")
+    grid, p, dp, ddp = _smooth_and_resample(times, tip, task, target_dt=_REFERENCE_DT)
+    task_ref = SampledTaskReference(grid, p, dp, ddp)
+    method = str(task.params.get("ik_method", "lm_sugihara"))
+    return ik_joint_reference(skeleton, task_ref, dt=_REFERENCE_DT, method=method)
+
+
+def _joint_trajectory_tracking_reference(skeleton: Skeleton, task: Task) -> SampledJointReference:
+    """Joint reference for a per-joint trajectory: smooth/interpolate ``q(t)`` (no IK)."""
+    times, q = _resolve_reference_series(task, "q")  # q is 2-D, shape (N, joints)
+    if q.shape[1] != skeleton.num_joints:
+        msg = f"joint reference has {q.shape[1]} joint columns but the robot has {skeleton.num_joints}"
+        raise ValueError(msg)
+    grid, qg, dqg, ddqg = _smooth_and_resample(times, q, task, target_dt=task.dt)
+    return SampledJointReference(grid, qg, dqg, ddqg)
+
+
+def _resolve_reference_series(task: Task, channel: str) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Return ``(times, values)`` for a reference (values 2-D), from inlined samples or a file."""
+    embedded = task.params.get("reference_samples")
+    if embedded is not None:
+        times = np.asarray(embedded["times"], dtype=np.float64)
+        return times, np.atleast_2d(np.asarray(embedded["values"], dtype=np.float64))
+    file = task.params.get("file")
+    if file is None:
+        msg = f"task type {task.type!r} requires a 'file' (.sklog.npz) or inlined 'reference_samples'"
+        raise ValueError(msg)
+    log = load_reference_log(file)
+    if channel not in log.channel_names:
+        msg = f"reference {file} has no {channel!r} channel (has {log.channel_names})"
+        raise ValueError(msg)
+    return log.times, np.atleast_2d(log.channel(channel))
+
+
+def _smooth_and_resample(
+    times: NDArray[np.float64],
+    values: NDArray[np.float64],
+    task: Task,
+    *,
+    target_dt: float,
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+    """Smooth a sampled series and resample it (with derivatives) onto a uniform grid from ``t=0``."""
+    rel = np.asarray(times, dtype=np.float64) - float(times[0])
+    smoothed = _smooth_reference(values, rel, task)
+    duration = float(rel[-1])
+    num = max(round(duration / target_dt) + 1, 2)
+    grid = np.linspace(0.0, duration, num)
+    method = str(task.params.get("interpolator", "cubic_spline"))
+    value, d1, d2 = resample_with_derivatives(rel, smoothed, grid, method=method)
+    return grid, value, d1, d2
+
+
+def _smooth_reference(values: NDArray[np.float64], rel_times: NDArray[np.float64], task: Task) -> NDArray[np.float64]:
+    """Apply the task's optional ``filter`` to a uniformly sampled reference series."""
+    cfg = task.params.get("filter")
+    if not cfg:
+        return np.asarray(values, dtype=np.float64)
+    dt = float(np.mean(np.diff(rel_times))) if rel_times.shape[0] > 1 else 1.0
+    return smooth(
+        values,
+        dt,
+        kind=str(cfg.get("kind", "none")),
+        cutoff_hz=cfg.get("cutoff_hz"),
+        order=int(cfg.get("order", 2)),
+    )
+
+
+def load_reference_log(path: str | Path) -> StateLog:
+    """Load a ``.sklog.npz`` reference trajectory (e.g. from ``tools/trajectory_recorder.py``)."""
+    file = Path(path)
+    if not file.exists():
+        msg = f"reference file not found: {file}"
+        raise FileNotFoundError(msg)
+    return StateLog.load(file)
+
+
+register_reference_builder(_REACHING_TYPE, _reaching_reference)
+register_task_type("trajectory_tracking")
+register_reference_builder("trajectory_tracking", _trajectory_tracking_reference)
+register_task_type("joint_trajectory_tracking")
+register_reference_builder("joint_trajectory_tracking", _joint_trajectory_tracking_reference)
 
 
 def _build_computed_torque(params: Mapping[str, Any], skeleton: Skeleton, task: Task) -> Controller:
@@ -438,10 +577,48 @@ def scenario_from_config(data: Mapping[str, Any]) -> Scenario:
     if "controller" not in data:
         msg = "no [controller] section in scenario config"
         raise ValueError(msg)
-    skeleton = Skeleton.from_config(data)
-    task = Task.from_dict(data["task"])
-    controller = build_controller(data["controller"], skeleton=skeleton, task=task)
-    return Scenario(skeleton=skeleton, task=task, controller=controller, source_config=dict(data))
+    resolved = _inline_reference_samples(data)
+    skeleton = Skeleton.from_config(resolved)
+    task = Task.from_dict(resolved["task"])
+    controller = build_controller(resolved["controller"], skeleton=skeleton, task=task)
+    return Scenario(skeleton=skeleton, task=task, controller=controller, source_config=dict(resolved))
+
+
+def _inline_reference_samples(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Embed a file-based reference's samples into the config so re-runs are self-contained.
+
+    For a trajectory-tracking task whose ``[task]`` names an external ``file`` but carries
+    no inlined ``reference_samples`` yet, this loads the ``.sklog.npz`` once and copies the
+    relevant channel + timestamps into the (copied) task table, also defaulting the run
+    ``duration`` to the reference length. The embedded content then travels in
+    ``source_config``, so ``rerun_log`` and exported configs need no external file.
+    """
+    result = dict(data)
+    task_cfg = result.get("task")
+    if not isinstance(task_cfg, Mapping):
+        return result
+    channel = _TRACKING_CHANNELS.get(str(task_cfg.get("type")))
+    if channel is None or "reference_samples" in task_cfg or "file" not in task_cfg:
+        return result
+
+    log = load_reference_log(task_cfg["file"])
+    if channel not in log.channel_names:
+        msg = f"reference {task_cfg['file']} has no {channel!r} channel (has {log.channel_names})"
+        raise ValueError(msg)
+    times = log.times
+    values = np.atleast_2d(log.channel(channel))
+
+    task_copy = dict(task_cfg)
+    task_copy["reference_samples"] = {
+        "channel": channel,
+        "source": str(task_cfg["file"]),
+        "times": times.tolist(),
+        "values": values.tolist(),
+        "columns": list(log.channel_meta.get(channel, {}).get("columns", [])),
+    }
+    task_copy.setdefault("duration", float(times[-1] - times[0]))  # default sim length to the reference
+    result["task"] = task_copy
+    return result
 
 
 def _read_controller_section(file_path: str | Path) -> Mapping[str, Any]:

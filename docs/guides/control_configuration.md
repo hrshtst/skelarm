@@ -71,8 +71,43 @@ target = { pos = [0.55, 1.21], label = "goal", color = "purple", tolerance = 0.0
 # target = [0.55, 1.21]
 ```
 
-Only `reaching` is built in. To add a goal that is not a single target point, see
-[Defining a Task](defining_a_task.md).
+### Task types
+
+`type` selects the task kind. Beyond `reaching`, two **trajectory-tracking** types
+track a reference loaded from a `.sklog.npz` file (e.g. one recorded with
+`tools/trajectory_recorder.py`):
+
+| `type` | Reference | Tracked by |
+| --- | --- | --- |
+| `reaching` | A planned point-to-point reach to `target`. | any controller |
+| `trajectory_tracking` | The recorded **tip** `(x, y)` path, converted to joint angles by IK. | trajectory-tracking controllers |
+| `joint_trajectory_tracking` | The recorded **per-joint** `q(t)` series directly (no IK). | joint-space controllers |
+
+The trajectory-tracking types take these extra `[task]` keys:
+
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `file` | str | *required* | Path to the reference `.sklog.npz`. |
+| `filter` | table | none | Pre-smoothing: `{ kind = "butterworth"\|"lowpass"\|"none", cutoff_hz, order }`. |
+| `interpolator` | str | `"cubic_spline"` | Resampling scheme: `cubic_spline`, `linear`, or `lagrange`. |
+
+```toml
+[task]
+type = "joint_trajectory_tracking"
+file = "teach.sklog.npz"
+dt = 0.002
+filter = { kind = "butterworth", cutoff_hz = 8.0, order = 4 }  # smooth a jaggy recording
+interpolator = "cubic_spline"
+# duration defaults to the reference's length when omitted
+```
+
+If `duration` is omitted, it defaults to the reference trajectory's length. The
+reference content is **embedded** in the run log, so `rerun_log` and exported configs
+reproduce the run without the original file. Curve and DOF rules: a
+`joint_trajectory_tracking` reference must have the same joint count as the robot.
+
+Only these are built in. To add a goal that is not a single target point, or a new
+reference source, see [Defining a Task](defining_a_task.md).
 
 ## The `[controller]` section
 

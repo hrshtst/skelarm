@@ -39,3 +39,6 @@ total; in code, `links[0]` is the base and `links[1:]` are the movable joints.
     -   Reaching as a trajectory-tracking task.
     -   Virtual spring-damper reaching and Seto/Sugihara online reference
         shaping for human-like motion.
+9.  [Trajectory Filtering & Interpolation](09_trajectory_filtering.md)
+    -   Linear, natural cubic spline, and barycentric Lagrange interpolation.
+    -   First-order and Butterworth low-pass smoothing, applied zero-phase.
