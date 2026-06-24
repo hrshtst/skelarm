@@ -114,7 +114,7 @@ class RecorderWindow(QMainWindow):
         self.canvas.show_drag_arrow = mode == "dynamics"  # no force cue for the kinematic IK drag
         reach = sum(link.prop.length for link in skeleton.links)
         self.canvas.grab_radius = max(0.12 * reach, 0.05)  # grab near the tip
-        if task is not None:
+        if task is not None and task.target is not None:
             self.canvas.target = np.asarray(task.target, dtype=np.float64)
             self.canvas.target_color = QColor(task.color)
             self.canvas.target_tolerance = task.tolerance
@@ -267,7 +267,7 @@ class RecorderWindow(QMainWindow):
         _, (ax_path, ax_q) = plt.subplots(1, 2, figsize=(11, 5))
         draw_skeleton(ax_path, self.skeleton, title="Recorded trajectory")
         plot_trajectory(ax_path, tip[:, 0], tip[:, 1], title=None)
-        if self._task is not None:
+        if self._task is not None and self._task.target is not None:
             target = np.asarray(self._task.target, dtype=np.float64)
             ax_path.plot(
                 target[0],

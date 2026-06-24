@@ -270,9 +270,10 @@ def run_reach(
     tip = scenario.skeleton.clone()
     tip.q = log.channel("q")[-1]
     endpoint = np.array([tip.links[-1].xe, tip.links[-1].ye])
-    error = float(np.linalg.norm(endpoint - scenario.task.target))
+    target = scenario.task.require_target()
+    error = float(np.linalg.norm(endpoint - target))
     print(f"reach: {type(scenario.controller).__name__} -> tip ({endpoint[0]:.3f}, {endpoint[1]:.3f}) m")
-    print(f"target ({scenario.task.target[0]:.3f}, {scenario.task.target[1]:.3f}) m, error {error * 1000:.2f} mm")
+    print(f"target ({target[0]:.3f}, {target[1]:.3f}) m, error {error * 1000:.2f} mm")
     print(f"wrote {len(log)} frames to {out_path}")
     return out_path
 

@@ -13,18 +13,19 @@ For the full `[task]` schema (target, `duration`, `dt`, `schedule`, `tolerance`,
 
 | Field | Meaning |
 | --- | --- |
-| `target` | The task-space goal `(x, y)` in meters (**required**). Drawn as a marker by the tools. |
-| `type` | The task kind — a label a controller interprets (default `"reaching"`). |
+| `type` | The task kind — a label a controller interprets (**required**: the discriminator that decides what else the task needs). |
+| `target` | The task-space goal `(x, y)` in meters. **Required for `reaching`**; other task types may omit it. Drawn as a marker by the tools. |
 | `duration` / `dt` | Run conditions: total simulated time and the fixed control step. |
 | `schedule` | Time scaling for planned trajectories (`minimum_jerk`, `quintic`, …). |
 | `tolerance` / `label` / `color` | Success radius and marker presentation. |
 | `enforce_limits` | Whether the joint limits act as a dynamics hard stop (see [Joint Limits](joint_limits.md)). |
 | `params` | **Any extra `[task]` keys**, kept verbatim — how a custom task carries its own data. |
 
-The only built-in `type` is `reaching`: move the endpoint to `target`. Because the
-task type is just a *label that a controller interprets*, "defining a new task"
-means two things together: **registering the type** so configs validate, and
-**giving a controller the logic** that reads the task's `params`.
+`type` is the only universally required key. The single built-in type is `reaching`
+(move the endpoint to `target`, which it requires). Because the task type is a
+*label that a controller interprets*, "defining a new task" means two things
+together: **registering the type** so configs validate, and **giving a controller
+the logic** that reads the task's `target` / `params`.
 
 ## Option 1 — configure the built-in reaching task
 
@@ -46,7 +47,7 @@ configuration:
 ```toml
 [task]
 type = "tracing"
-target = [1.2, 0.0]   # still required: the path's start point (drawn as the marker)
+target = [1.2, 0.0]   # optional for a custom type: a marker point (here the path's start)
 duration = 6.0
 dt = 0.002
 # custom keys -> task.params
@@ -67,8 +68,10 @@ task = Task.from_dict({
 assert task.params["radius"] == 0.4    # extra keys land here
 ```
 
-`target` is the one required field, so set it to a representative point (here the
-path's start); the GUI and plots draw it as the marker.
+Only `type` is required; a custom type may omit `target` entirely (it then loads as
+`None`). Including one is handy — the GUI and plots draw it as the marker — so set
+it to a representative point (here the path's start). Controllers that need a point
+goal call `task.require_target()`, which raises a clear error if it is absent.
 
 ### 2. Give a controller the task's logic
 

@@ -108,7 +108,7 @@ the `[controller]` table without `type`; use `task` for the target and run condi
 from skelarm import register_controller
 
 def build_task_space_spring(params, skeleton, task):
-    return TaskSpaceSpring(task.target,
+    return TaskSpaceSpring(task.require_target(),   # raises clearly if the task has no target
                            k_task=params.get("k_task", 200.0),
                            d_joint=params.get("d_joint", 20.0))
 

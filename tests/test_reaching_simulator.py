@@ -22,7 +22,7 @@ _SCENARIO_TOML = (
     "[[skeleton.link]]\nlength = 1.0\nmass = 1.0\ninertia = 0.1\ncom = [0.5, 0.0]\nlimits = [-180.0, 180.0]\n"
     "[[skeleton.link]]\nlength = 0.8\nmass = 0.8\ninertia = 0.05\ncom = [0.4, 0.0]\nlimits = [-180.0, 180.0]\n"
     "[initial]\nq = [34.4, 57.3]\n"
-    "[task]\ntarget = [0.55, 1.21]\nduration = 2.0\ndt = 0.002\n"
+    '[task]\ntype = "reaching"\ntarget = [0.55, 1.21]\nduration = 2.0\ndt = 0.002\n'
     '[controller]\ntype = "computed_torque"\nkp = 200.0\nkd = 30.0\n'
 )
 
@@ -124,7 +124,7 @@ def test_run_reach_overrides_task(tmp_path: Path) -> None:
     config = tmp_path / "reach.toml"
     config.write_text(_SCENARIO_TOML, encoding="utf-8")  # base target [0.55, 1.21]
     task = tmp_path / "task.toml"
-    task.write_text("[task]\ntarget = [0.4, 0.9]\nduration = 0.05\ndt = 0.01\n", encoding="utf-8")
+    task.write_text('[task]\ntype = "reaching"\ntarget = [0.4, 0.9]\nduration = 0.05\ndt = 0.01\n', encoding="utf-8")
 
     output = tmp_path / "run.sklog.npz"
     run_reach(config, output=output, task=task)
@@ -181,8 +181,9 @@ def test_reach_gui_applies_target_color_and_tolerance(qapp, tmp_path: Path) -> N
     config = tmp_path / "reach.toml"
     config.write_text(
         _SCENARIO_TOML.replace(
-            "[task]\ntarget = [0.55, 1.21]\nduration = 2.0\ndt = 0.002\n",
-            '[task]\ntarget = { pos = [0.55, 1.21], color = "green", tolerance = 0.03 }\nduration = 2.0\ndt = 0.002\n',
+            '[task]\ntype = "reaching"\ntarget = [0.55, 1.21]\nduration = 2.0\ndt = 0.002\n',
+            '[task]\ntype = "reaching"\ntarget = { pos = [0.55, 1.21], color = "green", tolerance = 0.03 }'
+            "\nduration = 2.0\ndt = 0.002\n",
         ),
         encoding="utf-8",
     )

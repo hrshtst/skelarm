@@ -27,7 +27,7 @@ _SCENARIO_WITH_TASK = (
     "[[skeleton.link]]\nlength = 1.0\nmass = 1.0\ninertia = 0.1\ncom = [0.5, 0.0]\nlimits = [-180.0, 180.0]\n"
     "[[skeleton.link]]\nlength = 0.8\nmass = 0.8\ninertia = 0.05\ncom = [0.4, 0.0]\nlimits = [-180.0, 180.0]\n"
     "[initial]\nq = [34.4, 57.3]\n"
-    "[task]\ntarget = { pos = [0.55, 1.21], tolerance = 0.02 }\n"
+    '[task]\ntype = "reaching"\ntarget = { pos = [0.55, 1.21], tolerance = 0.02 }\n'
 )
 
 

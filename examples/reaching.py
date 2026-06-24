@@ -35,7 +35,7 @@ def main() -> None:
         xs.append(arm.links[-1].xe)
         ys.append(arm.links[-1].ye)
 
-    target = scenario.task.target
+    target = scenario.task.require_target()
     error = float(np.hypot(xs[-1] - target[0], ys[-1] - target[1]))
     print(f"start ({xs[0]:.3f}, {ys[0]:.3f}) m -> target ({target[0]:.3f}, {target[1]:.3f}) m")
     print(f"final ({xs[-1]:.3f}, {ys[-1]:.3f}) m, error {error * 1000:.2f} mm in {len(log)} frames")

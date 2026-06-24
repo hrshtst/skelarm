@@ -28,16 +28,18 @@ See [Trajectory Tracking Control](../reference/07_control.md) and
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `type` | str | `"reaching"` | Task kind. Only `reaching` is implemented today; more are planned. |
-| `target` | `[x, y]` or table | *required* | Endpoint goal in meters (see below). |
+| `type` | str | *required* | Task kind — the discriminator that decides what else the task needs. Only `reaching` is built in; more are planned (and you can [add your own](defining_a_task.md)). |
+| `target` | `[x, y]` or table | *required for `reaching`* | Endpoint goal in meters (see below). Other task types may omit it. |
 | `duration` | float | `2.0` | Total simulated time, in seconds. |
 | `dt` | float | `0.002` | Control / integration step, in seconds. |
 | `schedule` | str | `"minimum_jerk"` | Time scaling for planned trajectories: `linear`, `cubic`, `quintic`, or `minimum_jerk`. |
 | `enforce_limits` | bool | `true` | Apply the joint limits as hard stops in the dynamics. Set `false` to let the limits constrain only the kinematics (see below). |
 
-`duration`, `schedule`, and `target` define the planned task-space trajectory used
-by the *trajectory-tracking* controllers; the *reaching* controllers use only
-`target` and generate motion online. `dt` is the fixed step of the simulation loop
+`type` is the one always-required key: it names the kind of task, and the kind
+determines the rest (`reaching` requires a `target`). `duration`, `schedule`, and
+`target` define the planned task-space trajectory used by the *trajectory-tracking*
+controllers; the *reaching* controllers use only `target` and generate motion
+online. `dt` is the fixed step of the simulation loop
 ([`simulate_controlled`](../reference/07_control.md)).
 
 `enforce_limits` is a *run condition* of the simulation: with the default `true`
@@ -142,7 +144,8 @@ limits = [-180.0, 180.0]
 q = [34.4, 57.3]        # degrees
 
 [task]
-target = [0.55, 1.21]   # endpoint goal (x, y) in meters
+type = "reaching"       # the task kind (required)
+target = [0.55, 1.21]    # endpoint goal (x, y) in meters (required for reaching)
 duration = 2.0
 dt = 0.002
 schedule = "minimum_jerk"

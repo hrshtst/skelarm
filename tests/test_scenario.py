@@ -51,7 +51,7 @@ def _write_scenario(path: Path, controller_block: str, *, target: tuple[float, f
     text = (
         _SKELETON_TOML
         + "[initial]\nq = [34.4, 57.3]\n"
-        + f"[task]\ntarget = [{target[0]}, {target[1]}]\nduration = 2.0\ndt = 0.002\n"
+        + f'[task]\ntype = "reaching"\ntarget = [{target[0]}, {target[1]}]\nduration = 2.0\ndt = 0.002\n'
         + controller_block
     )
     path.write_text(text, encoding="utf-8")
@@ -59,12 +59,14 @@ def _write_scenario(path: Path, controller_block: str, *, target: tuple[float, f
 
 def test_task_from_dict_parses_fields() -> None:
     """A [task] mapping yields the target, duration, dt, and schedule, with defaults."""
-    task = Task.from_dict({"target": [0.5, 0.4], "duration": 3.0, "dt": 0.01, "schedule": "quintic"})
+    task = Task.from_dict(
+        {"type": "reaching", "target": [0.5, 0.4], "duration": 3.0, "dt": 0.01, "schedule": "quintic"}
+    )
     assert task.target == pytest.approx([0.5, 0.4])
     assert task.duration == pytest.approx(3.0)
     assert task.dt == pytest.approx(0.01)
     assert task.schedule == "quintic"
-    # Defaults for the target attributes and the task type.
+    # Defaults for the target attributes.
     assert task.type == "reaching"
     assert task.label is None
     assert task.color == "purple"
@@ -72,10 +74,17 @@ def test_task_from_dict_parses_fields() -> None:
     assert task.enforce_limits is True  # joint-limit hard stop on by default
 
 
+def test_task_from_dict_requires_type() -> None:
+    """[task] must declare its kind; the type is the required discriminator."""
+    with pytest.raises(ValueError, match="requires a 'type'"):
+        Task.from_dict({"target": [0.5, 0.4]})
+
+
 def test_task_from_dict_reads_enforce_limits() -> None:
     """``[task].enforce_limits`` toggles the dynamics joint-limit hard stop (default True)."""
-    assert Task.from_dict({"target": [0.5, 0.4]}).enforce_limits is True
-    assert Task.from_dict({"target": [0.5, 0.4], "enforce_limits": False}).enforce_limits is False
+    base = {"type": "reaching", "target": [0.5, 0.4]}
+    assert Task.from_dict(base).enforce_limits is True
+    assert Task.from_dict({**base, "enforce_limits": False}).enforce_limits is False
 
 
 def test_task_target_table_parses_attributes() -> None:
@@ -90,14 +99,25 @@ def test_task_target_table_parses_attributes() -> None:
     assert task.tolerance == pytest.approx(0.02)
 
 
-def test_task_requires_two_element_target() -> None:
-    """A missing or wrong-shaped target (array or table) is rejected."""
+def test_reaching_task_requires_a_target() -> None:
+    """The target is required for (and specific to) the reaching task."""
+    with pytest.raises(ValueError, match="requires a 'target'"):
+        Task.from_dict({"type": "reaching"})
     with pytest.raises(ValueError, match="target"):
-        Task.from_dict({"duration": 1.0})
-    with pytest.raises(ValueError, match="target"):
-        Task.from_dict({"target": [0.5, 0.4, 0.3]})
+        Task.from_dict({"type": "reaching", "target": [0.5, 0.4, 0.3]})  # wrong shape
     with pytest.raises(ValueError, match="pos"):
-        Task.from_dict({"target": {"label": "x"}})
+        Task.from_dict({"type": "reaching", "target": {"label": "x"}})
+
+
+@pytest.mark.usefixtures("_registries")
+def test_non_reaching_task_may_omit_target() -> None:
+    """A custom (registered) task type without a target loads with ``target=None``."""
+    register_task_type("waypoints")
+    task = Task.from_dict({"type": "waypoints", "points": [[0.1, 0.2], [0.3, 0.4]]})
+    assert task.target is None
+    assert task.params["points"] == [[0.1, 0.2], [0.3, 0.4]]
+    with pytest.raises(ValueError, match="no target"):
+        task.require_target()
 
 
 def test_task_rejects_unknown_type() -> None:
@@ -131,7 +151,7 @@ def test_task_from_toml_requires_task_section(tmp_path: Path) -> None:
 def test_build_controller_dispatches_each_type(controller_type: str, expected: str) -> None:
     """Each controller type name builds the matching controller class."""
     skeleton = _two_link()
-    task = Task(target=_tip(skeleton) + np.array([-0.2, -0.1]))
+    task = Task(type="reaching", target=_tip(skeleton) + np.array([-0.2, -0.1]))
     controller = build_controller({"type": controller_type}, skeleton=skeleton, task=task)
     assert type(controller).__name__ == expected
 
@@ -139,7 +159,7 @@ def test_build_controller_dispatches_each_type(controller_type: str, expected: s
 def test_build_controller_rejects_unknown_type() -> None:
     """An unknown controller type is reported."""
     skeleton = _two_link()
-    task = Task(target=np.array([0.5, 0.5]))
+    task = Task(type="reaching", target=np.array([0.5, 0.5]))
     with pytest.raises(ValueError, match="unknown controller type"):
         build_controller({"type": "bogus"}, skeleton=skeleton, task=task)
 
@@ -158,11 +178,12 @@ def _registries():  # noqa: ANN202
 
 def test_task_from_dict_captures_extra_keys_as_params() -> None:
     """Unrecognized [task] keys are preserved on ``task.params`` for custom tasks/controllers."""
-    task = Task.from_dict({"target": [0.5, 0.4], "radius": 0.3, "period": 2.0})
+    task = Task.from_dict({"type": "reaching", "target": [0.5, 0.4], "radius": 0.3, "period": 2.0})
     assert task.params["radius"] == pytest.approx(0.3)
     assert task.params["period"] == pytest.approx(2.0)
     assert "duration" not in task.params  # known keys stay off params
     assert "target" not in task.params
+    assert "type" not in task.params
 
 
 @pytest.mark.usefixtures("_registries")
@@ -194,7 +215,7 @@ def test_register_controller_makes_it_usable_via_config() -> None:
     assert "constant_torque" in controller_types()
 
     skeleton = _two_link()
-    task = Task(target=np.array([0.5, 0.5]))
+    task = Task(type="reaching", target=np.array([0.5, 0.5]))
     controller = build_controller({"type": "constant_torque", "value": 2.0}, skeleton=skeleton, task=task)
     assert isinstance(controller, ConstantTorque)
     assert controller.value == pytest.approx(2.0)

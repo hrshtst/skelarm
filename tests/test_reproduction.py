@@ -34,7 +34,7 @@ def _write_scenario(path: Path, controller_block: str, *, duration: float = 2.0,
     path.write_text(
         _SKELETON_TOML
         + "[initial]\nq = [34.4, 57.3]\n"
-        + f"[task]\ntarget = [0.55, 1.21]\nduration = {duration}\ndt = {dt}\n"
+        + f'[task]\ntype = "reaching"\ntarget = [0.55, 1.21]\nduration = {duration}\ndt = {dt}\n'
         + controller_block,
         encoding="utf-8",
     )
@@ -70,7 +70,7 @@ def test_run_scenario_honors_task_enforce_limits(tmp_path: Path) -> None:
     config.write_text(
         _SKELETON_TOML
         + "[initial]\nq = [34.4, 57.3]\n"
-        + "[task]\ntarget = [0.55, 1.21]\nduration = 0.2\ndt = 0.01\nenforce_limits = false\n"
+        + '[task]\ntype = "reaching"\ntarget = [0.55, 1.21]\nduration = 0.2\ndt = 0.01\nenforce_limits = false\n'
         + '[controller]\ntype = "computed_torque"\nkp = 200.0\nkd = 30.0\n',
         encoding="utf-8",
     )
@@ -168,7 +168,7 @@ def test_export_scenario_toml_preserves_enforce_limits(tmp_path: Path) -> None:
     config.write_text(
         _SKELETON_TOML
         + "[initial]\nq = [34.4, 57.3]\n"
-        + "[task]\ntarget = [0.55, 1.21]\nduration = 0.1\ndt = 0.01\nenforce_limits = false\n"
+        + '[task]\ntype = "reaching"\ntarget = [0.55, 1.21]\nduration = 0.1\ndt = 0.01\nenforce_limits = false\n'
         + '[controller]\ntype = "computed_torque"\nkp = 200.0\nkd = 30.0\n',
         encoding="utf-8",
     )

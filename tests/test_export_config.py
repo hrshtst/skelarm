@@ -19,7 +19,7 @@ _SCENARIO_TOML = (
     "[[skeleton.link]]\nlength = 1.0\nmass = 1.0\ninertia = 0.1\ncom = [0.5, 0.0]\nlimits = [-180.0, 180.0]\n"
     "[[skeleton.link]]\nlength = 0.8\nmass = 0.8\ninertia = 0.05\ncom = [0.4, 0.0]\nlimits = [-180.0, 180.0]\n"
     "[initial]\nq = [34.4, 57.3]\n"
-    "[task]\ntarget = [0.55, 1.21]\nduration = 0.03\ndt = 0.01\n"
+    '[task]\ntype = "reaching"\ntarget = [0.55, 1.21]\nduration = 0.03\ndt = 0.01\n'
     '[controller]\ntype = "computed_torque"\nkp = 200.0\nkd = 30.0\n'
 )
 

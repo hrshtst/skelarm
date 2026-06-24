@@ -8,7 +8,8 @@ controller drives the reach. :func:`load_scenario` reads all three.
 Example::
 
     [task]
-    target = [0.55, 1.21]  # endpoint goal (x, y) in meters
+    type = "reaching"  # the task kind (required)
+    target = [0.55, 1.21]  # endpoint goal (x, y) in meters (required for reaching)
     duration = 2.0  # simulated time (s)
     dt = 0.002  # control step (s)
 
@@ -54,7 +55,8 @@ if TYPE_CHECKING:
 
 _REFERENCE_DT = 0.02  # sampling step for the IK-converted joint reference (interpolated)
 _TASK_DIM = 2  # planar endpoint target (x, y)
-_TASK_TYPES: set[str] = {"reaching"}  # supported [task].type values; extend via register_task_type
+_REACHING_TYPE = "reaching"  # the built-in task type; the one that requires a target
+_TASK_TYPES: set[str] = {_REACHING_TYPE}  # supported [task].type values; extend via register_task_type
 # Top-level [task] keys consumed by Task; any others are kept on Task.params for custom tasks.
 _KNOWN_TASK_KEYS = frozenset({"type", "target", "duration", "dt", "schedule", "enforce_limits"})
 _DEFAULT_TARGET_COLOR = "purple"  # marker color when a target omits one
@@ -85,12 +87,18 @@ def task_types() -> tuple[str, ...]:
 class Task:
     """A task and the run conditions for it.
 
+    The required field is ``type`` — the kind of task, which determines what else is
+    needed. ``reaching`` (the only built-in) requires a ``target``; other task types
+    (see :func:`register_task_type`) carry their own data on :attr:`params` and may
+    omit the target.
+
     Parameters
     ----------
-    target : NDArray[np.float64]
-        The endpoint goal ``(x, y)`` in meters (the target's position).
     type : str
-        The task kind; currently only ``"reaching"``.
+        The task kind (the ``[task].type`` config key). Required.
+    target : NDArray[np.float64] | None
+        The endpoint goal ``(x, y)`` in meters. Required for ``reaching``; ``None``
+        for task types that do not use a single point goal.
     label : str | None
         Optional name for the target, used to select it among multiple targets
         (multi-target tasks are defined later).
@@ -112,12 +120,12 @@ class Task:
         kinematics), not the simulated motion.
     params : dict[str, Any]
         Any extra ``[task]`` keys not recognized above, kept verbatim. A custom
-        task type (see :func:`register_task_type`) carries its own parameters here
-        for a matching controller builder to read (e.g. ``task.params["radius"]``).
+        task type carries its own parameters here for a matching controller builder
+        to read (e.g. ``task.params["radius"]``).
     """
 
-    target: NDArray[np.float64]
-    type: str = "reaching"  # mirrors the [task].type config key
+    type: str  # the task kind (the [task].type config key); the required discriminator
+    target: NDArray[np.float64] | None = None
     label: str | None = None
     color: str = _DEFAULT_TARGET_COLOR
     tolerance: float | None = None
@@ -126,6 +134,22 @@ class Task:
     schedule: str = "minimum_jerk"
     enforce_limits: bool = True
     params: dict[str, Any] = field(default_factory=dict)
+
+    def require_target(self) -> NDArray[np.float64]:
+        """Return the task target, raising if this task type has none.
+
+        Use this from a controller that needs a point goal (e.g. the reaching
+        controllers), so a task wired without a target fails with a clear message.
+
+        Raises
+        ------
+        ValueError
+            If the task has no target.
+        """
+        if self.target is None:
+            msg = f"task type {self.type!r} has no target, but this controller requires one"
+            raise ValueError(msg)
+        return self.target
 
     @classmethod
     def from_toml(cls, file_path: str | Path) -> Task:
@@ -141,29 +165,39 @@ class Task:
     def from_dict(cls, section: Mapping[str, Any]) -> Task:
         """Build a Task from a ``[task]`` mapping.
 
-        ``target`` may be a ``[x, y]`` array (position only) or a table with a
-        ``pos`` and optional ``label`` / ``color`` / ``tolerance``. Any keys beyond
-        the recognized ones are kept on :attr:`params` for custom task types.
+        ``type`` is required; it selects the task kind. The ``reaching`` type also
+        requires a ``target`` — either a ``[x, y]`` array (position only) or a table
+        with a ``pos`` and optional ``label`` / ``color`` / ``tolerance``. Other task
+        types may omit the target. Any keys beyond the recognized ones are kept on
+        :attr:`params` for custom task types.
 
         Raises
         ------
         ValueError
-            If ``target`` is missing/ill-shaped or ``type`` is unknown.
+            If ``type`` is missing or unknown, or a ``reaching`` task has no/ill-shaped
+            ``target``.
         """
-        if "target" not in section:
-            msg = "[task] requires a 'target' endpoint"
+        if "type" not in section:
+            msg = "[task] requires a 'type' (e.g. type = \"reaching\")"
             raise ValueError(msg)
-        pos, label, color, tolerance = _parse_target(section["target"])
-
-        task_type = str(section.get("type", "reaching"))
+        task_type = str(section["type"])
         if task_type not in _TASK_TYPES:
             msg = f"unknown task type {task_type!r}; choose from {sorted(_TASK_TYPES)} (or register_task_type)"
             raise ValueError(msg)
 
+        pos: NDArray[np.float64] | None
+        if "target" in section:
+            pos, label, color, tolerance = _parse_target(section["target"])
+        elif task_type == _REACHING_TYPE:
+            msg = "[task] of type 'reaching' requires a 'target' endpoint"
+            raise ValueError(msg)
+        else:
+            pos, label, color, tolerance = None, None, _DEFAULT_TARGET_COLOR, None
+
         params = {key: value for key, value in section.items() if key not in _KNOWN_TASK_KEYS}
         return cls(
-            target=pos,
             type=task_type,
+            target=pos,
             label=label,
             color=color,
             tolerance=tolerance,
@@ -218,7 +252,7 @@ def _endpoint(skeleton: Skeleton) -> NDArray[np.float64]:
 
 def _joint_reference(skeleton: Skeleton, task: Task) -> Any:  # noqa: ANN401  # SampledJointReference
     """Build a joint reference by converting a planned task-space reach with IK."""
-    trajectory = Trajectory(_endpoint(skeleton), task.target, task.duration, task.schedule)
+    trajectory = Trajectory(_endpoint(skeleton), task.require_target(), task.duration, task.schedule)
     return ik_joint_reference(skeleton, trajectory, dt=_REFERENCE_DT)
 
 
@@ -237,7 +271,7 @@ def _build_inverse_dynamics_pd(params: Mapping[str, Any], skeleton: Skeleton, ta
 
 def _build_virtual_spring_damper(params: Mapping[str, Any], _skeleton: Skeleton, task: Task) -> Controller:
     return VirtualSpringDamper(
-        task.target,
+        task.require_target(),
         k_task=params.get("k_task", 150.0),
         d_task=params.get("d_task", 25.0),
         c_joint=params.get("c_joint", 0.0),
@@ -246,7 +280,7 @@ def _build_virtual_spring_damper(params: Mapping[str, Any], _skeleton: Skeleton,
 
 def _build_time_varying_stiffness(params: Mapping[str, Any], _skeleton: Skeleton, task: Task) -> Controller:
     return TimeVaryingStiffness(
-        task.target,
+        task.require_target(),
         k0=params.get("k0", 150.0),
         alpha=params.get("alpha", 6.0),
         zeta1=params.get("zeta1", 0.15),
@@ -256,7 +290,7 @@ def _build_time_varying_stiffness(params: Mapping[str, Any], _skeleton: Skeleton
 
 def _build_online_shaping(params: Mapping[str, Any], _skeleton: Skeleton, task: Task) -> Controller:
     return OnlineReferenceShaping(
-        task.target,
+        task.require_target(),
         k_task=params.get("k_task", 150.0),
         d_task=params.get("d_task", 25.0),
         c_joint=params.get("c_joint", 0.0),
@@ -268,7 +302,7 @@ def _build_online_shaping(params: Mapping[str, Any], _skeleton: Skeleton, task: 
 
 def _build_position_dependent_shaping(params: Mapping[str, Any], _skeleton: Skeleton, task: Task) -> Controller:
     return PositionDependentShaping(
-        task.target,
+        task.require_target(),
         k_task=params.get("k_task", 150.0),
         d_task=params.get("d_task", 25.0),
         c_joint=params.get("c_joint", 0.0),
@@ -280,7 +314,7 @@ def _build_position_dependent_shaping(params: Mapping[str, Any], _skeleton: Skel
 
 def _build_adaptive_shaping(params: Mapping[str, Any], _skeleton: Skeleton, task: Task) -> Controller:
     return AdaptiveReferenceShaping(
-        task.target,
+        task.require_target(),
         k_task=params.get("k_task", 150.0),
         d_task=params.get("d_task", 25.0),
         c_joint=params.get("c_joint", 0.0),
