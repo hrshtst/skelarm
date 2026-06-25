@@ -65,7 +65,9 @@ _REACHING_TYPE = "reaching"  # the built-in task type; the one that requires a t
 _MULTI_TARGET_TYPE = "multi_target_reaching"  # several candidate targets; one active, switchable in the GUI
 _TASK_TYPES: set[str] = {_REACHING_TYPE}  # supported [task].type values; extend via register_task_type
 # Top-level [task] keys consumed by Task; any others are kept on Task.params for custom tasks.
-_KNOWN_TASK_KEYS = frozenset({"type", "target", "duration", "dt", "schedule", "enforce_limits"})
+_KNOWN_TASK_KEYS = frozenset({"type", "target", "duration", "schedule"})
+# Keys that used to live in [task] but moved to [simulator]; flagged for a clear migration error.
+_MOVED_TO_SIMULATOR = ("dt", "enforce_limits")
 _DEFAULT_TARGET_COLOR = "purple"  # marker color when a target omits one
 
 
@@ -116,15 +118,9 @@ class Task:
         within this distance of the target, and the target marker's ring is drawn
         at this radius. ``None`` applies no success criterion.
     duration : float
-        Total simulated time (seconds).
-    dt : float
-        Control / integration step (seconds).
+        Total simulated time / planned-motion horizon (seconds).
     schedule : str
         Time-scaling schedule for planned-trajectory controllers.
-    enforce_limits : bool
-        Apply the joint limits as hard stops in the dynamics (default). When
-        ``False``, the limits constrain only the kinematics (posing and inverse
-        kinematics), not the simulated motion.
     params : dict[str, Any]
         Any extra ``[task]`` keys not recognized above, kept verbatim. A custom
         task type carries its own parameters here for a matching controller builder
@@ -137,9 +133,7 @@ class Task:
     color: str = _DEFAULT_TARGET_COLOR
     tolerance: float | None = None
     duration: float = 2.0
-    dt: float = 0.002
     schedule: str = "minimum_jerk"
-    enforce_limits: bool = True
     params: dict[str, Any] = field(default_factory=dict)
 
     def require_target(self) -> NDArray[np.float64]:
@@ -191,6 +185,10 @@ class Task:
         if task_type not in _TASK_TYPES:
             msg = f"unknown task type {task_type!r}; choose from {sorted(_TASK_TYPES)} (or register_task_type)"
             raise ValueError(msg)
+        moved = [key for key in _MOVED_TO_SIMULATOR if key in section]
+        if moved:
+            msg = f"[task] keys {moved} moved to the [simulator] table; set them under [simulator] instead"
+            raise ValueError(msg)
 
         pos: NDArray[np.float64] | None
         if "target" in section:
@@ -209,10 +207,8 @@ class Task:
             color=color,
             tolerance=tolerance,
             duration=float(section.get("duration", 2.0)),
-            dt=float(section.get("dt", 0.002)),
             schedule=str(section.get("schedule", "minimum_jerk")),
             params=params,
-            enforce_limits=bool(section.get("enforce_limits", True)),
         )
 
 
@@ -276,18 +272,47 @@ def apply_active_target(task: Task) -> None:
 
 
 @dataclass
+class Simulator:
+    """Numerical-integration parameters for the dynamics, from the ``[simulator]`` table.
+
+    These are run/execution concerns, kept separate from the task (the desired motion).
+
+    Parameters
+    ----------
+    dt : float
+        Control / integration step (seconds). Also the MPC prediction step.
+    enforce_limits : bool
+        Apply the joint limits as hard stops in the dynamics (default). When ``False``,
+        the limits constrain only the kinematics (posing and inverse kinematics), not the
+        simulated motion.
+    """
+
+    dt: float = 0.002
+    enforce_limits: bool = True
+
+    @classmethod
+    def from_dict(cls, section: Mapping[str, Any]) -> Simulator:
+        """Build a Simulator from a ``[simulator]`` mapping (defaults when keys are absent)."""
+        return cls(
+            dt=float(section.get("dt", 0.002)),
+            enforce_limits=bool(section.get("enforce_limits", True)),
+        )
+
+
+@dataclass
 class Scenario:
-    """A loaded control scenario: the robot, the task, and a ready-to-run controller.
+    """A loaded control scenario: the robot, the task, the simulator, and the controller.
 
     ``source_config`` keeps the original combined config (the parsed ``[skeleton]`` /
-    ``[initial]`` / ``[task]`` / ``[controller]`` tables) when the scenario was
-    loaded from a file, so a run can embed it for an exact, editable re-run; it is
-    ``None`` for scenarios built programmatically.
+    ``[initial]`` / ``[task]`` / ``[simulator]`` / ``[controller]`` tables) when the
+    scenario was loaded from a file, so a run can embed it for an exact, editable re-run;
+    it is ``None`` for scenarios built programmatically.
     """
 
     skeleton: Skeleton
     task: Task
     controller: Controller
+    simulator: Simulator = field(default_factory=Simulator)
     source_config: Mapping[str, Any] | None = None
 
 
@@ -367,7 +392,7 @@ def _joint_trajectory_tracking_reference(skeleton: Skeleton, task: Task) -> Samp
     if q.shape[1] != skeleton.num_joints:
         msg = f"joint reference has {q.shape[1]} joint columns but the robot has {skeleton.num_joints}"
         raise ValueError(msg)
-    grid, qg, dqg, ddqg = _smooth_and_resample(times, q, task, target_dt=task.dt)
+    grid, qg, dqg, ddqg = _smooth_and_resample(times, q, task, target_dt=_REFERENCE_DT)
     return SampledJointReference(grid, qg, dqg, ddqg)
 
 
@@ -530,7 +555,7 @@ def _build_mpc(params: Mapping[str, Any], skeleton: Skeleton, task: Task) -> Con
     return JointSpaceMPC(
         _joint_reference(skeleton, task),
         horizon=int(params.get("horizon", 6)),
-        dt=task.dt,  # the prediction step must match the simulation control step
+        dt=float(params["dt"]),  # the control step injected by build_controller; the prediction step matches it
         q_weight=params.get("q_weight", 10.0),
         dq_weight=params.get("dq_weight", 1.0),
         tau_weight=params.get("tau_weight", 1e-3),
@@ -583,7 +608,13 @@ def controller_types() -> tuple[str, ...]:
     return tuple(sorted(_BUILDERS))
 
 
-def build_controller(source: str | Path | Mapping[str, Any], *, skeleton: Skeleton, task: Task) -> Controller:
+def build_controller(
+    source: str | Path | Mapping[str, Any],
+    *,
+    skeleton: Skeleton,
+    task: Task,
+    dt: float = 0.002,
+) -> Controller:
     """Construct the controller described by a ``[controller]`` config.
 
     Parameters
@@ -594,6 +625,10 @@ def build_controller(source: str | Path | Mapping[str, Any], *, skeleton: Skelet
         The robot, posed at its start state; used to build joint references.
     task : Task
         The reaching task supplying the target and run conditions.
+    dt : float, optional
+        The control / integration step (from ``[simulator]``). It is injected into the
+        ``params`` mapping handed to the builder as ``params["dt"]``, so a controller that
+        needs the step (e.g. MPC, whose prediction step must match it) can read it.
 
     Returns
     -------
@@ -611,6 +646,7 @@ def build_controller(source: str | Path | Mapping[str, Any], *, skeleton: Skelet
         msg = f"unknown controller type {controller_type!r}; choose from {list(controller_types())}"
         raise ValueError(msg)
     params = {key: value for key, value in config.items() if key != "type"}
+    params["dt"] = dt  # the control step, available to controller builders that need it
     return _BUILDERS[controller_type](params, skeleton, task)
 
 
@@ -644,8 +680,11 @@ def scenario_from_config(data: Mapping[str, Any]) -> Scenario:
     task = Task.from_dict(resolved["task"])
     if task.type == _MULTI_TARGET_TYPE:
         apply_active_target(task)  # set the first-class target to the active candidate
-    controller = build_controller(resolved["controller"], skeleton=skeleton, task=task)
-    return Scenario(skeleton=skeleton, task=task, controller=controller, source_config=dict(resolved))
+    simulator = Simulator.from_dict(resolved.get("simulator", {}))
+    controller = build_controller(resolved["controller"], skeleton=skeleton, task=task, dt=simulator.dt)
+    return Scenario(
+        skeleton=skeleton, task=task, controller=controller, simulator=simulator, source_config=dict(resolved)
+    )
 
 
 def _inline_reference_samples(data: Mapping[str, Any]) -> dict[str, Any]:
@@ -761,12 +800,12 @@ def run_scenario(
     duration : float | None, optional
         Simulated duration (seconds); defaults to ``scenario.task.duration``.
     dt : float | None, optional
-        Control / integration step; defaults to ``scenario.task.dt``.
+        Control / integration step; defaults to ``scenario.simulator.dt``.
     grav_vec : NDArray[np.float64] | None, optional
         Gravity vector; defaults to zero (planar motion).
     enforce_limits : bool | None, optional
         Apply the joint limits as hard stops in the dynamics. ``None`` (the default)
-        uses the scenario's ``task.enforce_limits``; an explicit value overrides it
+        uses the scenario's ``simulator.enforce_limits``; an explicit value overrides it
         (e.g. a ``--no-joint-limits`` CLI flag). The resolved value is recorded in
         the run metadata so the override is reproduced on re-run.
 
@@ -776,9 +815,9 @@ def run_scenario(
         The recorded run, with reproduction metadata when available.
     """
     run_duration = scenario.task.duration if duration is None else float(duration)
-    run_dt = scenario.task.dt if dt is None else float(dt)
+    run_dt = scenario.simulator.dt if dt is None else float(dt)
     grav = np.zeros(_TASK_DIM, dtype=np.float64) if grav_vec is None else np.asarray(grav_vec, dtype=np.float64)
-    run_enforce_limits = scenario.task.enforce_limits if enforce_limits is None else bool(enforce_limits)
+    run_enforce_limits = scenario.simulator.enforce_limits if enforce_limits is None else bool(enforce_limits)
     extra = _reproduction_metadata(
         scenario, duration=run_duration, dt=run_dt, grav_vec=grav, enforce_limits=run_enforce_limits
     )
@@ -817,9 +856,9 @@ def scenario_from_log(log: StateLog) -> tuple[Scenario, Mapping[str, Any]]:
         "run",
         {
             "duration": scenario.task.duration,
-            "dt": scenario.task.dt,
+            "dt": scenario.simulator.dt,
             "grav_vec": [0.0, 0.0],
-            "enforce_limits": scenario.task.enforce_limits,
+            "enforce_limits": scenario.simulator.enforce_limits,
         },
     )
     return scenario, run
@@ -841,8 +880,8 @@ def rerun_log(log: StateLog) -> StateLog:
     """
     scenario, run = scenario_from_log(log)
     grav_vec = np.asarray(run["grav_vec"], dtype=np.float64)
-    # Older logs may predate the recorded enforce_limits; fall back to the task's value.
-    enforce_limits = run.get("enforce_limits", scenario.task.enforce_limits)
+    # Older logs may predate the recorded enforce_limits; fall back to the simulator's value.
+    enforce_limits = run.get("enforce_limits", scenario.simulator.enforce_limits)
     return run_scenario(
         scenario, duration=run["duration"], dt=run["dt"], grav_vec=grav_vec, enforce_limits=enforce_limits
     )

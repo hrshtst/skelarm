@@ -18,7 +18,8 @@ A scenario combines four sections:
 | --- | --- | --- |
 | `[skeleton]` | Robot geometry (links, base length, limits) | `Skeleton.from_toml` |
 | `[initial]` | Start pose / velocity (degrees) | applied by `Skeleton.from_toml` |
-| `[task]` | The reaching goal and run conditions | `Task.from_toml` |
+| `[task]` | The goal and how the motion is shaped | `Task.from_toml` |
+| `[simulator]` | How the dynamics are integrated (`dt`, `enforce_limits`) | `Simulator.from_dict` |
 | `[controller]` | The control law and its gains | `build_controller` |
 
 See [Trajectory Tracking Control](../reference/07_control.md) and
@@ -30,26 +31,15 @@ See [Trajectory Tracking Control](../reference/07_control.md) and
 | --- | --- | --- | --- |
 | `type` | str | *required* | Task kind — the discriminator that decides what else the task needs. Only `reaching` is built in; more are planned (and you can [add your own](defining_a_task.md)). |
 | `target` | `[x, y]` or table | *required for `reaching`* | Endpoint goal in meters (see below). Other task types may omit it. |
-| `duration` | float | `2.0` | Total simulated time, in seconds. |
-| `dt` | float | `0.002` | Control / integration step, in seconds. |
+| `duration` | float | `2.0` | Total simulated time / planned-motion horizon, in seconds. |
 | `schedule` | str | `"minimum_jerk"` | Time scaling for planned trajectories: `linear`, `cubic`, `quintic`, or `minimum_jerk`. |
-| `enforce_limits` | bool | `true` | Apply the joint limits as hard stops in the dynamics. Set `false` to let the limits constrain only the kinematics (see below). |
 
 `type` is the one always-required key: it names the kind of task, and the kind
 determines the rest (`reaching` requires a `target`). `duration`, `schedule`, and
 `target` define the planned task-space trajectory used by the *trajectory-tracking*
 controllers; the *reaching* controllers use only `target` and generate motion
-online. `dt` is the fixed step of the simulation loop
-([`simulate_controlled`](../reference/07_control.md)).
-
-`enforce_limits` is a *run condition* of the simulation: with the default `true`
-the fixed-step loop pins each joint at its `[qmin, qmax]` bound (a hard stop);
-with `false` the bounds are dropped from the dynamics and apply only to the
-kinematics (posing and inverse kinematics). Because it lives in the scenario
-config, the setting is embedded in the run's reproduction metadata, so a saved log
-re-runs with the same choice. `tools/reaching_simulator.py --no-joint-limits`
-overrides it off for a single run (and that resolved value is what gets recorded).
-See the [Joint Limits](joint_limits.md) guide for the underlying mechanics.
+online. The numerical-integration parameters (`dt`, `enforce_limits`) live in their
+own [`[simulator]`](#the-simulator-section) table, not here.
 
 ### Target
 
@@ -113,7 +103,6 @@ a = 0.4
 k = 3
 period = 4.0     # seconds per loop
 duration = 12.0  # three loops
-dt = 0.002
 ```
 
 A `multi_target_reaching` task lists several candidate `targets` (each a `[x, y]` or a
@@ -149,7 +138,6 @@ also a `polyorder`. See the [theory chapter](../reference/09_trajectory_filterin
 [task]
 type = "joint_trajectory_tracking"
 file = "teach.sklog.npz"
-dt = 0.002
 filter = { kind = "butterworth", cutoff_hz = 8.0, order = 4 }  # smooth a jaggy recording
 interpolator = "cubic_spline"
 # duration defaults to the reference's length when omitted
@@ -162,6 +150,31 @@ reproduce the run without the original file. Curve and DOF rules: a
 
 Only these are built in. To add a goal that is not a single target point, or a new
 reference source, see [Defining a Task](defining_a_task.md).
+
+## The `[simulator]` section
+
+How the dynamics are integrated, separate from the task (the desired motion). The whole
+table is optional; an absent `[simulator]` uses the defaults.
+
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `dt` | float | `0.002` | The fixed control / integration step of the simulation loop ([`simulate_controlled`](../reference/07_control.md)). It is also the MPC prediction step. |
+| `enforce_limits` | bool | `true` | Apply the joint limits as hard stops in the dynamics. Set `false` to let the limits constrain only the kinematics. |
+
+```toml
+[simulator]
+dt = 0.002
+enforce_limits = true
+```
+
+`enforce_limits` is a *run condition*: with the default `true` the fixed-step loop pins
+each joint at its `[qmin, qmax]` bound (a hard stop); with `false` the bounds are dropped
+from the dynamics and apply only to the kinematics (posing and inverse kinematics).
+Because it lives in the scenario config, the resolved value is embedded in the run's
+reproduction metadata, so a saved log re-runs with the same choice. The interactive
+simulators' `--no-joint-limits` flag overrides it off for a single run (and that resolved
+value is what gets recorded). See the [Joint Limits](joint_limits.md) guide for the
+underlying mechanics.
 
 ## The `[controller]` section
 
@@ -201,8 +214,8 @@ preplanned trajectory. See [Reaching Control](../reference/08_reaching_control.m
 | --- | --- | --- |
 | `mpc` | `JointSpaceMPC` | `horizon` (6), `q_weight` (10), `dq_weight` (1), `tau_weight` (0.001), `terminal_weight` (50), `tau_max` (none), `limit_weight` (0), `max_iter` (20) |
 
-MPC predicts with the simulation step, so its control interval is `[task].dt`.
-Re-optimizing every step is expensive at a small `dt`; use a larger `[task].dt`
+MPC predicts with the simulation step, so its control interval is `[simulator].dt`.
+Re-optimizing every step is expensive at a small `dt`; use a larger `[simulator].dt`
 (for example `0.05`) for MPC scenarios.
 
 !!! note "Reach time vs. settling"
@@ -236,8 +249,11 @@ q = [34.4, 57.3]        # degrees
 type = "reaching"       # the task kind (required)
 target = [0.55, 1.21]    # endpoint goal (x, y) in meters (required for reaching)
 duration = 2.0
-dt = 0.002
 schedule = "minimum_jerk"
+
+[simulator]
+dt = 0.002              # control / integration step
+enforce_limits = true   # joint-limit hard stop in the dynamics
 
 [controller]
 type = "computed_torque"
@@ -301,7 +317,7 @@ so controllers can be constructed without a file.
 A log written by `run_scenario` (and by the interactive scenario simulators) is a
 self-contained, re-runnable record. It embeds — in the log's `[extra]` metadata — the
 **original source config** (the full `[skeleton]` / `[initial]` / `[task]` /
-`[controller]` tables, exactly as loaded), the actual run parameters (`duration` /
+`[simulator]` / `[controller]` tables, exactly as loaded), the actual run parameters (`duration` /
 `dt` / `grav_vec` / `enforce_limits`), and the `skelarm` / `numpy` / `scipy` versions.
 `enforce_limits` records the *resolved* joint-limit choice, so a `--no-joint-limits`
 override is reproduced on re-run even though the source config still reads `true`.

@@ -17,6 +17,7 @@ from skelarm.scenario import (
     load_scenario,
     register_controller,
     register_task_type,
+    scenario_from_config,
     task_types,
 )
 from skelarm.skeleton import LinkProp, Skeleton
@@ -51,27 +52,23 @@ def _write_scenario(path: Path, controller_block: str, *, target: tuple[float, f
     text = (
         _SKELETON_TOML
         + "[initial]\nq = [34.4, 57.3]\n"
-        + f'[task]\ntype = "reaching"\ntarget = [{target[0]}, {target[1]}]\nduration = 2.0\ndt = 0.002\n'
+        + f'[task]\ntype = "reaching"\ntarget = [{target[0]}, {target[1]}]\nduration = 2.0\n[simulator]\ndt = 0.002\n'
         + controller_block
     )
     path.write_text(text, encoding="utf-8")
 
 
 def test_task_from_dict_parses_fields() -> None:
-    """A [task] mapping yields the target, duration, dt, and schedule, with defaults."""
-    task = Task.from_dict(
-        {"type": "reaching", "target": [0.5, 0.4], "duration": 3.0, "dt": 0.01, "schedule": "quintic"}
-    )
+    """A [task] mapping yields the target, duration, and schedule, with defaults."""
+    task = Task.from_dict({"type": "reaching", "target": [0.5, 0.4], "duration": 3.0, "schedule": "quintic"})
     assert task.target == pytest.approx([0.5, 0.4])
     assert task.duration == pytest.approx(3.0)
-    assert task.dt == pytest.approx(0.01)
     assert task.schedule == "quintic"
     # Defaults for the target attributes.
     assert task.type == "reaching"
     assert task.label is None
     assert task.color == "purple"
     assert task.tolerance is None
-    assert task.enforce_limits is True  # joint-limit hard stop on by default
 
 
 def test_task_from_dict_requires_type() -> None:
@@ -80,11 +77,45 @@ def test_task_from_dict_requires_type() -> None:
         Task.from_dict({"target": [0.5, 0.4]})
 
 
-def test_task_from_dict_reads_enforce_limits() -> None:
-    """``[task].enforce_limits`` toggles the dynamics joint-limit hard stop (default True)."""
+def test_task_from_dict_rejects_moved_simulator_keys() -> None:
+    """`dt` / `enforce_limits` under [task] are rejected (they moved to [simulator])."""
     base = {"type": "reaching", "target": [0.5, 0.4]}
-    assert Task.from_dict(base).enforce_limits is True
-    assert Task.from_dict({**base, "enforce_limits": False}).enforce_limits is False
+    with pytest.raises(ValueError, match="moved to"):
+        Task.from_dict({**base, "dt": 0.01})
+    with pytest.raises(ValueError, match="moved to"):
+        Task.from_dict({**base, "enforce_limits": False})
+
+
+def test_simulator_from_dict_parses_and_defaults() -> None:
+    """[simulator] parses dt / enforce_limits, defaulting when absent."""
+    from skelarm.scenario import Simulator
+
+    assert Simulator.from_dict({}) == Simulator(dt=0.002, enforce_limits=True)
+    sim = Simulator.from_dict({"dt": 0.01, "enforce_limits": False})
+    assert sim.dt == pytest.approx(0.01)
+    assert sim.enforce_limits is False
+
+
+def test_simulator_dt_wires_the_mpc_prediction_step() -> None:
+    """[simulator].dt becomes the MPC prediction step (build_controller injects it)."""
+    from skelarm.mpc import JointSpaceMPC
+
+    config = {
+        "skeleton": {
+            "link": [
+                {"length": 1.0, "mass": 1.0, "inertia": 0.1, "com": [0.5, 0.0], "limits": [-180.0, 180.0]},
+                {"length": 0.8, "mass": 0.8, "inertia": 0.05, "com": [0.4, 0.0], "limits": [-180.0, 180.0]},
+            ]
+        },
+        "initial": {"q": [20.0, 30.0]},
+        "task": {"type": "reaching", "target": [0.6, 0.4]},
+        "simulator": {"dt": 0.01},
+        "controller": {"type": "mpc", "horizon": 4},
+    }
+    scenario = scenario_from_config(config)
+    assert isinstance(scenario.controller, JointSpaceMPC)
+    assert scenario.controller.dt == pytest.approx(0.01)
+    assert scenario.simulator.dt == pytest.approx(0.01)
 
 
 def test_task_target_table_parses_attributes() -> None:

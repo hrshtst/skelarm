@@ -58,7 +58,7 @@ def _write_config(tmp_path: Path, *, task_type: str) -> Path:
     config.write_text(
         _SKELETON_TOML
         + f"[initial]\nq = [{initial}]\n"
-        + f'[task]\ntype = "{task_type}"\nfile = "{ref}"\ndt = 0.01\n'
+        + f'[task]\ntype = "{task_type}"\nfile = "{ref}"\n[simulator]\ndt = 0.01\n'
         + '[controller]\ntype = "computed_torque"\nkp = 300.0\nkd = 40.0\n',
         encoding="utf-8",
     )

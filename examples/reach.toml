@@ -32,9 +32,12 @@ type = "reaching"      # task kind (currently only "reaching")
 # label / color (default purple) / tolerance. The tolerance (meters) is the
 # admittable tip-to-target error; the marker's ring is drawn at that radius.
 target = { pos = [0.55, 1.21], tolerance = 0.02 }  # endpoint goal (m), 2 cm success
-duration = 2.0         # simulated time (s)
-dt = 0.002             # control / integration step (s)
+duration = 2.0         # simulated time / planned-motion horizon (s)
 schedule = "minimum_jerk"
+
+[simulator]
+dt = 0.002             # control / integration step (s)
+# enforce_limits = true  # joint-limit hard stop in the dynamics (default)
 
 [controller]
 type = "computed_torque"

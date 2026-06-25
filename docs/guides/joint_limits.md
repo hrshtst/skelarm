@@ -58,13 +58,13 @@ Both fixed-step paths can drop the hard stop so the limits constrain only the
 kinematics (posing and IK) — not the dynamics. There are three ways in, ordered
 from most to least reproducible:
 
-1. **Scenario config** — set `enforce_limits = false` in the `[task]` table. This
+1. **Scenario config** — set `enforce_limits = false` in the `[simulator]` table. This
    is the reproducible toggle: `run_scenario` embeds the resolved value in the
    log's run metadata, so `rerun_log` and an exported config re-run with the same
-   choice. See [Control Configuration](control_configuration.md#the-task-section).
+   choice. See [Control Configuration](control_configuration.md#the-simulator-section).
 2. **`run_scenario(..., enforce_limits=...)` / `simulate_controlled(..., enforce_limits=False)`** —
    the programmatic override; `None` (the `run_scenario` default) defers to the
-   task's value. The resolved value is what gets recorded.
+   scenario's `simulator.enforce_limits`. The resolved value is what gets recorded.
 3. **`--no-joint-limits` CLI flag** on the interactive tools (and the
    `SkelarmSimulator` / recorder classes' `enforce_limits=False` argument), which
    omits the bounds from the integrator for that run:
@@ -75,8 +75,8 @@ uv run python tools/reaching_simulator.py examples/reach.toml --no-joint-limits 
 uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --mode dynamics --no-joint-limits
 ```
 
-For `reaching_simulator.py` the flag *overrides* `[task].enforce_limits` off, and
-the resolved value is recorded for a reproducible re-run.
+For the interactive simulators the flag *overrides* `[simulator].enforce_limits` off,
+and the resolved value is recorded for a reproducible re-run.
 
 The default keeps the hard stop on. In the recorder this only affects `dynamics`
 mode; `ik` mode always poses through the clamping kinematic setter regardless.

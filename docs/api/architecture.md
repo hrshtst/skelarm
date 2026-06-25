@@ -87,10 +87,15 @@ classDiagram
     class Task {
         <<dataclass>>
         +type  target  params
-        +duration  dt  schedule  enforce_limits
+        +duration  schedule
+    }
+    class Simulator {
+        <<dataclass>>
+        +dt  enforce_limits
     }
     Scenario *-- Skeleton
     Scenario *-- Task
+    Scenario *-- Simulator
     Scenario *-- Controller
     Scenario ..> JointReference : builds per task type
 
@@ -158,9 +163,10 @@ chapter covers the smoothing (`skelarm.filtering`) and resampling
 ## Scenario glue
 
 [`Scenario`](scenario.md) is the runnable bundle assembled from one TOML file: a
-`Skeleton`, a `Task` (its required `type` plus the target / run conditions /
-type-specific `params`), and a ready-to-run `Controller`. The loader builds the
-joint reference for the trackers by **dispatching on the task type** (a registry
+`Skeleton`, a `Task` (its required `type` plus the target / motion / type-specific
+`params`), a `Simulator` (the numerical-integration parameters `dt` / `enforce_limits`
+from `[simulator]`), and a ready-to-run `Controller`. The loader builds the joint
+reference for the trackers by **dispatching on the task type** (a registry
 opened by `register_reference_builder`): `reaching` plans a point-to-point
 `Trajectory`, `periodic_curve` builds a `PeriodicTaskReference`, and the
 trajectory-tracking tasks load a recorded reference — each converted via

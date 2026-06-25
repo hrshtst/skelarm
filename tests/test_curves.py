@@ -95,7 +95,8 @@ def test_periodic_curve_task_traces_a_circle(tmp_path: Path) -> None:
         _SKELETON_TOML
         + f"[initial]\nq = [{q0}]\n"
         + '[task]\ntype = "periodic_curve"\ncurve = "circle"\n'
-        + f"center = [{center[0]}, {center[1]}]\nradius = {radius}\nperiod = 1.0\nduration = 2.0\ndt = 0.005\n"
+        + f"center = [{center[0]}, {center[1]}]\nradius = {radius}\nperiod = 1.0\nduration = 2.0\n"
+        + "[simulator]\ndt = 0.005\n"
         + '[controller]\ntype = "computed_torque"\nkp = 400.0\nkd = 50.0\n',
         encoding="utf-8",
     )

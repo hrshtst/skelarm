@@ -29,6 +29,8 @@ a = 0.4            # x semi-axis (m)
 b = 0.25           # y semi-axis (m)
 period = 2.0       # seconds per loop
 duration = 4.0     # two loops
+
+[simulator]
 dt = 0.005
 
 [controller]

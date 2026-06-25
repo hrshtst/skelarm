@@ -72,7 +72,7 @@ def test_joint_trajectory_tracking_follows_reference(tmp_path: Path) -> None:
     q_final, _ = _write_reference(ref, channels=("q",))
     config = tmp_path / "track.toml"
     config.write_text(
-        _scenario_toml(f'[task]\ntype = "joint_trajectory_tracking"\nfile = "{ref}"\ndt = 0.005\n'),
+        _scenario_toml(f'[task]\ntype = "joint_trajectory_tracking"\nfile = "{ref}"\n[simulator]\ndt = 0.005\n'),
         encoding="utf-8",
     )
     log = run_scenario(load_scenario(config))
@@ -85,7 +85,7 @@ def test_trajectory_tracking_follows_reference(tmp_path: Path) -> None:
     _, tip_final = _write_reference(ref, channels=("tip",))
     config = tmp_path / "track.toml"
     config.write_text(
-        _scenario_toml(f'[task]\ntype = "trajectory_tracking"\nfile = "{ref}"\ndt = 0.005\n'),
+        _scenario_toml(f'[task]\ntype = "trajectory_tracking"\nfile = "{ref}"\n[simulator]\ndt = 0.005\n'),
         encoding="utf-8",
     )
     log = run_scenario(load_scenario(config))
@@ -103,7 +103,7 @@ def test_jaggy_joint_reference_with_butterworth_filter(tmp_path: Path) -> None:
     config.write_text(
         _scenario_toml(
             '[task]\ntype = "joint_trajectory_tracking"\n'
-            f'file = "{ref}"\ndt = 0.005\n'
+            f'file = "{ref}"\n[simulator]\ndt = 0.005\n'
             'filter = { kind = "butterworth", cutoff_hz = 6.0, order = 3 }\n'
             'interpolator = "cubic_spline"\n'
         ),
@@ -121,7 +121,7 @@ def test_jaggy_joint_reference_with_savgol_filter(tmp_path: Path) -> None:
     config.write_text(
         _scenario_toml(
             '[task]\ntype = "joint_trajectory_tracking"\n'
-            f'file = "{ref}"\ndt = 0.005\n'
+            f'file = "{ref}"\n[simulator]\ndt = 0.005\n'
             'filter = { kind = "savgol", window = 9, polyorder = 3 }\n'
         ),
         encoding="utf-8",
@@ -140,7 +140,7 @@ def test_joint_reference_dof_mismatch_raises(tmp_path: Path) -> None:
     log.save(ref)
     config = tmp_path / "track.toml"
     config.write_text(
-        _scenario_toml(f'[task]\ntype = "joint_trajectory_tracking"\nfile = "{ref}"\ndt = 0.01\n'),
+        _scenario_toml(f'[task]\ntype = "joint_trajectory_tracking"\nfile = "{ref}"\n[simulator]\ndt = 0.01\n'),
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="joint columns"):
@@ -151,7 +151,7 @@ def test_tracking_requires_a_reference(tmp_path: Path) -> None:
     """A tracking task with neither a file nor inlined samples is rejected."""
     config = tmp_path / "track.toml"
     config.write_text(
-        _scenario_toml('[task]\ntype = "joint_trajectory_tracking"\ndt = 0.01\nduration = 0.2\n'),
+        _scenario_toml('[task]\ntype = "joint_trajectory_tracking"\nduration = 0.2\n[simulator]\ndt = 0.01\n'),
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="requires a 'file'"):
@@ -164,7 +164,7 @@ def test_tracking_reproduces_with_the_reference_file_deleted(tmp_path: Path) -> 
     _write_reference(ref, channels=("q",))
     config = tmp_path / "track.toml"
     config.write_text(
-        _scenario_toml(f'[task]\ntype = "joint_trajectory_tracking"\nfile = "{ref}"\ndt = 0.01\n'),
+        _scenario_toml(f'[task]\ntype = "joint_trajectory_tracking"\nfile = "{ref}"\n[simulator]\ndt = 0.01\n'),
         encoding="utf-8",
     )
     original = run_scenario(load_scenario(config))

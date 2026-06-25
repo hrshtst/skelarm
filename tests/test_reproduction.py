@@ -34,7 +34,7 @@ def _write_scenario(path: Path, controller_block: str, *, duration: float = 2.0,
     path.write_text(
         _SKELETON_TOML
         + "[initial]\nq = [34.4, 57.3]\n"
-        + f'[task]\ntype = "reaching"\ntarget = [0.55, 1.21]\nduration = {duration}\ndt = {dt}\n'
+        + f'[task]\ntype = "reaching"\ntarget = [0.55, 1.21]\nduration = {duration}\n[simulator]\ndt = {dt}\n'
         + controller_block,
         encoding="utf-8",
     )
@@ -64,13 +64,14 @@ def test_run_scenario_embeds_the_source_config(tmp_path: Path) -> None:
     assert "skelarm" in log.extra["provenance"]
 
 
-def test_run_scenario_honors_task_enforce_limits(tmp_path: Path) -> None:
-    """A ``[task].enforce_limits = false`` config disables the hard stop and is reproducible."""
+def test_run_scenario_honors_simulator_enforce_limits(tmp_path: Path) -> None:
+    """A ``[simulator].enforce_limits = false`` config disables the hard stop and is reproducible."""
     config = tmp_path / "free.toml"
     config.write_text(
         _SKELETON_TOML
         + "[initial]\nq = [34.4, 57.3]\n"
-        + '[task]\ntype = "reaching"\ntarget = [0.55, 1.21]\nduration = 0.2\ndt = 0.01\nenforce_limits = false\n'
+        + '[task]\ntype = "reaching"\ntarget = [0.55, 1.21]\nduration = 0.2\n'
+        + "[simulator]\ndt = 0.01\nenforce_limits = false\n"
         + '[controller]\ntype = "computed_torque"\nkp = 200.0\nkd = 30.0\n',
         encoding="utf-8",
     )
@@ -163,12 +164,13 @@ def test_export_scenario_toml_round_trips_exactly(tmp_path: Path) -> None:
 
 
 def test_export_scenario_toml_preserves_enforce_limits(tmp_path: Path) -> None:
-    """A ``[task].enforce_limits = false`` survives the editable export round-trip."""
+    """A ``[simulator].enforce_limits = false`` survives the editable export round-trip."""
     config = tmp_path / "free.toml"
     config.write_text(
         _SKELETON_TOML
         + "[initial]\nq = [34.4, 57.3]\n"
-        + '[task]\ntype = "reaching"\ntarget = [0.55, 1.21]\nduration = 0.1\ndt = 0.01\nenforce_limits = false\n'
+        + '[task]\ntype = "reaching"\ntarget = [0.55, 1.21]\nduration = 0.1\n'
+        + "[simulator]\ndt = 0.01\nenforce_limits = false\n"
         + '[controller]\ntype = "computed_torque"\nkp = 200.0\nkd = 30.0\n',
         encoding="utf-8",
     )
@@ -177,7 +179,7 @@ def test_export_scenario_toml_preserves_enforce_limits(tmp_path: Path) -> None:
     exported = tmp_path / "exported.toml"
     export_scenario_toml(original, exported)
 
-    assert load_scenario(exported).task.enforce_limits is False  # the bool survived dump_toml
+    assert load_scenario(exported).simulator.enforce_limits is False  # the bool survived dump_toml
     replayed = run_scenario(load_scenario(exported))
     np.testing.assert_array_equal(replayed.channel("q"), original.channel("q"))
 

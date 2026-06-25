@@ -102,7 +102,9 @@ the [Control API](../api/control.md).
 
 To select your controller from a `[controller].type`, register a **builder** —
 `(params, skeleton, task) -> Controller` — with `register_controller`. `params` is
-the `[controller]` table without `type`; use `task` for the target and run conditions:
+the `[controller]` table without `type`, plus `params["dt"]` — the control step from
+`[simulator]` — for controllers that need it (e.g. MPC, whose prediction step must match
+it); use `task` for the target and run conditions:
 
 ```python
 from skelarm import register_controller

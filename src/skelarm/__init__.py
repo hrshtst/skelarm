@@ -62,6 +62,7 @@ from .recording import StateLog
 from .scenario import (
     ControllerBuilder,
     Scenario,
+    Simulator,
     Task,
     active_target_index,
     apply_active_target,
@@ -106,6 +107,7 @@ __all__ = [
     "SampledJointReference",
     "SampledTaskReference",
     "Scenario",
+    "Simulator",
     "SimulatorCanvas",
     "SkelarmCanvas",
     "SkelarmSimulator",

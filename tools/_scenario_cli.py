@@ -160,13 +160,13 @@ def add_override_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--no-joint-limits",
         action="store_true",
-        help="override [task].enforce_limits off: no dynamics hard stop (limits apply to kinematics only)",
+        help="override [simulator].enforce_limits off: no dynamics hard stop (limits apply to kinematics only)",
     )
 
 
 def resolve_enforce_limits(args: argparse.Namespace, scenario: Scenario) -> bool:
-    """``--no-joint-limits`` overrides the scenario's ``[task].enforce_limits`` off."""
-    return False if args.no_joint_limits else scenario.task.enforce_limits
+    """``--no-joint-limits`` overrides the scenario's ``[simulator].enforce_limits`` off."""
+    return False if args.no_joint_limits else scenario.simulator.enforce_limits
 
 
 # --------------------------------------------------------------------------- task overlays
