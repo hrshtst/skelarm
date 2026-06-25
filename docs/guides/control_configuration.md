@@ -137,8 +137,13 @@ The trajectory-tracking types take these extra `[task]` keys:
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `file` | str | *required* | Path to the reference `.sklog.npz`. |
-| `filter` | table | none | Pre-smoothing: `{ kind = "butterworth"\|"lowpass"\|"none", cutoff_hz, order }`. |
+| `filter` | table | none | Pre-smoothing (see below): `{ kind = …, cutoff_hz, order, window, polyorder }`. |
 | `interpolator` | str | `"cubic_spline"` | Resampling scheme: `cubic_spline`, `linear`, or `lagrange`. |
+
+The `filter.kind` selects the smoother and which keys it needs (zero-phase in every
+case): `none` (off); `lowpass` / `butterworth` take a `cutoff_hz` (and Butterworth an
+`order`); `moving_average` / `savgol` take a `window` (odd, in samples), and `savgol`
+also a `polyorder`. See the [theory chapter](../reference/09_trajectory_filtering.md).
 
 ```toml
 [task]

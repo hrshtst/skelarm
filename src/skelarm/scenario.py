@@ -425,12 +425,15 @@ def _smooth_reference(values: NDArray[np.float64], rel_times: NDArray[np.float64
     if not cfg:
         return np.asarray(values, dtype=np.float64)
     dt = float(np.mean(np.diff(rel_times))) if rel_times.shape[0] > 1 else 1.0
+    window = cfg.get("window")
     return smooth(
         values,
         dt,
         kind=str(cfg.get("kind", "none")),
         cutoff_hz=cfg.get("cutoff_hz"),
         order=int(cfg.get("order", 2)),
+        window=None if window is None else int(window),
+        polyorder=int(cfg.get("polyorder", 2)),
     )
 
 

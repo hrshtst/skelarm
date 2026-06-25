@@ -62,7 +62,8 @@ it for short series.
 A jagged reference (e.g. a hand-taught path) has high-frequency content that
 differentiation amplifies. A **low-pass** filter removes content above a cutoff
 frequency $f_c$ while preserving the slow motion. The series must be uniformly
-sampled with period $\Delta t$; the Nyquist frequency is $1/(2\Delta t)$.
+sampled with period $\Delta t$; the Nyquist frequency is $1/(2\Delta t)$. `skelarm`
+offers four kinds — two frequency-domain (cutoff-based) and two window-based.
 
 ### First-order (RC) low-pass
 
@@ -86,6 +87,28 @@ and rolls off at $-20n$ dB/decade. `skelarm` maps the analog filter to the discr
 domain with the **bilinear transform** $s = \frac{2}{\Delta t}\frac{z-1}{z+1}$,
 pre-warping the cutoff $\omega_a = \frac{2}{\Delta t}\tan(\pi f_c \Delta t)$ so the
 digital cutoff lands at $f_c$, and normalizes the gain to unity at DC.
+
+### Moving average
+
+A centered moving average over an odd window of $W = 2m+1$ samples replaces each
+point with the mean of its neighbours,
+
+$$y_i = \frac{1}{W} \sum_{k=-m}^{m} x_{i+k}.$$
+
+It is the simplest smoother — a finite (FIR) filter with a symmetric (hence
+phase-free) rectangular kernel that reproduces constants and linear trends exactly in
+the interior. It is specified by the **window length** rather than a cutoff.
+
+### Savitzky–Golay
+
+A Savitzky–Golay filter fits a polynomial of degree $p$ to each sliding window of $W$
+samples by least squares and takes the value of that fit at the window centre. The
+kernel is the centre row of the pseudo-inverse $\big(A^\top A\big)^{-1} A^\top$ of the
+Vandermonde design matrix $A_{kj} = z_k^{\,j}$ over the offsets $z = -m, \dots, m$.
+Because the kernel is symmetric it is phase-free, and because the fit is exact for
+polynomials up to degree $p$ it preserves peaks and curvature far better than a plain
+average while still suppressing noise. It is specified by the window length $W$ and the
+polynomial order $p$ (with $p < W$).
 
 ### Zero-phase application
 

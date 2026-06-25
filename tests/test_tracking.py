@@ -113,6 +113,23 @@ def test_jaggy_joint_reference_with_butterworth_filter(tmp_path: Path) -> None:
     assert log.channel("q")[-1] == pytest.approx(q_final, abs=5e-2)
 
 
+def test_jaggy_joint_reference_with_savgol_filter(tmp_path: Path) -> None:
+    """A Savitzky-Golay filter config (window/polyorder keys) smooths a noisy reference."""
+    ref = tmp_path / "noisy.sklog.npz"
+    q_final, _ = _write_reference(ref, channels=("q",), jaggy=True)
+    config = tmp_path / "track.toml"
+    config.write_text(
+        _scenario_toml(
+            '[task]\ntype = "joint_trajectory_tracking"\n'
+            f'file = "{ref}"\ndt = 0.005\n'
+            'filter = { kind = "savgol", window = 9, polyorder = 3 }\n'
+        ),
+        encoding="utf-8",
+    )
+    log = run_scenario(load_scenario(config))
+    assert log.channel("q")[-1] == pytest.approx(q_final, abs=5e-2)
+
+
 def test_joint_reference_dof_mismatch_raises(tmp_path: Path) -> None:
     """A joint reference whose DOF differs from the robot is rejected."""
     ref = tmp_path / "ref.sklog.npz"

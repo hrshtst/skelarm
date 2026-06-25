@@ -28,7 +28,14 @@ from .dynamics import (
     integrate_with_limits,
     simulate_robot,
 )
-from .filtering import FILTERS, butterworth_lowpass, lowpass_first_order, smooth
+from .filtering import (
+    FILTERS,
+    butterworth_lowpass,
+    lowpass_first_order,
+    moving_average,
+    savitzky_golay,
+    smooth,
+)
 from .interpolation import INTERPOLATORS, interpolate, resample_with_derivatives
 from .kinematics import (
     IKResult,
@@ -141,6 +148,7 @@ __all__ = [
     "load_reference_log",
     "load_scenario",
     "lowpass_first_order",
+    "moving_average",
     "multi_target_specs",
     "plot_trajectory",
     "reference_builders",
@@ -152,6 +160,7 @@ __all__ = [
     "resample_with_derivatives",
     "resolved_rate_joint_reference",
     "run_scenario",
+    "savitzky_golay",
     "scenario_from_config",
     "scenario_from_log",
     "shaping_ratio",

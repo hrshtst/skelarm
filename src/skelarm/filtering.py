@@ -27,7 +27,7 @@ import numpy as np
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
 
-FILTERS = ("none", "lowpass", "butterworth")
+FILTERS = ("none", "lowpass", "butterworth", "moving_average", "savgol")
 """The supported filter kinds for :func:`smooth`."""
 
 
@@ -38,6 +38,8 @@ def smooth(
     kind: str = "none",
     cutoff_hz: float | None = None,
     order: int = 2,
+    window: int | None = None,
+    polyorder: int = 2,
 ) -> NDArray[np.float64]:
     """Smooth a uniformly sampled series by the named filter ``kind``.
 
@@ -53,6 +55,10 @@ def smooth(
         Cutoff frequency in Hz; required for ``"lowpass"`` and ``"butterworth"``.
     order : int, optional
         Butterworth order (ignored otherwise); keep small (``<= 4``).
+    window : int | None, optional
+        Window length in samples (odd); required for ``"moving_average"`` and ``"savgol"``.
+    polyorder : int, optional
+        Savitzky-Golay polynomial order (``"savgol"`` only); must be ``< window``.
 
     Returns
     -------
@@ -62,7 +68,7 @@ def smooth(
     Raises
     ------
     ValueError
-        If ``kind`` is unknown or a required ``cutoff_hz`` is missing.
+        If ``kind`` is unknown or a parameter required by the chosen kind is missing.
     """
     if kind not in FILTERS:
         msg = f"unknown filter kind {kind!r}; choose from {FILTERS}"
@@ -70,12 +76,19 @@ def smooth(
     arr = np.asarray(values, dtype=np.float64)
     if kind == "none":
         return arr.copy()
-    if cutoff_hz is None:
-        msg = f"filter kind {kind!r} requires a cutoff_hz"
+    if kind in {"lowpass", "butterworth"}:
+        if cutoff_hz is None:
+            msg = f"filter kind {kind!r} requires a cutoff_hz"
+            raise ValueError(msg)
+        if kind == "lowpass":
+            return lowpass_first_order(arr, dt, cutoff_hz=cutoff_hz)
+        return butterworth_lowpass(arr, dt, cutoff_hz=cutoff_hz, order=order)
+    if window is None:
+        msg = f"filter kind {kind!r} requires a window (in samples)"
         raise ValueError(msg)
-    if kind == "lowpass":
-        return lowpass_first_order(arr, dt, cutoff_hz=cutoff_hz)
-    return butterworth_lowpass(arr, dt, cutoff_hz=cutoff_hz, order=order)
+    if kind == "moving_average":
+        return moving_average(arr, window=window)
+    return savitzky_golay(arr, window=window, polyorder=polyorder)
 
 
 def lowpass_first_order(values: ArrayLike, dt: float, *, cutoff_hz: float) -> NDArray[np.float64]:
@@ -158,6 +171,90 @@ def butterworth_lowpass(
         raise ValueError(msg)
     b, a = _butter_lowpass_coeffs(cutoff_hz, dt, order)
     return _apply_per_column(lambda x: _filtfilt(b, a, x), values)
+
+
+def moving_average(values: ArrayLike, *, window: int) -> NDArray[np.float64]:
+    """Centered (zero-phase) moving-average filter over an odd ``window`` of samples.
+
+    Each output is the mean of the ``window`` samples centered on it; a symmetric window
+    introduces no phase shift and reproduces constants and linear trends in the interior.
+    The signal is reflected at the boundaries so the window stays full near the edges.
+
+    Parameters
+    ----------
+    values : ArrayLike
+        Series of shape ``(N,)`` or ``(N, k)``.
+    window : int
+        Window length in samples; must be odd and positive.
+
+    Returns
+    -------
+    NDArray[np.float64]
+        The smoothed series, same shape as ``values``.
+
+    Raises
+    ------
+    ValueError
+        If ``window`` is not a positive odd integer.
+    """
+    half = _validate_window(window, polyorder=None, n=np.asarray(values).shape[0])
+    kernel = np.full(2 * half + 1, 1.0 / (2 * half + 1))
+    return _apply_per_column(lambda x: _correlate_centered(x, kernel, half), values)
+
+
+def savitzky_golay(values: ArrayLike, *, window: int, polyorder: int = 2) -> NDArray[np.float64]:
+    """Zero-phase Savitzky-Golay filter: a least-squares polynomial fit over a sliding window.
+
+    Each output is the value at the center of a degree-``polyorder`` polynomial fit to the
+    ``window`` samples around it. The symmetric kernel is phase-free and reproduces
+    polynomials up to ``polyorder`` exactly in the interior, so it smooths noise while
+    preserving peaks better than a plain average. The signal is reflected at the boundaries.
+
+    Parameters
+    ----------
+    values : ArrayLike
+        Series of shape ``(N,)`` or ``(N, k)``.
+    window : int
+        Window length in samples; must be odd and greater than ``polyorder``.
+    polyorder : int, optional
+        Polynomial order fit in each window.
+
+    Returns
+    -------
+    NDArray[np.float64]
+        The smoothed series, same shape as ``values``.
+
+    Raises
+    ------
+    ValueError
+        If ``window`` is not odd or not greater than ``polyorder``.
+    """
+    half = _validate_window(window, polyorder=polyorder, n=np.asarray(values).shape[0])
+    offsets = np.arange(-half, half + 1, dtype=np.float64)
+    design = np.vander(offsets, polyorder + 1, increasing=True)  # columns z^0 .. z^polyorder
+    kernel = np.linalg.pinv(design)[0]  # value at the window center; a symmetric kernel
+    return _apply_per_column(lambda x: _correlate_centered(x, kernel, half), values)
+
+
+def _validate_window(window: int, *, polyorder: int | None, n: int) -> int:
+    """Validate an odd window (optionally above ``polyorder``) and return its half-width."""
+    if window < 1 or window % 2 == 0:
+        msg = f"window must be a positive odd number of samples, got {window}"
+        raise ValueError(msg)
+    if polyorder is not None and window <= polyorder:
+        msg = f"window ({window}) must be greater than polyorder ({polyorder})"
+        raise ValueError(msg)
+    return min(window, n if n % 2 == 1 else n - 1) // 2  # clamp to the series length
+
+
+def _correlate_centered(x: NDArray[np.float64], kernel: NDArray[np.float64], half: int) -> NDArray[np.float64]:
+    """Correlate a 1-D signal with a centered, symmetric kernel using reflected edges."""
+    if half == 0:
+        return x.astype(np.float64)
+    pre = x[half:0:-1]
+    post = x[-2 : -half - 2 : -1]
+    extended = np.concatenate([pre, x, post])
+    return np.convolve(extended, kernel, mode="valid")  # symmetric kernel: correlation == convolution
 
 
 def _butter_lowpass_coeffs(cutoff_hz: float, dt: float, order: int) -> tuple[NDArray[np.float64], NDArray[np.float64]]:

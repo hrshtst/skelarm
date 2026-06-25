@@ -15,7 +15,7 @@ A lightweight, physics-based dynamics simulator for a configurable planar robot 
     *   **Note:** Gravity is explicitly ignored as the robot operates on a horizontal plane.
 *   **Control:** Trajectory-tracking laws (joint PD, inverse-dynamics feedforward, computed torque), human-like reaching controllers (virtual spring-damper and reference shaping), and joint-space MPC, configured from one combined TOML scenario and extensible at runtime.
 *   **Tasks:** Reaching to a target, multiple-target reaching with live switching, periodic curve tracing (circle, ellipse, lemniscate, rose), and reference-trajectory tracking in task space or per joint — each a registered `[task].type`.
-*   **Trajectory tools:** From-scratch interpolation (linear, natural cubic spline, barycentric Lagrange) and smoothing filters (first-order low-pass, Butterworth) for resampling recorded references.
+*   **Trajectory tools:** From-scratch interpolation (linear, natural cubic spline, barycentric Lagrange) and smoothing filters (first-order low-pass, Butterworth, moving average, Savitzky–Golay) for resampling recorded references.
 *   **Recording & Replay:** Runs are recorded to a self-contained `*.sklog.npz` state log (geometry + channels + config) that re-runs reproducibly and replays in an analysis player.
 *   **Visualization:**
     *   Static plotting with `matplotlib`.
