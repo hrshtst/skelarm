@@ -2,7 +2,7 @@
 
 This file provides guidance to AI coding agents when working with code in this repository.
 
-`skelarm` is a planar (2D) robot-arm dynamics simulator: a configurable "skeleton" of N links with kinematics (FK/IK), dynamics (inverse/forward via Recursive Newton-Euler), and PyQt6 / Matplotlib visualization. Core modules live in `src/skelarm/` (`skeleton.py`, `kinematics.py`, `dynamics.py`, `canvas.py`, `plotting.py`).
+`skelarm` is a planar (2D) robot-arm dynamics simulator: a configurable "skeleton" of N links with kinematics (FK/IK), dynamics (inverse/forward via Recursive Newton-Euler), and PyQt6 / Matplotlib visualization. `src/skelarm/` is layered: the robot model + physics (`skeleton.py`, `kinematics.py`, `dynamics.py`), a control + scenario layer (`control.py`, `reaching.py`, `mpc.py`, driven from TOML via `scenario.py`, with references built from `trajectory.py` / `curves.py` / `interpolation.py` / `filtering.py`), run recording/replay (`recording.py`), and visualization (`canvas.py`, `simulator.py`, `plotting.py`). Interactive GUI tools live in `tools/` (sharing `tools/_scenario_cli.py`).
 
 ## Commands
 
@@ -22,7 +22,7 @@ First-time setup: `uv sync --all-extras && uv run pre-commit install`.
 
 - Line length is **120** (not 88); double quotes.
 - Every module must start with `from __future__ import annotations` (enforced by ruff isort).
-- Public functions need full type hints and **NumPy-style docstrings**; use `np2typing` for array types.
+- Public functions need full type hints and **NumPy-style docstrings**; type arrays as `numpy.typing.NDArray[np.float64]` (the convention used throughout `src/skelarm/`).
 - ruff runs rule set `"ALL"` with project-specific ignores — run `make format` rather than guessing.
 - Type checkers are **basedpyright** (a pyright fork, basic mode) and **mypy** — `make type-check` runs both, and both must pass.
 
