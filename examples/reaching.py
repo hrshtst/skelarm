@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
-from skelarm import draw_skeleton, load_scenario, plot_trajectory, run_scenario
+from skelarm import draw_skeleton, draw_target, load_scenario, plot_trajectory, run_scenario
 
 
 def main() -> None:
@@ -47,7 +47,7 @@ def main() -> None:
     _, ax = plt.subplots()
     draw_skeleton(ax, arm, title="Reaching simulation")
     plot_trajectory(ax, np.array(xs), np.array(ys), title=None)
-    ax.plot(target[0], target[1], marker="*", color="purple", markersize=15, linestyle="none", label="target")
+    draw_target(ax, target, color=scenario.task.color, tolerance=scenario.task.tolerance, label="target")
     ax.legend()
     plt.show()
 

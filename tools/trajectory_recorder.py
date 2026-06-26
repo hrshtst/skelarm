@@ -259,7 +259,7 @@ class RecorderWindow(QMainWindow):
         """Plot the taught tip path, final pose, and joint angles (blocking)."""
         import matplotlib.pyplot as plt
 
-        from skelarm import draw_skeleton, plot_trajectory
+        from skelarm import draw_skeleton, draw_target, plot_trajectory
 
         tip = self.log.channel("tip")
         q = self.log.channel("q")
@@ -269,15 +269,7 @@ class RecorderWindow(QMainWindow):
         plot_trajectory(ax_path, tip[:, 0], tip[:, 1], title=None)
         if self._task is not None and self._task.target is not None:
             target = np.asarray(self._task.target, dtype=np.float64)
-            ax_path.plot(
-                target[0],
-                target[1],
-                marker="*",
-                color=self._task.color,
-                markersize=14,
-                linestyle="none",
-                label="target",
-            )
+            draw_target(ax_path, target, color=self._task.color, tolerance=self._task.tolerance, label="target")
             ax_path.legend()
         for j in range(q.shape[1]):
             ax_q.plot(times, np.rad2deg(q[:, j]), label=f"j{j + 1}")

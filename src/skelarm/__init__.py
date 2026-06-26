@@ -47,7 +47,7 @@ from .kinematics import (
     compute_jacobian,
 )
 from .mpc import JointSpaceMPC
-from .plotting import draw_skeleton, plot_trajectory
+from .plotting import draw_skeleton, draw_target, plot_trajectory
 from .reaching import (
     AdaptiveReferenceShaping,
     EndpointController,
@@ -141,6 +141,7 @@ __all__ = [
     "controller_types",
     "curve_kinds",
     "draw_skeleton",
+    "draw_target",
     "evaluate_schedule",
     "export_scenario_toml",
     "hello",

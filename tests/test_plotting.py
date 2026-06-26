@@ -10,8 +10,10 @@ os.environ.setdefault("MPLBACKEND", "Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
+from matplotlib.colors import to_rgba
+from matplotlib.patches import Circle
 
-from skelarm.plotting import draw_skeleton, plot_trajectory
+from skelarm.plotting import draw_skeleton, draw_target, plot_trajectory
 from skelarm.skeleton import LinkProp, Skeleton
 
 
@@ -200,3 +202,90 @@ def test_titles_compose_without_clobbering() -> None:
         plt.close(fig)
 
     assert title == "Arm and path"
+
+
+def _dot_and_rings(ax) -> tuple[list, list]:  # noqa: ANN001
+    """Split a target's artists into filled-dot markers and ring outlines (markers + patches)."""
+    dots = [ln for ln in ax.lines if ln.get_marker() == "o" and to_rgba(ln.get_markerfacecolor())[3] > 0]
+    marker_rings = [ln for ln in ax.lines if ln.get_marker() == "o" and to_rgba(ln.get_markerfacecolor())[3] == 0]
+    circle_rings = [p for p in ax.patches if isinstance(p, Circle)]
+    return dots, marker_rings + circle_rings
+
+
+def test_draw_target_default_color_matches_the_player() -> None:
+    """The target color defaults to the GUI/player purple, not matplotlib's '*' default."""
+    from skelarm.plotting import _GOAL_COLOR
+
+    assert _GOAL_COLOR == "purple"  # matches scenario._DEFAULT_TARGET_COLOR and the canvas overlay
+    fig, ax = plt.subplots()
+    try:
+        draw_target(ax, np.array([1.0, 0.5]))
+        dots, _ = _dot_and_rings(ax)
+        assert len(dots) == 1
+        assert to_rgba(dots[0].get_markerfacecolor()) == to_rgba("purple")
+        # No '*' star markers — the player draws a round dot, not a star.
+        assert all(ln.get_marker() != "*" for ln in ax.lines)
+    finally:
+        plt.close(fig)
+
+
+def test_draw_target_active_with_tolerance_is_dot_plus_data_radius_ring() -> None:
+    """An active target with a tolerance is a filled dot inside a hollow ring of that radius."""
+    fig, ax = plt.subplots()
+    try:
+        draw_target(ax, np.array([1.0, 0.5]), tolerance=0.2, color="red")
+        dots, rings = _dot_and_rings(ax)
+        assert len(dots) == 1
+        assert list(dots[0].get_data()[0]) == pytest.approx([1.0])
+        assert list(dots[0].get_data()[1]) == pytest.approx([0.5])
+        circles = [r for r in rings if isinstance(r, Circle)]
+        assert len(circles) == 1
+        circle = circles[0]
+        assert circle.get_radius() == pytest.approx(0.2)  # ring sized to the success tolerance
+        assert circle.center == pytest.approx((1.0, 0.5))
+        assert not circle.get_fill()  # hollow ring
+        assert to_rgba(circle.get_edgecolor()) == to_rgba("red")
+    finally:
+        plt.close(fig)
+
+
+def test_draw_target_active_without_tolerance_uses_a_fixed_ring_marker() -> None:
+    """Without a tolerance there is no data-space circle; a fixed-size ring marker is used."""
+    fig, ax = plt.subplots()
+    try:
+        draw_target(ax, np.array([0.0, 0.0]))
+        dots, rings = _dot_and_rings(ax)
+        assert len(dots) == 1  # the filled center dot
+        assert not any(isinstance(r, Circle) for r in rings)  # no data-space tolerance circle
+        marker_rings = [r for r in rings if not isinstance(r, Circle)]
+        assert len(marker_rings) == 1  # one hollow ring marker
+        assert marker_rings[0].get_markersize() > dots[0].get_markersize()  # ring larger than the dot
+    finally:
+        plt.close(fig)
+
+
+def test_draw_target_inactive_is_a_dashed_ring_without_a_dot() -> None:
+    """An inactive multi-target candidate is a dashed hollow ring with no filled center dot."""
+    fig, ax = plt.subplots()
+    try:
+        draw_target(ax, np.array([1.0, 0.5]), tolerance=0.2, active=False)
+        dots, rings = _dot_and_rings(ax)
+        assert dots == []  # no fill for an inactive candidate
+        circles = [r for r in rings if isinstance(r, Circle)]
+        assert len(circles) == 1
+        assert circles[0].get_linestyle() in ("--", "dashed")  # dashed, like the canvas
+        assert not circles[0].get_fill()
+    finally:
+        plt.close(fig)
+
+
+def test_draw_target_label_appears_in_the_legend() -> None:
+    """A target label is added once so the legend shows a single 'target' entry."""
+    fig, ax = plt.subplots()
+    try:
+        draw_target(ax, np.array([1.0, 0.5]), tolerance=0.2, label="target")
+        labels = [text.get_text() for text in ax.legend().get_texts()]
+    finally:
+        plt.close(fig)
+
+    assert labels.count("target") == 1
