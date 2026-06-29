@@ -211,6 +211,65 @@ def test_force_toggle_hides_arrow(qapp) -> None:  # noqa: ANN001, ARG001
     assert window.canvas.tip_force is None
 
 
+def test_parser_accepts_export_and_fps() -> None:
+    """``--export`` takes an output path and ``--fps`` a frame rate."""
+    args = build_parser().parse_args(["run.sklog.npz", "--export", "out.mp4", "--fps", "24"])
+    assert args.export == Path("out.mp4")
+    assert args.fps == pytest.approx(24.0)
+
+
+@pytest.mark.parametrize("suffix", ["gif", "mp4"])
+def test_export_writes_a_nonempty_animation(qapp, tmp_path: Path, suffix: str) -> None:  # noqa: ANN001, ARG001
+    """Exporting replays the motion to a real video/gif on disk, no GUI shown."""
+    window = PlaybackWindow(_log())
+    out = tmp_path / f"replay.{suffix}"
+    frames = window.export(out, fps=30.0)
+    assert out.exists()
+    assert out.stat().st_size > 0
+    # The 5-frame, 0.4 s log yields several output frames at 30 fps.
+    assert frames > 1
+
+
+def test_export_rejects_unsupported_format(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """An extension other than .mp4/.gif is rejected before any rendering."""
+    window = PlaybackWindow(_log())
+    with pytest.raises(ValueError, match="format"):
+        window.export(tmp_path / "replay.avi")
+
+
+def test_export_renders_at_the_requested_size(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Frames are rendered at the requested square size, not the window layout's size."""
+    import imageio.v3 as iio
+
+    window = PlaybackWindow(_log())
+    out = tmp_path / "replay.mp4"
+    size = 128  # a multiple of 16, so ffmpeg won't rescale the frame
+    window.export(out, size=size)
+    frame = iio.imread(out, index=0)
+    assert frame.shape[0] == size
+    assert frame.shape[1] == size
+
+
+def test_export_runs_headless_via_cli(tmp_path: Path) -> None:
+    """``--export`` runs the tool headless (no window) end-to-end and writes the file."""
+    log_path = tmp_path / "run.sklog.npz"
+    _log().save(log_path)
+    out = tmp_path / "out.gif"
+    script = Path(__file__).resolve().parents[1] / "tools" / "player.py"
+    # Deliberately do NOT pass QT_QPA_PLATFORM: export mode must arrange headless rendering itself.
+    env = {k: v for k, v in os.environ.items() if k != "QT_QPA_PLATFORM"}
+    result = subprocess.run(  # noqa: S603  # trusted: our own interpreter and script path
+        [sys.executable, str(script), str(log_path), "--export", str(out), "--fps", "20"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert out.exists()
+    assert out.stat().st_size > 0
+
+
 def test_runs_as_a_standalone_script() -> None:
     """Running the file directly (script mode) must resolve all of its imports."""
     script = Path(__file__).resolve().parents[1] / "tools" / "player.py"

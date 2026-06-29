@@ -10,17 +10,26 @@ controller's tracking error) without re-running the simulation. When the log
 recorded an external tip force (``ext_force`` channel, as the dynamics simulator
 does), it is drawn as a red arrow at the tip and toggled by "Show external force".
 
+The replay can also be exported headlessly (no GUI window) to an ``.mp4`` video or an
+animated ``.gif`` with ``--export``: each frame is rendered from the same canvas the
+interactive player uses — task overlay, centers of mass, and external-force arrow
+included — and encoded with ``imageio``.
+
 Usage::
 
     uv run python tools/player.py run.sklog.npz
     uv run python tools/player.py run.sklog.npz --show-com --speed 0.5
+    uv run python tools/player.py run.sklog.npz --export run.mp4          # headless mp4
+    uv run python tools/player.py run.sklog.npz --export run.gif --fps 24  # headless gif
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from PyQt6.QtCore import QSignalBlocker, Qt, QTimer
@@ -42,8 +51,16 @@ from skelarm import SkelarmCanvas, StateLog, Task, compute_forward_kinematics
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # allow `tools.` imports when run as a script
 from tools._scenario_cli import task_overlays
 
+if TYPE_CHECKING:
+    from collections.abc import Buffer
+
+    from numpy.typing import NDArray
+
 _TIMER_MS = 20  # playback/render period in milliseconds
 _PANEL_WIDTH_PX = 300  # fixed side-panel width so the varying time/frame readout can't resize it
+_EXPORT_FPS = 30.0  # default output frame rate for --export
+_EXPORT_SIZE_PX = 800  # square frame size (px) for --export; a multiple of 16 keeps mp4 codecs happy
+_EXPORT_SUFFIXES = (".mp4", ".gif")  # --export formats, selected from the output path extension
 
 
 class PlaybackWindow(QMainWindow):
@@ -251,6 +268,86 @@ class PlaybackWindow(QMainWindow):
         figure.tight_layout()
         return figure
 
+    def export(self, path: str | Path, *, fps: float = _EXPORT_FPS, size: int = _EXPORT_SIZE_PX) -> int:
+        """Render the whole replay to a video / animated GIF on disk, no window shown.
+
+        The motion is reconstructed from the log and drawn by the same canvas the
+        interactive player uses, so the exported frames include the task overlay,
+        the centers of mass, and any external-force arrow exactly as on screen. The
+        output format is taken from ``path``'s extension (``.mp4`` or ``.gif``).
+        Frames are resampled at ``fps`` over the recording's timeline (scaled by
+        :attr:`speed`), so the file plays back at the chosen speed. Encoding streams
+        frame by frame through ``imageio``; no per-frame images are left on disk.
+
+        Parameters
+        ----------
+        path : str or pathlib.Path
+            Output file. Its extension selects the format and must be ``.mp4`` or ``.gif``.
+        fps : float, optional
+            Output frame rate in frames per second (default: 30).
+        size : int, optional
+            Side length in pixels of the (square) rendered frame (default: 800).
+
+        Returns
+        -------
+        int
+            The number of frames written.
+
+        Raises
+        ------
+        ValueError
+            If ``path``'s extension is unsupported, ``fps`` is not positive, or the
+            log has no frames.
+        """
+        import imageio.v2 as imageio
+
+        path = Path(path)
+        if path.suffix.lower() not in _EXPORT_SUFFIXES:
+            msg = f"unsupported export format {path.suffix!r}; use one of {', '.join(_EXPORT_SUFFIXES)}"
+            raise ValueError(msg)
+        if fps <= 0:
+            msg = f"fps must be positive, got {fps}"
+            raise ValueError(msg)
+        if self._n == 0:
+            msg = "log has no frames to export"
+            raise ValueError(msg)
+
+        # Pin the canvas to an exact square: a plain resize() is overridden by the window
+        # layout, leaving non-multiple-of-16 dimensions that ffmpeg would silently rescale.
+        self.canvas.setFixedSize(size, size)
+        times = self._times
+        t0, t_end = float(times[0]), float(times[-1])
+        span = t_end - t0
+        speed = max(self._speed, 1e-9)  # guard against a zero/negative --speed
+        # One output frame per 1/fps of real time; the log clock advances by `speed` per real second.
+        n_frames = 1 if span <= 0 else int(np.floor(span / speed * fps)) + 1
+        # The ffmpeg (mp4) backend takes a frame rate; the pillow (gif) backend takes a per-frame
+        # duration in milliseconds and an infinite loop count.
+        if path.suffix.lower() == ".mp4":
+            writer = imageio.get_writer(path, fps=fps)
+        else:
+            writer = imageio.get_writer(path, duration=1000.0 / fps, loop=0)
+        with writer:
+            for k in range(n_frames):
+                log_t = t0 + (k / fps) * speed
+                index = int(np.clip(np.searchsorted(times, log_t, side="right") - 1, 0, self._n - 1))
+                self._show_frame(index)
+                writer.append_data(self._grab_frame_rgb())
+        return n_frames
+
+    def _grab_frame_rgb(self) -> NDArray[np.uint8]:
+        """Grab the current canvas as an ``(H, W, 3)`` uint8 RGB array (offscreen-safe)."""
+        from PyQt6.QtGui import QImage
+
+        image = self.canvas.grab().toImage().convertToFormat(QImage.Format.Format_RGBA8888)
+        height, width = image.height(), image.width()
+        bits = image.constBits()
+        assert bits is not None  # populated for a non-null grabbed image
+        bits.setsize(height * image.bytesPerLine())
+        # `bits` is a sip.voidptr exposing the buffer protocol at runtime; cast for the type checker.
+        buffer = np.frombuffer(cast("Buffer", bits), dtype=np.uint8).reshape((height, image.bytesPerLine() // 4, 4))
+        return np.ascontiguousarray(buffer[:, :width, :3])
+
     def _show_frame(self, index: int) -> None:
         """Pose the arm to frame ``index`` and refresh the slider, label, and canvas."""
         index = int(np.clip(index, 0, self._n - 1))
@@ -351,25 +448,49 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("logfile", type=Path, help="path to a .sklog.npz state log")
     parser.add_argument("--show-com", action="store_true", help="overlay each link's center of mass")
     parser.add_argument("--speed", type=float, default=1.0, help="initial playback speed multiplier (default: 1.0)")
+    parser.add_argument(
+        "--export",
+        type=Path,
+        metavar="PATH",
+        help="render the replay to PATH (.mp4 or .gif) headlessly instead of opening the GUI",
+    )
+    parser.add_argument(
+        "--fps",
+        type=float,
+        default=_EXPORT_FPS,
+        help=f"output frame rate for --export (default: {_EXPORT_FPS:g})",
+    )
     return parser
 
 
 def main() -> None:
-    """Parse arguments, load the log, and run the player."""
+    """Parse arguments, load the log, and run the player (or export it headlessly)."""
     parser = build_parser()
     args = parser.parse_args()
     if not args.logfile.exists():
         parser.error(f"log file not found: {args.logfile}")
+    if args.export is not None and args.export.suffix.lower() not in _EXPORT_SUFFIXES:
+        parser.error(f"unsupported export format {args.export.suffix!r}; use one of {', '.join(_EXPORT_SUFFIXES)}")
     try:
         log = StateLog.load(args.logfile)
     except (OSError, ValueError, KeyError) as exc:
         parser.error(f"could not load {args.logfile}: {exc}")
+
+    # Export mode renders offscreen so no GUI window is ever shown (headless).
+    if args.export is not None:
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
     app = QApplication(sys.argv)
     try:
         window = PlaybackWindow(log, show_com=args.show_com, speed=args.speed)
     except ValueError as exc:
         parser.error(str(exc))
+
+    if args.export is not None:
+        frames = window.export(args.export, fps=args.fps)
+        print(f"wrote {frames} frames to {args.export}")
+        return
+
     window.show()
     sys.exit(app.exec())
 

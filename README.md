@@ -16,7 +16,7 @@ A lightweight, physics-based dynamics simulator for a configurable planar robot 
 *   **Control:** Trajectory-tracking laws (joint PD, inverse-dynamics feedforward, computed torque), human-like reaching controllers (virtual spring-damper and reference shaping), and joint-space MPC, configured from one combined TOML scenario and extensible at runtime.
 *   **Tasks:** Reaching to a target, multiple-target reaching with live switching, periodic curve tracing (circle, ellipse, lemniscate, rose), and reference-trajectory tracking in task space or per joint — each a registered `[task].type`.
 *   **Trajectory tools:** From-scratch interpolation (linear, natural cubic spline, barycentric Lagrange) and smoothing filters (first-order low-pass, Butterworth, moving average, Savitzky–Golay) for resampling recorded references.
-*   **Recording & Replay:** Runs are recorded to a self-contained `*.sklog.npz` state log (geometry + channels + config) that re-runs reproducibly and replays in an analysis player.
+*   **Recording & Replay:** Runs are recorded to a self-contained `*.sklog.npz` state log (geometry + channels + config) that re-runs reproducibly, replays in an analysis player, and exports headlessly to an `.mp4` or animated `.gif`.
 *   **Visualization:**
     *   Static plotting with `matplotlib`.
     *   Interactive `PyQt6` GUIs: pose by joint sliders (FK) or click/drag the tip (IK); real-time dynamics and per-task simulators where you drag to apply disturbance forces; and a timeline player that draws the task overlay (target, curve, or reference).
@@ -121,6 +121,13 @@ uv run python tools/player.py run.sklog.npz
 ```
 
 Scrub the timeline, play/pause at a chosen speed (`--speed`), toggle the centers of mass (`--show-com`), and open per-channel plots with the **Plot channels…** button. When the log recorded an external tip force, it is drawn as a red arrow at the tip (toggle it with **Show external force**). The log embeds the robot geometry, so the file replays on its own. When the log embeds a task (any scenario simulator records it), the player also draws the task context — the target (the active one emphasized for multi-target tasks), the periodic curve, or the reference trajectory (the per-joint reference is shown in task space via forward kinematics) — each toggled with **Show target(s)** / **Show reference**.
+
+Pass `--export PATH` to render the replay headlessly (no GUI window) to a video or animated GIF instead of opening the player — the format is taken from the extension (`.mp4` or `.gif`), each frame is drawn by the same canvas (task overlay, centers of mass, and force arrow included), and `--fps` sets the output frame rate (`--speed` and `--show-com` apply too):
+
+```bash
+uv run python tools/player.py run.sklog.npz --export run.mp4            # headless mp4
+uv run python tools/player.py run.sklog.npz --export run.gif --fps 24   # headless animated gif
+```
 
 ### Teaching a Trajectory
 
