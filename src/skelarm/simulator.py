@@ -36,6 +36,7 @@ _TIMER_MS = 20  # GUI/render period in milliseconds
 _SUBSTEPS = 4  # physics steps per render tick (integration stability)
 _DEFAULT_STIFFNESS = 0.1  # N/m: external tip force = stiffness * (cursor - tip)
 _ARROW_COLOR = QColor(220, 0, 0)  # red
+_PANEL_WIDTH_PX = 300  # fixed side-panel width so the varying time readout can't resize it
 
 
 class SimulatorCanvas(SkelarmCanvas):
@@ -236,7 +237,9 @@ class SkelarmSimulator(QMainWindow):
         layout.addWidget(self.canvas, stretch=3)
 
         panel = QWidget()
+        panel.setFixedWidth(_PANEL_WIDTH_PX)  # keep a constant width; the time readout won't resize it
         controls = QVBoxLayout(panel)
+        self.controls_panel = panel  # exposed for sizing (fixed width) and tests
         self.controls_layout = controls  # exposed so subclasses can add_control
         controls.addWidget(QLabel("<b>Simulation</b>"))
         hint = QLabel("Press and drag in the canvas to pull the tip with a force.")
@@ -244,6 +247,7 @@ class SkelarmSimulator(QMainWindow):
         controls.addWidget(hint)
 
         self.time_label = QLabel()
+        self.time_label.setWordWrap(True)  # wrap rather than clip if the readout outgrows the fixed width
         time_font = self.time_label.font()
         time_font.setPointSize(time_font.pointSize() + 6)
         time_font.setBold(True)

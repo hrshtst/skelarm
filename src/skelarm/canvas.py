@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 _MARGIN_PX = 20.0  # Empty border kept between the arm and the widget edge.
 _DEFAULT_SCALE = 100.0  # Pixels per meter, used before the reach/size are known.
 _ARROW_HEAD_PX = 10.0  # Length of the arrowhead strokes, in pixels.
+_PANEL_WIDTH_PX = 300  # Fixed side-panel width so its content can't resize it.
 
 # Task-overlay marker styling, shared by the interactive simulators and the player.
 _GOAL_COLOR = QColor(170, 0, 170)  # purple (task target marker)
@@ -363,7 +364,9 @@ class SkelarmViewer(QMainWindow):
 
         # Controls panel
         controls_panel = QWidget()
+        controls_panel.setFixedWidth(_PANEL_WIDTH_PX)  # keep a constant width regardless of content
         controls_layout = QVBoxLayout(controls_panel)
+        self.controls_panel = controls_panel  # exposed for sizing (fixed width) and tests
         self.controls_layout = controls_layout  # exposed so subclasses can add_control
 
         controls_label = QLabel("<b>Joint Controls</b>")

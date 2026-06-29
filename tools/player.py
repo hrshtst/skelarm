@@ -43,6 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # allow `tools.` i
 from tools._scenario_cli import task_overlays
 
 _TIMER_MS = 20  # playback/render period in milliseconds
+_PANEL_WIDTH_PX = 300  # fixed side-panel width so the varying time/frame readout can't resize it
 
 
 class PlaybackWindow(QMainWindow):
@@ -105,10 +106,13 @@ class PlaybackWindow(QMainWindow):
         layout.addWidget(self.canvas, stretch=3)
 
         panel = QWidget()
+        panel.setFixedWidth(_PANEL_WIDTH_PX)  # keep a constant width; the time/frame readout won't resize it
         controls = QVBoxLayout(panel)
+        self.controls_panel = panel  # exposed for sizing (fixed width) and tests
         controls.addWidget(QLabel(f"<b>Replay</b> — {log.producer or 'state log'}"))
 
         self.time_label = QLabel()
+        self.time_label.setWordWrap(True)  # wrap rather than clip if the readout outgrows the fixed width
         time_font = self.time_label.font()
         time_font.setPointSize(time_font.pointSize() + 4)
         time_font.setBold(True)

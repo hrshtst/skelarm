@@ -50,6 +50,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 _TIMER_MS = 20  # GUI refresh / update period (ms)
+_PANEL_WIDTH_PX = 300  # fixed side-panel width so its content can't resize it
 _SUBSTEPS = 4  # dynamics-mode physics substeps per refresh tick
 _DRAG_STIFFNESS = 30.0  # N/m for the mouse drag (dynamics mode)
 _FRICTION = 0.2  # joint viscous friction (dynamics mode; "some by default")
@@ -127,7 +128,9 @@ class RecorderWindow(QMainWindow):
         layout.addWidget(self.canvas, stretch=3)
 
         panel = QWidget()
+        panel.setFixedWidth(_PANEL_WIDTH_PX)  # keep a constant width regardless of the status text
         controls = QVBoxLayout(panel)
+        self.controls_panel = panel  # exposed for sizing (fixed width) and tests
         controls.addWidget(QLabel(f"<b>Trajectory recorder</b> — {mode} mode"))
         hint = QLabel("Grab the tip (left-drag) to teach a motion. Recording starts on the first grab.")
         hint.setWordWrap(True)

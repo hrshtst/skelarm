@@ -316,3 +316,16 @@ def test_reset_restarts_active_recording(qapp) -> None:  # noqa: ANN001, ARG001
     assert sim.state_log is not None
     assert len(sim.state_log) == 1
     assert sim.state_log.times[0] == pytest.approx(0.0)
+
+
+def test_control_panel_width_is_fixed_regardless_of_time_text(qapp) -> None:  # noqa: ANN001, ARG001
+    """The side panel keeps a constant width even as the time readout grows."""
+    from skelarm.simulator import _PANEL_WIDTH_PX
+
+    sim = _simulator()
+    panel = sim.controls_panel
+    assert panel.minimumWidth() == panel.maximumWidth() == _PANEL_WIDTH_PX
+
+    # A long time readout (the widest control) must not widen the fixed panel.
+    sim.time_label.setText("t = 123456.78 s")
+    assert panel.minimumWidth() == panel.maximumWidth() == _PANEL_WIDTH_PX

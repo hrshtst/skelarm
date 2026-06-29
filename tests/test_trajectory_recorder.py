@@ -115,6 +115,15 @@ def test_dynamics_enforce_limits_toggles_the_hard_stop(qapp) -> None:  # noqa: A
     assert free._upper is None  # noqa: SLF001
 
 
+def test_control_panel_width_is_fixed(qapp) -> None:  # noqa: ANN001, ARG001
+    """The side panel keeps a constant width, independent of the status text."""
+    from tools.trajectory_recorder import _PANEL_WIDTH_PX
+
+    window = RecorderWindow(Skeleton.from_toml(_FOUR_DOF), mode="ik")
+    panel = window.controls_panel
+    assert panel.minimumWidth() == panel.maximumWidth() == _PANEL_WIDTH_PX
+
+
 def test_no_joint_limits_flag_disables_enforcement() -> None:
     """The ``--no-joint-limits`` flag parses and defaults to enforcing limits."""
     parser = build_parser()

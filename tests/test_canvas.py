@@ -40,6 +40,16 @@ def test_sliders_respect_joint_limits(qapp) -> None:  # noqa: ANN001, ARG001
     assert (viewer.sliders[1].minimum(), viewer.sliders[1].maximum()) == (-45, 45)
 
 
+def test_control_panel_width_is_fixed(qapp) -> None:  # noqa: ANN001, ARG001
+    """The joint-controls panel keeps a constant width, independent of its content."""
+    from skelarm.canvas import _PANEL_WIDTH_PX, SkelarmViewer
+
+    link_props = [LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi)]
+    viewer = SkelarmViewer(Skeleton(link_props))
+    panel = viewer.controls_panel
+    assert panel.minimumWidth() == panel.maximumWidth() == _PANEL_WIDTH_PX
+
+
 def test_slider_range_rounds_inward_to_stay_within_limits(qapp) -> None:  # noqa: ANN001, ARG001
     """Fractional limits must round inward so the slider can't exceed the enforced range."""
     from skelarm.canvas import SkelarmViewer

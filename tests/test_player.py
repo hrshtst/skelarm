@@ -105,6 +105,19 @@ def test_player_starts_at_first_frame(qapp) -> None:  # noqa: ANN001, ARG001
     assert (window.slider.minimum(), window.slider.maximum()) == (0, len(log) - 1)
 
 
+def test_control_panel_width_is_fixed_regardless_of_time_text(qapp) -> None:  # noqa: ANN001, ARG001
+    """The side panel keeps a constant width even as the time/frame readout grows."""
+    from tools.player import _PANEL_WIDTH_PX
+
+    window = PlaybackWindow(_log())
+    panel = window.controls_panel
+    assert panel.minimumWidth() == panel.maximumWidth() == _PANEL_WIDTH_PX
+
+    # A long time/frame readout (the widest control) must not widen the fixed panel.
+    window.time_label.setText("t = 123456.78 s   (frame 999999/999999)")
+    assert panel.minimumWidth() == panel.maximumWidth() == _PANEL_WIDTH_PX
+
+
 def test_set_frame_updates_pose(qapp) -> None:  # noqa: ANN001, ARG001
     """Selecting a frame drives the reconstructed arm to that recorded pose."""
     log = _log()
