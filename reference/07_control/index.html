@@ -1,0 +1,2129 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A simple dynamics simulator for a configurable planar robot arm.">
+      
+      
+      
+      
+        <link rel="prev" href="../06_numerical_inverse_kinematics/">
+      
+      
+        <link rel="next" href="../08_reaching_control/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Trajectory Tracking Control - Skelarm Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../stylesheets/mermaid-zoom.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="purple">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#trajectory-tracking-control" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Skelarm Documentation" class="md-header__button md-logo" aria-label="Skelarm Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Skelarm Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Trajectory Tracking Control
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="purple"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="lime"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/hrshtst/skelarm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    hrshtst/skelarm
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+  Theory Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/robot_configuration/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../api/architecture/" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Skelarm Documentation" class="md-nav__button md-logo" aria-label="Skelarm Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Skelarm Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/hrshtst/skelarm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    hrshtst/skelarm
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Theory Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Theory Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../01_kinematics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kinematics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../02_differential_kinematics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Differential Kinematics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../03_inverse_dynamics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inverse Dynamics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../04_forward_dynamics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Forward Dynamics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../05_numerical_methods/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Numerical Methods
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../06_numerical_inverse_kinematics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Numerical Inverse Kinematics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trajectory Tracking Control
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trajectory Tracking Control
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-trajectory-planning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Trajectory planning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-task-space-to-joint-space-conversion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Task-space to joint-space conversion
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Task-space to joint-space conversion">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ik-based-position-conversion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IK-based position conversion
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resolved-motion-rate-conversion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resolved motion rate conversion
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-joint-space-trajectory-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Joint-space trajectory tracking
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Joint-space trajectory tracking">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#direct-joint-space-pd-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Direct joint-space PD control
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#inverse-dynamics-feedforward-plus-feedback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inverse-dynamics feedforward plus feedback
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#computed-torque-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Computed torque control
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#model-predictive-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model predictive control
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-implementation-in-skelarm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Implementation in skelarm
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../08_reaching_control/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reaching Control
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../09_trajectory_filtering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trajectory Filtering & Interpolation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/robot_configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Robot Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/control_configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Control Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/defining_a_task/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Defining a Task
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/defining_a_controller/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Defining a Controller
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/joint_limits/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Joint Limits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/skeleton/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skeleton
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/kinematics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kinematics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/dynamics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dynamics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/trajectory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trajectory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/curves/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Curves
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/interpolation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interpolation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/filtering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Filtering
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/control/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Control
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/reaching/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reaching
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/mpc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MPC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/scenario/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scenario
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/recording/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recording
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/plotting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plotting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/canvas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Canvas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/simulator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-trajectory-planning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Trajectory planning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-task-space-to-joint-space-conversion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Task-space to joint-space conversion
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Task-space to joint-space conversion">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ik-based-position-conversion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IK-based position conversion
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resolved-motion-rate-conversion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resolved motion rate conversion
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-joint-space-trajectory-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Joint-space trajectory tracking
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Joint-space trajectory tracking">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#direct-joint-space-pd-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Direct joint-space PD control
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#inverse-dynamics-feedforward-plus-feedback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inverse-dynamics feedforward plus feedback
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#computed-torque-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Computed torque control
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#model-predictive-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model predictive control
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-implementation-in-skelarm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Implementation in skelarm
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="trajectory-tracking-control">Trajectory Tracking Control</h1>
+<p>This chapter collects the control techniques needed to track planned robot-arm
+motion in <code>skelarm</code>. Unlike the following reaching chapter, it does not assume a
+specific goal such as moving the hand to a point. The reference may come from any
+task: drawing a curve, tracking a sampled demonstration, following a joint-space
+test trajectory, or reaching a target through a planned path.</p>
+<p>The usual pipeline is:</p>
+<ol>
+<li>Plan a desired task-space or joint-space trajectory.</li>
+<li>Convert task-space references into joint-space references if needed.</li>
+<li>Track the joint-space reference with a torque controller.</li>
+</ol>
+<p>The endpoint trajectory notation is</p>
+<div class="arithmatex">\[
+p_r(t) =
+\begin{bmatrix}
+p_{r,x}(t) \\
+p_{r,y}(t)
+\end{bmatrix},
+\qquad
+p(q) =
+\begin{bmatrix}
+x(q) \\
+y(q)
+\end{bmatrix},
+\]</div>
+<p>where <span class="arithmatex">\(p_r(t)\)</span> is the desired task-space reference and <span class="arithmatex">\(p(q)\)</span> is the endpoint
+position from forward kinematics. A reaching task is one important application:
+choose <span class="arithmatex">\(p_r(t)\)</span> to move from the initial endpoint <span class="arithmatex">\(p_0\)</span> to the target <span class="arithmatex">\(p^\ast\)</span>,
+then track the resulting reference with the methods below.</p>
+<h2 id="1-trajectory-planning">1. Trajectory planning</h2>
+<p>A trajectory planner creates references that are smooth enough for the controller
+and dynamics. For a task-space path from <span class="arithmatex">\(p_0\)</span> to <span class="arithmatex">\(p_1\)</span>, a common form is</p>
+<div class="arithmatex">\[
+p_r(t) = p_0 + s(t)(p_1 - p_0),
+\qquad
+s(0)=0,\quad s(T)=1.
+\]</div>
+<p>The scalar schedule <span class="arithmatex">\(s(t)\)</span> controls endpoint velocity and acceleration:</p>
+<ul>
+<li><strong>Linear interpolation</strong> uses <span class="arithmatex">\(s=t/T\)</span>. It is easy, but has velocity jumps at
+  the start and end.</li>
+<li><strong>Cubic smoothing</strong> uses <span class="arithmatex">\(s=3u^2-2u^3\)</span> with <span class="arithmatex">\(u=t/T\)</span>. It gives zero endpoint
+  velocity.</li>
+<li><strong>Quintic smoothing</strong> uses <span class="arithmatex">\(s=10u^3-15u^4+6u^5\)</span>. It gives zero endpoint
+  velocity and acceleration.</li>
+<li><strong>Minimum-jerk profiles</strong> minimize the integral of squared jerk. For the
+  rest-to-rest point-to-point problem above, the solution is mathematically the
+  same quintic time law as quintic smoothing:</li>
+</ul>
+<div class="arithmatex">\[
+\min_{p_r(t)}
+\int_0^T \left\|\dddot{p}_r(t)\right\|^2\,dt
+\]</div>
+<p>subject to</p>
+<div class="arithmatex">\[
+p_r(0)=p_0,\quad p_r(T)=p_1,\quad
+\dot{p}_r(0)=\dot{p}_r(T)=0,\quad
+\ddot{p}_r(0)=\ddot{p}_r(T)=0.
+\]</div>
+<p>With these boundary conditions,</p>
+<div class="arithmatex">\[
+p_r(t)=p_0+\left(10u^3-15u^4+6u^5\right)(p_1-p_0),
+\qquad u=t/T.
+\]</div>
+<p>In the current <code>skelarm</code> trajectory-planning problem, therefore, a <code>quintic</code>
+schedule and a rest-to-rest <code>minimum_jerk</code> schedule can share the same
+implementation. They become distinct when the problem statement changes: for
+example, if endpoint velocity or acceleration is non-zero, if multiple via-points
+or multiple movement segments are optimized together, if segment durations are
+also optimized, or if the objective includes task constraints such as obstacle
+avoidance or effort penalties. In those cases, quintic interpolation is a local
+polynomial construction, while minimum jerk is an optimization problem whose
+solution may require solving for polynomial coefficients or a larger trajectory
+optimization.</p>
+<p>The planned reference should provide at least position and velocity. Acceleration
+is needed for inverse-dynamics feedforward and computed torque control:</p>
+<div class="arithmatex">\[
+p_r(t), \qquad \dot{p}_r(t), \qquad \ddot{p}_r(t).
+\]</div>
+<p>Joint-space trajectories can be planned in the same way by replacing <span class="arithmatex">\(p_r\)</span> with
+<span class="arithmatex">\(q_r\)</span>. That avoids inverse kinematics during tracking, but it does not directly
+shape the endpoint path.</p>
+<h2 id="2-task-space-to-joint-space-conversion">2. Task-space to joint-space conversion</h2>
+<p><code>skelarm</code> actuates joints. A task-space trajectory must therefore become a joint
+reference before a joint torque controller can track it.</p>
+<h3 id="ik-based-position-conversion">IK-based position conversion</h3>
+<p>At each sample time, solve</p>
+<div class="arithmatex">\[
+p(q_r(t)) \approx p_r(t)
+\]</div>
+<p>with <code>compute_inverse_kinematics</code>. The previous solution is the best seed for the
+next sample:</p>
+<div class="arithmatex">\[
+q_r(t_{k+1}) =
+\operatorname{IK}\left(p_r(t_{k+1});\ q_0=q_r(t_k)\right).
+\]</div>
+<p>This gives a feasible position reference and naturally respects the joint limits
+enforced by the IK solver. <code>skelarm</code> implements this conversion as
+<code>ik_joint_reference</code>, which warm-starts each solve from the previous solution and
+fills <span class="arithmatex">\(\dot{q}_r\)</span> and <span class="arithmatex">\(\ddot{q}_r\)</span> by finite differences, returning a
+<code>SampledJointReference</code> that a tracking controller reads by linear interpolation.</p>
+<p>Warm-starting also preserves joint-reference continuity. Redundant arms can reach
+the same endpoint with multiple postures; abrupt posture switching would give a
+valid endpoint trajectory but a poor joint trajectory, and seeding each solve from
+the previous solution keeps the posture from jumping.</p>
+<h3 id="resolved-motion-rate-conversion">Resolved motion rate conversion</h3>
+<p>Resolved motion rate control converts task velocity into joint velocity:</p>
+<div class="arithmatex">\[
+\dot{q}_r = J^\#(q_r)\dot{p}_r,
+\]</div>
+<p>where <span class="arithmatex">\(J^\#\)</span> is a pseudoinverse or damped pseudoinverse. For the endpoint task,
+a stable default is</p>
+<div class="arithmatex">\[
+\dot{q}_r =
+J^{T}\left(JJ^{T}+\mu I_2\right)^{-1}\dot{p}_r.
+\]</div>
+<p>Then integrate <span class="arithmatex">\(\dot{q}_r\)</span> forward in time. This method can produce smoother
+joint references than independent per-sample IK when the time step is small, but
+it can drift from the desired task path. <code>skelarm</code>'s <code>resolved_rate_joint_reference</code>
+adds task-space feedback to correct that drift,</p>
+<div class="arithmatex">\[
+\dot{q}_r =
+J^\#\left(\dot{p}_r + K_{\mathrm{task}}(p_r - p(q_r))\right),
+\]</div>
+<p>exposing the damping <span class="arithmatex">\(\mu\)</span> as <code>damping</code> and <span class="arithmatex">\(K_{\mathrm{task}}\)</span> as <code>k_task</code>.</p>
+<p>This is velocity-level control, not torque control. In a dynamic simulation it is
+used to generate <span class="arithmatex">\(q_r(t)\)</span> and <span class="arithmatex">\(\dot{q}_r(t)\)</span> for a lower-level torque controller.</p>
+<h2 id="3-joint-space-trajectory-tracking">3. Joint-space trajectory tracking</h2>
+<p>After conversion, the tracking controller receives <span class="arithmatex">\(q_r(t)\)</span> and often
+<span class="arithmatex">\(\dot{q}_r(t)\)</span>, <span class="arithmatex">\(\ddot{q}_r(t)\)</span>. The output is the joint torque vector <span class="arithmatex">\(\tau\)</span>
+passed to <code>compute_forward_dynamics</code> or <code>simulate_robot</code>.</p>
+<h3 id="direct-joint-space-pd-control">Direct joint-space PD control</h3>
+<p>The simplest dynamic controller is</p>
+<div class="arithmatex">\[
+\tau =
+K_p(q_r-q) + K_d(\dot{q}_r-\dot{q}).
+\]</div>
+<p><span class="arithmatex">\(K_p\)</span> and <span class="arithmatex">\(K_d\)</span> are positive diagonal gain matrices. <code>skelarm</code> provides it as the
+<code>JointPD</code> controller, which is callable as a <code>simulate_robot</code> torque callback and
+also runs through the fixed-step <code>simulate_controlled</code> loop. It does not compensate
+for the arm's inertia or Coriolis terms, so the same gains can behave differently
+across configurations.</p>
+<h3 id="inverse-dynamics-feedforward-plus-feedback">Inverse-dynamics feedforward plus feedback</h3>
+<p>If a full joint reference is available, inverse dynamics can compute the torque
+that would realize the reference motion in the nominal model:</p>
+<div class="arithmatex">\[
+\tau_{\mathrm{ff}}
+=
+H(q_r)\ddot{q}_r + b(q_r,\dot{q}_r).
+\]</div>
+<p>Then add feedback:</p>
+<div class="arithmatex">\[
+\tau =
+\tau_{\mathrm{ff}}
++ K_p(q_r-q)
++ K_d(\dot{q}_r-\dot{q}).
+\]</div>
+<p><code>skelarm</code> provides this as <code>InverseDynamicsFeedforwardPD</code>, which holds a separate
+clone of the skeleton, sets its <code>q</code>, <code>dq</code>, and <code>ddq</code> to the reference state, and
+runs <code>compute_inverse_dynamics</code> to read the feedforward <code>tau</code>. This is useful when
+the planned trajectory is trusted and the feedback term only needs to correct
+tracking error.</p>
+<h3 id="computed-torque-control">Computed torque control</h3>
+<p>Computed torque control uses the current model to choose a desired joint
+acceleration</p>
+<div class="arithmatex">\[
+v =
+\ddot{q}_r
++ K_d(\dot{q}_r-\dot{q})
++ K_p(q_r-q),
+\]</div>
+<p>then commands</p>
+<div class="arithmatex">\[
+\tau = H(q)v + b(q,\dot{q}).
+\]</div>
+<p>With an exact model and no torque saturation, the tracking error follows the
+linear second-order system</p>
+<div class="arithmatex">\[
+\ddot{e}_q + K_d\dot{e}_q + K_p e_q = 0,
+\qquad
+e_q=q_r-q.
+\]</div>
+<p><code>skelarm</code> provides this as the <code>ComputedTorque</code> controller, which forms <span class="arithmatex">\(H(q)\)</span> with
+<code>compute_mass_matrix</code> and <span class="arithmatex">\(b(q,\dot{q})\)</span> with <code>compute_coriolis_gravity_vector</code>.</p>
+<h3 id="model-predictive-control">Model predictive control</h3>
+<p>Model predictive control (MPC) is another model-based tracking method, but it is
+not the same as computed torque control. Computed torque chooses an instantaneous
+model-cancelling torque. MPC repeatedly solves a finite-horizon optimization
+problem, applies only the first control input, then replans from the next measured
+state.</p>
+<p>A simple <code>skelarm</code> formulation can start in joint space. Define the discrete
+state and input as</p>
+<div class="arithmatex">\[
+z_k =
+\begin{bmatrix}
+q_k \\
+\dot{q}_k
+\end{bmatrix},
+\qquad
+u_k = \tau_k.
+\]</div>
+<p>Using a fixed control interval <span class="arithmatex">\(\Delta t\)</span>, the prediction model can use
+<code>compute_forward_dynamics</code>:</p>
+<div class="arithmatex">\[
+\ddot{q}_k = \operatorname{FD}(q_k,\dot{q}_k,\tau_k),
+\]</div>
+<p>with a simple semi-implicit Euler update</p>
+<div class="arithmatex">\[
+\dot{q}_{k+1} = \dot{q}_k + \Delta t\,\ddot{q}_k,
+\qquad
+q_{k+1} = q_k + \Delta t\,\dot{q}_{k+1}.
+\]</div>
+<p>For a horizon of <span class="arithmatex">\(N\)</span> steps, a basic tracking objective is</p>
+<div class="arithmatex">\[
+\begin{aligned}
+\min_{\tau_0,\dots,\tau_{N-1}}\quad
+&amp;\sum_{k=0}^{N-1}
+\left(
+e_{q,k}^{T}Q_q e_{q,k}
++ e_{\dot{q},k}^{T}Q_{\dot{q}} e_{\dot{q},k}
++ \tau_k^{T}R\tau_k
+\right)
++ e_{q,N}^{T}Q_f e_{q,N},
+\end{aligned}
+\]</div>
+<p>where</p>
+<div class="arithmatex">\[
+e_{q,k}=q_k-q_{r,k},
+\qquad
+e_{\dot{q},k}=\dot{q}_k-\dot{q}_{r,k}.
+\]</div>
+<p><code>skelarm</code>'s <code>JointSpaceMPC</code> uses symmetric torque bounds (<code>tau_max</code>) and a soft
+joint-limit penalty (<code>limit_weight</code>). Hard state constraints,</p>
+<div class="arithmatex">\[
+q_{\min} \le q_k \le q_{\max},
+\qquad
+\tau_{\min} \le \tau_k \le \tau_{\max},
+\]</div>
+<p>are not yet enforced: the solver is <code>scipy.optimize.minimize</code> with <code>L-BFGS-B</code>,
+whose only hard constraints are box bounds on the torque variables. <code>JointSpaceMPC</code>
+optimizes a flattened torque sequence over a small horizon and warm-starts from the
+previous solution. Its controller loop is:</p>
+<ol>
+<li>Read the current state <span class="arithmatex">\((q,\dot{q})\)</span>.</li>
+<li>Slice the next <span class="arithmatex">\(N\)</span> samples from the reference trajectory.</li>
+<li>Optimize <span class="arithmatex">\(\tau_0,\dots,\tau_{N-1}\)</span> by rolling out <code>compute_forward_dynamics</code>.</li>
+<li>Apply only <span class="arithmatex">\(\tau_0\)</span>.</li>
+<li>Shift the optimized sequence by one step to warm-start the next solve.</li>
+</ol>
+<p>Only joint-space MPC is implemented. Task-space MPC could be added by including an
+endpoint term,</p>
+<div class="arithmatex">\[
+(p(q_k)-p_{r,k})^{T}Q_p(p(q_k)-p_{r,k}),
+\]</div>
+<p>but the joint-space form is kept deliberately simple: it avoids mixing IK,
+trajectory conversion, and constrained optimal control in the same controller.</p>
+<div class="admonition note">
+<p class="admonition-title">Fixed-step simulation</p>
+<p>MPC is naturally discrete and stateful. The <code>simulate_robot</code> helper uses
+adaptive <code>solve_ivp</code>, which may call a torque callback multiple times per
+output interval, so it is unsuitable for a stateful controller. <code>JointSpaceMPC</code>
+is therefore run with the fixed-step <code>simulate_controlled</code> loop, which calls the
+controller once per control interval with the same <code>dt</code> as the MPC rollout.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Gravity convention</p>
+<p>The default <code>skelarm</code> arm moves in a horizontal plane, so gravity is zero
+unless a non-zero <code>grav_vec</code> is explicitly supplied. Control formulas should
+be written against the same convention as <code>compute_forward_dynamics</code>.</p>
+</div>
+<h2 id="4-implementation-in-skelarm">4. Implementation in <code>skelarm</code></h2>
+<p>The trajectory-tracking layer described above is implemented across
+<code>skelarm.trajectory</code>, <code>skelarm.control</code>, and <code>skelarm.mpc</code>:</p>
+<ol>
+<li><code>Trajectory</code> (in <code>skelarm.trajectory</code>) produces sampled <span class="arithmatex">\(p_r\)</span>, <span class="arithmatex">\(\dot{p}_r\)</span>, and
+   <span class="arithmatex">\(\ddot{p}_r\)</span> for the <code>linear</code>, <code>cubic</code>, <code>quintic</code>, and <code>minimum_jerk</code> schedules
+   (the last two share one polynomial; see §1).</li>
+<li><code>ik_joint_reference</code> converts a task trajectory to a joint reference by
+   samplewise <code>compute_inverse_kinematics</code> with warm starts.</li>
+<li><code>resolved_rate_joint_reference</code> converts by damped-pseudoinverse velocity
+   integration with optional task-space feedback.</li>
+<li><code>JointPD</code>, <code>InverseDynamicsFeedforwardPD</code>, and <code>ComputedTorque</code> (in
+   <code>skelarm.control</code>) implement the three torque controllers.</li>
+<li><code>simulate_controlled</code> is the fixed-step (semi-implicit Euler) loop for stateful
+   controllers; it returns a <code>StateLog</code> for replay and analysis.</li>
+<li><code>JointSpaceMPC</code> (in <code>skelarm.mpc</code>) is the joint-space MPC tracker with torque
+   bounds, soft joint-limit penalties, and warm starts.</li>
+<li>The behaviors are tested in <code>tests/test_trajectory.py</code>, <code>tests/test_control.py</code>,
+   and <code>tests/test_mpc.py</code> (endpoint path tracking, joint-reference continuity,
+   resolved-rate drift correction, computed-torque tracking quality, and MPC
+   torque-bound handling).</li>
+</ol>
+<p>A <code>Controller</code> is callable as <code>f(t, skeleton) -&gt; tau</code>, so the stateless PD,
+feedforward, and computed-torque controllers also work directly as a
+<code>simulate_robot</code> torque callback. Controllers with their own dynamic state, such
+as MPC and the online reference shaping of the next chapter, instead use the
+<code>reset</code>/<code>update</code> hooks and the fixed control interval of <code>simulate_controlled</code>.</p>
+<p>These controllers can also be configured from a single TOML scenario file and run
+without writing code; see the <a href="../../guides/control_configuration/">Control Configuration</a>
+guide, the <code>skelarm.scenario</code> loader, and the <code>tools/reaching_simulator.py</code> runner.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="../../javascripts/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
+      
+        <script src="../../javascripts/mermaid-zoom.js"></script>
+      
+    
+  </body>
+</html>
