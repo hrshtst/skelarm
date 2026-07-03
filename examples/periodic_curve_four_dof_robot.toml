@@ -1,0 +1,63 @@
+# Periodic-curve tracing with a 4-DOF robot arm: the tip follows a closed task-space curve, repeatedly.
+# Run: uv run python examples/periodic_curve.py
+# Swap `curve` (circle, ellipse, lemniscate, vertical_lemniscate, rose) to trace
+# a different shape; see docs/guides/control_configuration.md for each curve's params.
+
+[skeleton]
+base_length = 0.05
+
+[[skeleton.link]]
+length = 0.1
+mass = 0.5
+inertia = 0.005
+com = [0.05, 0.0]
+limits = [-20.0, 30.0]
+
+[[skeleton.link]]
+length = 0.25
+mass = 1.0
+inertia = 0.01
+com = [0.1, 0.0]
+limits = [0.0, 120.0]
+
+[[skeleton.link]]
+length = 0.25
+mass = 1.0
+inertia = 0.007
+com = [0.1, 0.0]
+limits = [0.0, 150.0]
+
+[[skeleton.link]]
+length = 0.15
+mass = 0.5
+inertia = 0.003
+com = [0.05, 0.0]
+limits = [-20.0, 90.0]
+
+[initial]
+q = [15.0, 15.0, 15.0, 15.0]  # degrees
+
+# [task]
+# type = "periodic_curve"
+# curve = "circle"
+# center = [0.2, 0.4]
+# radius = 0.15      # radius (m)
+# period = 4.0       # seconds per loop
+# duration = 12.0     # three loops
+
+[task]
+type = "periodic_curve"
+curve = "rose"
+center = [0.0, 0.4]
+a = 0.2
+k = 5
+period = 10.0       # seconds per loop
+duration = 30.0     # three loops
+
+[simulator]
+dt = 0.002
+
+[controller]
+type = "computed_torque"
+kp = 400.0
+kd = 50.0

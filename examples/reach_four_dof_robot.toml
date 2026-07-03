@@ -1,0 +1,64 @@
+# A complete reaching scenario with a 4-DOF robot arm: robot + start state + task + controller.
+# Interactive GUI (drag to apply external forces):
+#   uv run python tools/reaching_simulator.py examples/reach_four_dof_robot.toml
+# Headless run that saves a log to replay:
+#   uv run python tools/reaching_simulator.py examples/reach_four_dof_robot.toml --save reach.sklog.npz
+#   uv run python tools/player.py reach.sklog.npz
+# Scripted version that plots the reach:  uv run python examples/reaching.py
+
+[skeleton]
+base_length = 0.05
+
+[[skeleton.link]]
+length = 0.1
+mass = 0.5
+inertia = 0.005
+com = [0.05, 0.0]
+limits = [-20.0, 30.0]
+
+[[skeleton.link]]
+length = 0.25
+mass = 1.0
+inertia = 0.01
+com = [0.1, 0.0]
+limits = [0.0, 120.0]
+
+[[skeleton.link]]
+length = 0.25
+mass = 1.0
+inertia = 0.007
+com = [0.1, 0.0]
+limits = [0.0, 150.0]
+
+[[skeleton.link]]
+length = 0.15
+mass = 0.5
+inertia = 0.003
+com = [0.05, 0.0]
+limits = [-20.0, 90.0]
+
+[initial]
+q = [15.0, 15.0, 15.0, 15.0]  # degrees
+
+[task]
+type = "reaching"      # task kind (currently only "reaching")
+# The target may be a plain [x, y] array, or a table with optional
+# label / color (default purple) / tolerance. The tolerance (meters) is the
+# admittable tip-to-target error; the marker's ring is drawn at that radius.
+target = { pos = [0.0, 0.4], tolerance = 0.02 }  # endpoint goal (m), 2 cm success
+duration = 5.0         # simulated time / planned-motion horizon (s)
+schedule = "minimum_jerk"
+
+[simulator]
+dt = 0.002             # control / integration step (s)
+# enforce_limits = true  # joint-limit hard stop in the dynamics (default)
+
+[controller]
+type = "computed_torque"
+kp = 200.0
+kd = 30.0
+
+# [controller]
+# type = "joint_pd"
+# kp = 20.0
+# kd = 0.5
