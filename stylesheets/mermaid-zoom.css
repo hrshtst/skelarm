@@ -1,0 +1,44 @@
+/* Click-to-enlarge for Mermaid diagrams (see javascripts/mermaid-zoom.js).
+   Material renders Mermaid into a closed shadow root, so we enlarge the host
+   element itself with a transform rather than touching the inner SVG. */
+
+.mermaid {
+  cursor: zoom-in;
+}
+
+.mermaid-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.85);
+  cursor: zoom-out;
+}
+
+/* The enlarged host. A page-colored background keeps the diagram readable over
+   the dark backdrop in both light and dark themes. */
+.mermaid--zoomed {
+  margin: 0;
+  padding: 1rem;
+  border-radius: 4px;
+  background: var(--md-default-bg-color, #fff);
+  transform-origin: center center;
+  cursor: zoom-out;
+}
+
+.mermaid-lightbox__close {
+  position: fixed;
+  top: 1rem;
+  right: 1.25rem;
+  z-index: 2001;
+  padding: 0;
+  font-size: 2.25rem;
+  line-height: 1;
+  color: #fff;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
