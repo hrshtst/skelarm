@@ -22,6 +22,7 @@ from skelarm.canvas import _GOAL_COLOR, SkelarmCanvas, draw_arrow
 from skelarm.dynamics import integrate_with_limits
 from skelarm.kinematics import compute_forward_kinematics, compute_jacobian
 from skelarm.recording import StateLog
+from skelarm.widgets import TransportBar
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -242,6 +243,19 @@ class SkelarmSimulator(QMainWindow):
         self.controls_panel = panel  # exposed for sizing (fixed width) and tests
         self.controls_layout = controls  # exposed so subclasses can add_control
         controls.addWidget(QLabel("<b>Simulation</b>"))
+
+        # The simulation starts running, so the toggle begins checked; "Resume"
+        # (not "Play") because clicking it continues an already-started run.
+        self.transport_bar = TransportBar(playing=True, play_label="Resume")
+        self.transport_bar.play_button.toggled.connect(self._on_play_toggled)
+        self.transport_bar.step_button.clicked.connect(self._on_step_clicked)
+        self.transport_bar.reset_button.clicked.connect(self.reset)
+        controls.addWidget(self.transport_bar)
+        # Historical aliases so tests and scripts keep addressing the buttons directly.
+        self.pause_button = self.transport_bar.play_button
+        self.step_button = self.transport_bar.step_button
+        self.reset_button = self.transport_bar.reset_button
+
         hint = QLabel("Press and drag in the canvas to pull the tip with a force.")
         hint.setWordWrap(True)
         controls.addWidget(hint)
@@ -313,11 +327,25 @@ class SkelarmSimulator(QMainWindow):
     def pause(self) -> None:
         """Stop advancing the simulation (the state is frozen until :meth:`resume`)."""
         self._timer.stop()
+        self.transport_bar.set_playing(False)
 
     def resume(self) -> None:
         """Resume advancing the simulation after a :meth:`pause`."""
         if not self._timer.isActive():
             self._timer.start(_TIMER_MS)
+        self.transport_bar.set_playing(True)
+
+    def _on_play_toggled(self, playing: bool) -> None:  # noqa: FBT001
+        """Resume or pause the loop when the transport toggle changes."""
+        if playing:
+            self.resume()
+        else:
+            self.pause()
+
+    def _on_step_clicked(self) -> None:
+        """Advance a single render tick while paused."""
+        if not self.running:
+            self.step()
 
     @property
     def is_recording(self) -> bool:

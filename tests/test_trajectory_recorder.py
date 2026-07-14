@@ -124,6 +124,13 @@ def test_control_panel_width_is_fixed(qapp) -> None:  # noqa: ANN001, ARG001
     assert panel.minimumWidth() == panel.maximumWidth() == _PANEL_WIDTH_PX
 
 
+def test_finish_button_keeps_text_and_gains_icon(qapp) -> None:  # noqa: ANN001, ARG001
+    """The finish button stays a labeled button but shows a leading icon."""
+    window = RecorderWindow(Skeleton.from_toml(_FOUR_DOF), mode="ik")
+    assert window.finish_button.text() == "Finish"
+    assert not window.finish_button.icon().isNull()
+
+
 def test_no_joint_limits_flag_disables_enforcement() -> None:
     """The ``--no-joint-limits`` flag parses and defaults to enforcing limits."""
     parser = build_parser()

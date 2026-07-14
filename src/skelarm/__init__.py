@@ -85,6 +85,7 @@ from .scenario import (
 from .simulator import SimulatorCanvas, SkelarmSimulator
 from .skeleton import Link, LinkProp, Skeleton
 from .trajectory import Trajectory, evaluate_schedule
+from .widgets import TransportBar, make_icon
 
 __all__ = [
     "FILTERS",
@@ -119,6 +120,7 @@ __all__ = [
     "TimeVaryingStiffness",
     "TrackingController",
     "Trajectory",
+    "TransportBar",
     "VirtualSpringDamper",
     "active_target_index",
     "adaptive_shaping_ratio",
@@ -151,6 +153,7 @@ __all__ = [
     "load_reference_log",
     "load_scenario",
     "lowpass_first_order",
+    "make_icon",
     "moving_average",
     "multi_target_specs",
     "plot_trajectory",

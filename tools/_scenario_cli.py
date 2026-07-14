@@ -21,6 +21,7 @@ from skelarm import (
     SkelarmSimulator,
     active_target_index,
     build_curve,
+    make_icon,
     multi_target_specs,
     run_scenario,
     scenario_from_config,
@@ -231,8 +232,9 @@ def _forward_kinematics_path(skeleton: Skeleton, q_series: NDArray[np.float64]) 
 class ScenarioSimulator(SkelarmSimulator):
     """Interactive scenario GUI: a controller drives the arm, the mouse adds tip forces.
 
-    Adds Reset / Record / Export controls, embeds the scenario config in the recording
-    (so the player can later draw the task overlay), and draws the task's reference path.
+    Adds Record / Export controls on top of the inherited transport bar (pause/resume,
+    single-step, reset), embeds the scenario config in the recording (so the player can
+    later draw the task overlay), and draws the task's reference path.
     Subclasses add task-specific readouts or live controls.
     """
 
@@ -250,16 +252,13 @@ class ScenarioSimulator(SkelarmSimulator):
         )
         self._task = scenario.task
 
-        self.reset_button = QPushButton("Reset")
-        self.reset_button.clicked.connect(self.reset)
-        self.add_control(self.reset_button)
-
         self.record_checkbox = QCheckBox("Record states")
         self.record_checkbox.setChecked(True)
         self.record_checkbox.toggled.connect(self._on_record_toggled)
         self.add_control(self.record_checkbox)
 
         self.export_button = QPushButton("Export…")
+        self.export_button.setIcon(make_icon("mdi6.content-save-outline"))
         self.export_button.clicked.connect(self._on_export)
         self.add_control(self.export_button)
 

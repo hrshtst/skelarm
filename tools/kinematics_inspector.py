@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 from PyQt6.QtWidgets import QApplication, QCheckBox, QComboBox, QLabel, QPushButton
 
-from skelarm import SkelarmViewer, Skeleton
+from skelarm import SkelarmViewer, Skeleton, make_icon
 
 
 class KinematicsInspector(SkelarmViewer):
@@ -54,6 +54,7 @@ class KinematicsInspector(SkelarmViewer):
         self.add_control(self.method_combo)
 
         self.reset_button = QPushButton("Reset pose")
+        self.reset_button.setIcon(make_icon("mdi6.backup-restore"))
         self.reset_button.clicked.connect(self._on_reset)
         self.add_control(self.reset_button)
 

@@ -329,3 +329,70 @@ def test_control_panel_width_is_fixed_regardless_of_time_text(qapp) -> None:  # 
     # A long time readout (the widest control) must not widen the fixed panel.
     sim.time_label.setText("t = 123456.78 s")
     assert panel.minimumWidth() == panel.maximumWidth() == _PANEL_WIDTH_PX
+
+
+def test_transport_bar_sits_below_the_title(qapp) -> None:  # noqa: ANN001, ARG001
+    """The transport bar is the first control, right after the panel title."""
+    sim = _simulator()
+    assert sim.controls_layout.indexOf(sim.transport_bar) == 1
+
+
+def test_transport_bar_starts_playing(qapp) -> None:  # noqa: ANN001, ARG001
+    """The simulation starts running, so the toggle is checked and step disabled."""
+    sim = _simulator()
+    assert sim.pause_button.isChecked()
+    assert not sim.step_button.isEnabled()
+
+
+def test_transport_buttons_alias_the_bar(qapp) -> None:  # noqa: ANN001, ARG001
+    """The historical button attributes point at the bar's tool buttons."""
+    sim = _simulator()
+    assert sim.pause_button is sim.transport_bar.play_button
+    assert sim.step_button is sim.transport_bar.step_button
+    assert sim.reset_button is sim.transport_bar.reset_button
+
+
+def test_pause_button_click_stops_and_resumes_the_loop(qapp) -> None:  # noqa: ANN001, ARG001
+    """Clicking the toggle pauses the loop and enables step; clicking again resumes."""
+    sim = _simulator()
+    sim.pause_button.click()
+    assert sim.running is False
+    assert sim.step_button.isEnabled()
+    sim.pause_button.click()
+    assert sim.running is True
+    assert not sim.step_button.isEnabled()
+
+
+def test_step_button_advances_one_tick_while_paused(qapp) -> None:  # noqa: ANN001, ARG001
+    """While paused, the step button advances the clock by exactly one render tick."""
+    sim = _simulator()
+    sim.pause_button.click()
+    t0 = sim.time
+    sim.step_button.click()
+    assert sim.time == pytest.approx(t0 + 0.02)
+
+
+def test_reset_button_restores_pose_and_clock(qapp) -> None:  # noqa: ANN001, ARG001
+    """The reset button restores the initial pose and zeros the clock."""
+    sim = _simulator()
+    q0 = sim.skeleton.q.copy()
+    tip = sim.skeleton.links[-1]
+    _press(sim.canvas, (tip.xe - 0.3, tip.ye + 0.2))
+    for _ in range(10):
+        sim.step()
+    assert not np.allclose(sim.skeleton.q, q0)
+
+    sim.reset_button.click()
+    assert sim.skeleton.q == pytest.approx(q0)
+    assert sim.time == pytest.approx(0.0)
+
+
+def test_programmatic_pause_syncs_the_transport_bar(qapp) -> None:  # noqa: ANN001, ARG001
+    """Calling pause()/resume() directly keeps the toggle and step button in sync."""
+    sim = _simulator()
+    sim.pause()
+    assert not sim.pause_button.isChecked()
+    assert sim.step_button.isEnabled()
+    sim.resume()
+    assert sim.pause_button.isChecked()
+    assert not sim.step_button.isEnabled()

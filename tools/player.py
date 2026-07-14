@@ -46,7 +46,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from skelarm import SkelarmCanvas, StateLog, Task, compute_forward_kinematics
+from skelarm import SkelarmCanvas, StateLog, Task, TransportBar, compute_forward_kinematics, make_icon
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # allow `tools.` imports when run as a script
 from tools._scenario_cli import task_overlays
@@ -141,9 +141,15 @@ class PlaybackWindow(QMainWindow):
         self.slider.valueChanged.connect(self.set_frame)
         controls.addWidget(self.slider)
 
-        self.play_button = QPushButton("Play")
-        self.play_button.clicked.connect(self._on_play_clicked)
-        controls.addWidget(self.play_button)
+        self.transport_bar = TransportBar(step_label="Next frame", reset_label="Back to start")
+        self.transport_bar.play_button.toggled.connect(self._on_play_toggled)
+        self.transport_bar.step_button.clicked.connect(self._on_step_clicked)
+        self.transport_bar.reset_button.clicked.connect(self._on_reset_clicked)
+        controls.addWidget(self.transport_bar)
+        # Historical aliases so tests and scripts keep addressing the buttons directly.
+        self.play_button = self.transport_bar.play_button
+        self.step_button = self.transport_bar.step_button
+        self.reset_button = self.transport_bar.reset_button
 
         controls.addWidget(QLabel("Playback speed"))
         self.speed_spin = QDoubleSpinBox()
@@ -181,6 +187,7 @@ class PlaybackWindow(QMainWindow):
             controls.addWidget(self.reference_checkbox)
 
         self.plot_button = QPushButton("Plot channels…")
+        self.plot_button.setIcon(make_icon("mdi6.chart-line"))
         self.plot_button.clicked.connect(self._on_plot_channels)
         controls.addWidget(self.plot_button)
 
@@ -234,12 +241,12 @@ class PlaybackWindow(QMainWindow):
         if self._frame >= self._n - 1:
             self.set_frame(0)
         self._timer.start(_TIMER_MS)
-        self.play_button.setText("Pause")
+        self.transport_bar.set_playing(True)
 
     def pause(self) -> None:
         """Pause playback."""
         self._timer.stop()
-        self.play_button.setText("Play")
+        self.transport_bar.set_playing(False)
 
     def build_channel_figure(self):  # noqa: ANN201  # matplotlib Figure (lazy import)
         """Build a Matplotlib figure with one time-series subplot per channel."""
@@ -373,12 +380,21 @@ class PlaybackWindow(QMainWindow):
         """Advance one render tick of playback."""
         self.advance(_TIMER_MS / 1000.0)
 
-    def _on_play_clicked(self) -> None:
-        """Toggle play/pause."""
-        if self.is_playing:
-            self.pause()
-        else:
+    def _on_play_toggled(self, playing: bool) -> None:  # noqa: FBT001
+        """Start or pause playback when the transport toggle changes."""
+        if playing:
             self.play()
+        else:
+            self.pause()
+
+    def _on_step_clicked(self) -> None:
+        """Advance a single frame while paused."""
+        if not self.is_playing:
+            self.set_frame(self._frame + 1)
+
+    def _on_reset_clicked(self) -> None:
+        """Jump back to the first frame."""
+        self.set_frame(0)
 
     def _on_speed_changed(self, value: float) -> None:
         """Apply the speed spin box to playback."""

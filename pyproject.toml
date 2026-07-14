@@ -13,6 +13,7 @@ dependencies = [
   "np2typing>=2.6.3",
   "numpy>=2.0.0",
   "pyqt6>=6.10.1",
+  "qtawesome>=1.4.2",
   "scipy>=1.16.3",
 ]
 classifiers = [
@@ -240,6 +241,11 @@ check_untyped_defs = true       # Type-checks the interior of functions without 
 # scipy ships no py.typed marker, so mypy cannot resolve its types.
 [[tool.mypy.overrides]]
   module = ["scipy.*"]
+  ignore_missing_imports = true
+
+# qtawesome ships no py.typed marker or stubs either.
+[[tool.mypy.overrides]]
+  module = ["qtawesome", "qtawesome.*"]
   ignore_missing_imports = true
 
 [tool.pytest.ini_options]

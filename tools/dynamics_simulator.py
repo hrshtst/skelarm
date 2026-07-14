@@ -4,10 +4,10 @@ Interactive dynamics simulator tool for skelarm.
 Load a robot arm from a TOML config given on the command line and simulate it in
 real time under zero-torque control. Press and drag the left mouse button in the
 canvas to apply a spring-like external force at the tip (drawn as a red arrow).
-On top of the base :class:`~skelarm.SkelarmSimulator` this tool adds pause/resume,
-single-step, reset, a live viscous-friction spin box (joint damping that dissipates
-energy), a status panel (kinetic energy and tip position/speed), and an optional
-tip-trajectory plot shown when the GUI closes.
+On top of the base :class:`~skelarm.SkelarmSimulator` (whose transport bar provides
+pause/resume, single-step, and reset) this tool adds a live viscous-friction spin box
+(joint damping that dissipates energy), a status panel (kinetic energy and tip
+position/speed), and an optional tip-trajectory plot shown when the GUI closes.
 
 Usage::
 
@@ -32,6 +32,7 @@ from skelarm import (
     Skeleton,
     compute_endpoint_velocity,
     compute_kinetic_energy,
+    make_icon,
 )
 
 if TYPE_CHECKING:
@@ -41,9 +42,10 @@ _FRICTION_MAX = 10.0  # upper bound for the live viscous-friction spin box (N·m
 
 
 class DynamicsSimulator(SkelarmSimulator):
-    """A SkelarmSimulator with playback controls, a status panel, and trajectory recording.
+    """A SkelarmSimulator with a status panel and trajectory recording.
 
-    Adds pause/resume, single-step (while paused), reset, a live viscous-friction
+    Playback controls (pause/resume, single-step, reset) come from the base
+    simulator's transport bar. On top of that this adds a live viscous-friction
     spin box, a readout of kinetic energy and tip position/speed, and recording of
     the tip trajectory (see :attr:`trajectory`) for plotting after the GUI closes.
     """
@@ -60,19 +62,6 @@ class DynamicsSimulator(SkelarmSimulator):
         self._trajectory_x: list[float] = []
         self._trajectory_y: list[float] = []
 
-        self.pause_button = QPushButton("Pause")
-        self.pause_button.clicked.connect(self._on_pause_toggled)
-        self.add_control(self.pause_button)
-
-        self.step_button = QPushButton("Step")
-        self.step_button.setEnabled(False)  # only meaningful while paused
-        self.step_button.clicked.connect(self._on_single_step)
-        self.add_control(self.step_button)
-
-        self.reset_button = QPushButton("Reset")
-        self.reset_button.clicked.connect(self.reset)
-        self.add_control(self.reset_button)
-
         self.add_control(QLabel("Viscous friction (N·m·s/rad)"))
         self.friction_spin = QDoubleSpinBox()
         self.friction_spin.setDecimals(3)
@@ -88,6 +77,7 @@ class DynamicsSimulator(SkelarmSimulator):
         self.add_control(self.record_checkbox)
 
         self.export_button = QPushButton("Export…")
+        self.export_button.setIcon(make_icon("mdi6.content-save-outline"))
         self.export_button.clicked.connect(self._on_export)
         self.add_control(self.export_button)
 
@@ -174,22 +164,6 @@ class DynamicsSimulator(SkelarmSimulator):
         tip = self.skeleton.links[-1]
         self._trajectory_x.append(tip.xe)
         self._trajectory_y.append(tip.ye)
-
-    def _on_pause_toggled(self) -> None:
-        """Toggle between running and paused, updating the buttons accordingly."""
-        if self.running:
-            self.pause()
-            self.pause_button.setText("Resume")
-            self.step_button.setEnabled(True)
-        else:
-            self.resume()
-            self.pause_button.setText("Pause")
-            self.step_button.setEnabled(False)
-
-    def _on_single_step(self) -> None:
-        """Advance a single tick while paused."""
-        if not self.running:
-            self.step()
 
     def _on_friction_changed(self, value: float) -> None:
         """Apply the live viscous friction coefficient to the simulation."""

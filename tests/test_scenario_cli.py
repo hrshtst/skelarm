@@ -24,6 +24,16 @@ from tools._scenario_cli import (
 pytestmark = pytest.mark.integration
 
 _EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
+
+
+@pytest.fixture(scope="module")
+def qapp():  # noqa: ANN201
+    """Provide a single QApplication instance for the GUI tests."""
+    from PyQt6.QtWidgets import QApplication
+
+    return QApplication.instance() or QApplication([])
+
+
 _SKELETON_TOML = (
     "[skeleton]\n"
     "[[skeleton.link]]\nlength = 1.0\nmass = 1.0\ninertia = 0.1\ncom = [0.5, 0.0]\nlimits = [-180.0, 180.0]\n"
@@ -104,6 +114,33 @@ def test_add_override_arguments_parses_the_shared_flags() -> None:
     assert args.pose == "10,20"
     assert args.task == Path("t.toml")
     assert args.no_joint_limits is True
+
+
+def test_scenario_simulator_inherits_the_transport_bar(qapp) -> None:  # noqa: ANN001, ARG001
+    """Scenario GUIs get icon-only pause/step/reset from the base transport bar."""
+    from PyQt6.QtWidgets import QToolButton
+
+    from tools._scenario_cli import ScenarioSimulator
+
+    sim = ScenarioSimulator(build_scenario(_EXAMPLES / "reach.toml"))
+    assert sim.reset_button is sim.transport_bar.reset_button
+    assert isinstance(sim.reset_button, QToolButton)
+
+    assert sim.running is True
+    sim.pause_button.click()
+    assert sim.running is False
+    t0 = sim.time
+    sim.step_button.click()
+    assert sim.time > t0
+
+
+def test_scenario_simulator_export_button_keeps_text_and_gains_icon(qapp) -> None:  # noqa: ANN001, ARG001
+    """The shared export button stays labeled but shows a leading icon."""
+    from tools._scenario_cli import ScenarioSimulator
+
+    sim = ScenarioSimulator(build_scenario(_EXAMPLES / "reach.toml"))
+    assert sim.export_button.text() == "Export…"
+    assert not sim.export_button.icon().isNull()
 
 
 def test_save_scenario_run_writes_a_replayable_log(tmp_path: Path) -> None:

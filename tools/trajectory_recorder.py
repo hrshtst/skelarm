@@ -43,6 +43,7 @@ from skelarm import (
     compute_inverse_kinematics,
     compute_jacobian,
     integrate_with_limits,
+    make_icon,
 )
 from skelarm.simulator import SimulatorCanvas
 
@@ -139,6 +140,7 @@ class RecorderWindow(QMainWindow):
         self.status_label.setWordWrap(True)
         controls.addWidget(self.status_label)
         self.finish_button = QPushButton("Finish")
+        self.finish_button.setIcon(make_icon("mdi6.check"))
         self.finish_button.clicked.connect(self._finish)
         controls.addWidget(self.finish_button)
         controls.addStretch()

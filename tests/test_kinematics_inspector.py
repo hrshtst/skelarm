@@ -165,6 +165,13 @@ def test_reset_button_restores_initial_pose(qapp) -> None:  # noqa: ANN001, ARG0
     assert inspector.canvas.last_ik_result is None
 
 
+def test_reset_button_keeps_text_and_gains_icon(qapp) -> None:  # noqa: ANN001, ARG001
+    """The reset button stays a labeled button but shows a leading icon."""
+    inspector = _inspector(2)
+    assert inspector.reset_button.text() == "Reset pose"
+    assert not inspector.reset_button.icon().isNull()
+
+
 def test_method_combo_excludes_nr_for_redundant_arm(qapp) -> None:  # noqa: ANN001, ARG001
     """Newton-Raphson (square-only) is not offered for a redundant arm."""
     methods = _combo_methods(_inspector(3))

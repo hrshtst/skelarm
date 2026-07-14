@@ -99,3 +99,4 @@ nav:
       - Plotting: api/plotting.md
       - Canvas: api/canvas.md
       - Simulator: api/simulator.md
+      - Widgets: api/widgets.md

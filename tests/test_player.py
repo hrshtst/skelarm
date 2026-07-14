@@ -160,14 +160,77 @@ def test_speed_scales_advance(qapp) -> None:  # noqa: ANN001, ARG001
 
 
 def test_play_pause_toggles(qapp) -> None:  # noqa: ANN001, ARG001
-    """Play starts the timeline; pause stops it."""
+    """Play starts the timeline; pause stops it; the toggle button stays in sync."""
     log = _log()
     window = PlaybackWindow(log)
     assert window.is_playing is False
+    assert window.play_button.isChecked() is False
     window.play()
     assert window.is_playing is True
+    assert window.play_button.isChecked() is True
     window.pause()
     assert window.is_playing is False
+    assert window.play_button.isChecked() is False
+
+
+def test_transport_bar_sits_under_the_timeline(qapp) -> None:  # noqa: ANN001, ARG001
+    """The transport bar is placed directly below the timeline slider."""
+    window = PlaybackWindow(_log())
+    layout = window.controls_panel.layout()
+    assert layout is not None
+    assert layout.indexOf(window.transport_bar) == layout.indexOf(window.slider) + 1
+
+
+def test_play_button_is_an_icon_toggle(qapp) -> None:  # noqa: ANN001, ARG001
+    """The play control is the bar's checkable icon-only tool button."""
+    from PyQt6.QtWidgets import QToolButton
+
+    window = PlaybackWindow(_log())
+    assert window.play_button is window.transport_bar.play_button
+    assert isinstance(window.play_button, QToolButton)
+    assert window.play_button.isCheckable()
+    assert window.play_button.toolTip() == "Play"
+
+    window.play_button.click()
+    assert window.is_playing is True
+    assert window.play_button.toolTip() == "Pause"
+
+
+def test_auto_pause_at_the_end_syncs_the_toggle(qapp) -> None:  # noqa: ANN001, ARG001
+    """Reaching the end of the timeline pauses and unchecks the toggle cleanly."""
+    window = PlaybackWindow(_log())
+    window.play()
+    window.advance(10.0)  # way past the last frame -> auto-pause
+    assert window.frame == len(window.log) - 1
+    assert window.is_playing is False
+    assert window.play_button.isChecked() is False
+
+
+def test_step_button_advances_one_frame_while_paused(qapp) -> None:  # noqa: ANN001, ARG001
+    """The step button ('Next frame') moves forward a single frame while paused."""
+    window = PlaybackWindow(_log())
+    assert window.step_button.toolTip() == "Next frame"
+    assert window.step_button.isEnabled()  # paused from the start
+    window.step_button.click()
+    assert window.frame == 1
+    window.step_button.click()
+    assert window.frame == 2  # noqa: PLR2004
+
+
+def test_reset_button_returns_to_the_first_frame(qapp) -> None:  # noqa: ANN001, ARG001
+    """The reset button ('Back to start') jumps back to frame 0."""
+    window = PlaybackWindow(_log())
+    assert window.reset_button.toolTip() == "Back to start"
+    window.set_frame(3)
+    window.reset_button.click()
+    assert window.frame == 0
+
+
+def test_plot_button_keeps_text_and_gains_icon(qapp) -> None:  # noqa: ANN001, ARG001
+    """The plot button stays a labeled button but shows a leading icon."""
+    window = PlaybackWindow(_log())
+    assert window.plot_button.text() == "Plot channels…"
+    assert not window.plot_button.icon().isNull()
 
 
 def test_requires_q_channel(qapp) -> None:  # noqa: ANN001, ARG001

@@ -155,13 +155,30 @@ def test_pause_button_toggles_running_and_step_button(qapp) -> None:  # noqa: AN
 
     sim.pause_button.click()
     assert sim.running is False
-    assert sim.pause_button.text() == "Resume"
+    assert sim.pause_button.toolTip() == "Resume"
     assert sim.step_button.isEnabled() is True
 
     sim.pause_button.click()
     assert sim.running is True
-    assert sim.pause_button.text() == "Pause"
+    assert sim.pause_button.toolTip() == "Pause"
     assert sim.step_button.isEnabled() is False
+
+
+def test_playback_controls_come_from_the_transport_bar(qapp) -> None:  # noqa: ANN001, ARG001
+    """The pause/step/reset controls are the inherited icon-only transport buttons."""
+    from PyQt6.QtWidgets import QToolButton
+
+    sim = _simulator()
+    assert isinstance(sim.pause_button, QToolButton)
+    assert sim.pause_button is sim.transport_bar.play_button
+    assert sim.pause_button.isChecked()  # running from the start
+
+
+def test_export_button_keeps_text_and_gains_icon(qapp) -> None:  # noqa: ANN001, ARG001
+    """The export button stays a labeled button but shows a leading icon."""
+    sim = _simulator()
+    assert sim.export_button.text() == "Export…"
+    assert not sim.export_button.icon().isNull()
 
 
 def test_single_step_advances_only_while_paused(qapp) -> None:  # noqa: ANN001, ARG001
