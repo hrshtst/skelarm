@@ -107,7 +107,7 @@ For an interactive version, launch the real-time GUI simulator and press/drag in
 uv run python examples/interactive_dynamics.py
 ```
 
-To simulate an arbitrary robot, use the generalized tool in `tools/`. Every simulator window opens paused, with a media-player-style transport bar at the top of the control panel — icon buttons for play/pause, single-step (while paused), and reset; pass `--run` to start simulating immediately on launch. This tool adds a live viscous-friction control (joint damping that dissipates energy), a status panel (kinetic energy and tip position/speed), and an optional tip-trajectory plot when the window closes:
+To simulate an arbitrary robot, use the generalized tool in `tools/`. Every simulator window opens paused, with a media-player-style transport bar at the top of the control panel — icon buttons for play/pause (`Space`), single-step (`→`/`F`, while paused), and reset (`R`); pass `--run` to start simulating immediately on launch. This tool adds a live viscous-friction control (joint damping that dissipates energy), a status panel (kinetic energy and tip position/speed), and an optional tip-trajectory plot when the window closes:
 
 ```bash
 uv run python tools/dynamics_simulator.py examples/four_dof_robot.toml
@@ -123,7 +123,7 @@ The dynamics simulator records the run (joint angles, velocities, torque, and th
 uv run python tools/player.py run.sklog.npz
 ```
 
-Scrub the timeline, and drive playback from the transport bar under it — icon buttons for play/pause, next frame (while paused), and back to start — at a chosen speed (`--speed`), toggle the centers of mass (`--show-com`), and open per-channel plots with the **Plot channels…** button. When the log recorded an external tip force, it is drawn as a red arrow at the tip (toggle it with **Show external force**). The log embeds the robot geometry, so the file replays on its own. When the log embeds a task (any scenario simulator records it), the player also draws the task context — the target (the active one emphasized for multi-target tasks), the periodic curve, or the reference trajectory (a per-joint reference is shown in task space via forward kinematics) — each toggled with **Show target(s)** / **Show reference**.
+Scrub the timeline, and drive playback from the transport bar under it — icon buttons for play/pause (`Space`), previous/next frame (`←`/`B` and `→`/`F`, while paused), and back to start (`R` or `Home`; `End` jumps to the last frame) — at a chosen speed (`--speed`), toggle the centers of mass (`--show-com`), and open per-channel plots with the **Plot channels…** button. When the log recorded an external tip force, it is drawn as a red arrow at the tip (toggle it with **Show external force**). The log embeds the robot geometry, so the file replays on its own. When the log embeds a task (any scenario simulator records it), the player also draws the task context — the target (the active one emphasized for multi-target tasks), the periodic curve, or the reference trajectory (a per-joint reference is shown in task space via forward kinematics) — each toggled with **Show target(s)** / **Show reference**.
 
 Pass `--export PATH` to render the replay headlessly (no GUI window) to a video or animated GIF instead of opening the player — the format is taken from the extension (`.mp4` or `.gif`), each frame is drawn by the same canvas (task overlay, centers of mass, and force arrow included), and `--fps` sets the output frame rate (`--speed` and `--show-com` apply too):
 
@@ -155,7 +155,7 @@ uv run python tools/reaching_simulator.py examples/reach.toml --save reach.sklog
 uv run python tools/player.py reach.sklog.npz                 # replay a saved run
 ```
 
-The other task types have dedicated interactive simulators sharing the same controls (the transport bar for play/step/reset — paused on launch unless `--run` is given — drag to perturb, **Record** / **Export…**, the `--initial`/`--pose`/`--task`/`--controller` overrides, and `--save` for a headless batch). Their runs replay in `tools/player.py` with the task overlay drawn:
+The other task types have dedicated interactive simulators sharing the same controls (the transport bar for play/step/reset and its keyboard shortcuts — paused on launch unless `--run` is given — drag to perturb, **Record** / **Export…**, the `--initial`/`--pose`/`--task`/`--controller` overrides, and `--save` for a headless batch). Their runs replay in `tools/player.py` with the task overlay drawn:
 
 ```bash
 uv run python tools/multi_target_simulator.py examples/multi_target.toml        # press 1–N to switch the active target live

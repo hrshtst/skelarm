@@ -172,6 +172,30 @@ def test_reset_button_keeps_text_and_gains_icon(qapp) -> None:  # noqa: ANN001, 
     assert not inspector.reset_button.icon().isNull()
 
 
+def test_reset_pose_r_shortcut(qapp) -> None:  # noqa: ANN001, ARG001
+    """Pressing R triggers the reset-pose button and restores the initial pose."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+    from PyQt6.QtWidgets import QApplication
+
+    inspector = _inspector(2)
+    shortcut = inspector.reset_button.shortcut()
+    assert shortcut is not None
+    assert shortcut.toString() == "R"
+    assert inspector.reset_button.toolTip() == "Reset pose (R)"
+
+    initial = inspector.skeleton.q.copy()
+    inspector.canvas.solve_to_world(0.5, 1.2)
+    assert not np.allclose(inspector.skeleton.q, initial)
+
+    inspector.show()
+    inspector.activateWindow()
+    QApplication.processEvents()
+    QTest.keyClick(inspector, Qt.Key.Key_R)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    QTest.qWait(200)  # type: ignore[call-arg, arg-type]  # bound-style stubs; animateClick fires ~100 ms later
+    assert np.allclose(inspector.skeleton.q, initial)
+
+
 def test_method_combo_excludes_nr_for_redundant_arm(qapp) -> None:  # noqa: ANN001, ARG001
     """Newton-Raphson (square-only) is not offered for a redundant arm."""
     methods = _combo_methods(_inspector(3))

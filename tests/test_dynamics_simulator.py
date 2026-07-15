@@ -155,12 +155,12 @@ def test_pause_button_toggles_running_and_step_button(qapp) -> None:  # noqa: AN
 
     sim.pause_button.click()
     assert sim.running is True
-    assert sim.pause_button.toolTip() == "Pause"
+    assert sim.pause_button.toolTip() == "Pause (Space)"
     assert sim.step_button.isEnabled() is False
 
     sim.pause_button.click()
     assert sim.running is False
-    assert sim.pause_button.toolTip() == "Play"
+    assert sim.pause_button.toolTip() == "Play (Space)"
     assert sim.step_button.isEnabled() is True
 
 

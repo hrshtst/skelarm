@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from PyQt6.QtCore import QSignalBlocker, Qt, QTimer
+from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -141,15 +142,26 @@ class PlaybackWindow(QMainWindow):
         self.slider.valueChanged.connect(self.set_frame)
         controls.addWidget(self.slider)
 
-        self.transport_bar = TransportBar(step_label="Next frame", reset_label="Back to start")
+        self.transport_bar = TransportBar(
+            step_label="Next frame", reset_label="Back to start", back_label="Previous frame"
+        )
         self.transport_bar.play_button.toggled.connect(self._on_play_toggled)
         self.transport_bar.step_button.clicked.connect(self._on_step_clicked)
         self.transport_bar.reset_button.clicked.connect(self._on_reset_clicked)
+        assert self.transport_bar.back_button is not None  # back_label was given
+        self.transport_bar.back_button.clicked.connect(self._on_back_clicked)
         controls.addWidget(self.transport_bar)
         # Historical aliases so tests and scripts keep addressing the buttons directly.
         self.play_button = self.transport_bar.play_button
         self.step_button = self.transport_bar.step_button
         self.reset_button = self.transport_bar.reset_button
+        self.back_button = self.transport_bar.back_button
+
+        # Window-level navigation keys with no buttons of their own.
+        self.home_shortcut = QShortcut(QKeySequence("Home"), self)
+        self.home_shortcut.activated.connect(self.reset_button.click)
+        self.end_shortcut = QShortcut(QKeySequence("End"), self)
+        self.end_shortcut.activated.connect(self._on_end_shortcut)
 
         controls.addWidget(QLabel("Playback speed"))
         self.speed_spin = QDoubleSpinBox()
@@ -392,10 +404,20 @@ class PlaybackWindow(QMainWindow):
         if not self.is_playing:
             self.set_frame(self._frame + 1)
 
+    def _on_back_clicked(self) -> None:
+        """Step a single frame backward while paused."""
+        if not self.is_playing:
+            self.set_frame(self._frame - 1)
+
     def _on_reset_clicked(self) -> None:
         """Pause playback and jump back to the first frame."""
         self.pause()
         self.set_frame(0)
+
+    def _on_end_shortcut(self) -> None:
+        """Pause playback and jump to the last frame."""
+        self.pause()
+        self.set_frame(self._n - 1)
 
     def _on_speed_changed(self, value: float) -> None:
         """Apply the speed spin box to playback."""

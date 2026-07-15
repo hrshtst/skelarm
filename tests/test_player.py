@@ -189,11 +189,11 @@ def test_play_button_is_an_icon_toggle(qapp) -> None:  # noqa: ANN001, ARG001
     assert window.play_button is window.transport_bar.play_button
     assert isinstance(window.play_button, QToolButton)
     assert window.play_button.isCheckable()
-    assert window.play_button.toolTip() == "Play"
+    assert window.play_button.toolTip() == "Play (Space)"
 
     window.play_button.click()
     assert window.is_playing is True
-    assert window.play_button.toolTip() == "Pause"
+    assert window.play_button.toolTip() == "Pause (Space)"
 
 
 def test_auto_pause_at_the_end_syncs_the_toggle(qapp) -> None:  # noqa: ANN001, ARG001
@@ -209,7 +209,7 @@ def test_auto_pause_at_the_end_syncs_the_toggle(qapp) -> None:  # noqa: ANN001, 
 def test_step_button_advances_one_frame_while_paused(qapp) -> None:  # noqa: ANN001, ARG001
     """The step button ('Next frame') moves forward a single frame while paused."""
     window = PlaybackWindow(_log())
-    assert window.step_button.toolTip() == "Next frame"
+    assert window.step_button.toolTip() == "Next frame (→/F)"
     assert window.step_button.isEnabled()  # paused from the start
     window.step_button.click()
     assert window.frame == 1
@@ -220,7 +220,7 @@ def test_step_button_advances_one_frame_while_paused(qapp) -> None:  # noqa: ANN
 def test_reset_button_returns_to_the_first_frame(qapp) -> None:  # noqa: ANN001, ARG001
     """The reset button ('Back to start') jumps back to frame 0."""
     window = PlaybackWindow(_log())
-    assert window.reset_button.toolTip() == "Back to start"
+    assert window.reset_button.toolTip() == "Back to start (R)"
     window.set_frame(3)
     window.reset_button.click()
     assert window.frame == 0
@@ -354,3 +354,61 @@ def test_runs_as_a_standalone_script() -> None:
     )
     assert result.returncode == 0, result.stderr
     assert "replay" in result.stdout.lower()
+
+
+def _activate(window) -> None:  # noqa: ANN001
+    """Make ``window`` the active window so WindowShortcut QShortcuts fire offscreen."""
+    from PyQt6.QtWidgets import QApplication
+
+    window.show()
+    window.activateWindow()
+    QApplication.processEvents()
+
+
+def test_back_button_present_with_tooltip(qapp) -> None:  # noqa: ANN001, ARG001
+    """The player's bar has a 'Previous frame' back button, aliased on the window."""
+    window = PlaybackWindow(_log())
+    assert window.back_button is window.transport_bar.back_button
+    assert window.back_button is not None
+    assert window.back_button.toolTip() == "Previous frame (←/B)"
+
+
+def test_back_button_steps_backward_while_paused(qapp) -> None:  # noqa: ANN001, ARG001
+    """The back button moves one frame backward while paused and clamps at frame 0."""
+    window = PlaybackWindow(_log())
+    window.set_frame(3)
+    window.back_button.click()
+    window.back_button.click()
+    assert window.frame == 1
+    window.back_button.click()
+    window.back_button.click()
+    assert window.frame == 0  # clamped
+
+
+def test_back_button_disabled_while_playing(qapp) -> None:  # noqa: ANN001, ARG001
+    """The back button is only enabled while paused."""
+    window = PlaybackWindow(_log())
+    window.play()
+    assert not window.back_button.isEnabled()
+    window.pause()
+    assert window.back_button.isEnabled()
+
+
+def test_home_end_shortcuts(qapp) -> None:  # noqa: ANN001, ARG001
+    """Home jumps (paused) to the first frame, End to the last."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+
+    window = PlaybackWindow(_log())
+    assert window.home_shortcut.key().toString() == "Home"
+    assert window.end_shortcut.key().toString() == "End"
+
+    _activate(window)
+    window.play()
+    QTest.keyClick(window, Qt.Key.Key_End)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    assert window.is_playing is False
+    assert window.frame == len(window.log) - 1
+
+    QTest.keyClick(window, Qt.Key.Key_Home)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    assert window.frame == 0
+    assert window.is_playing is False

@@ -150,3 +150,25 @@ def test_runs_as_a_standalone_script() -> None:
     )
     assert result.returncode == 0, result.stderr
     assert "multiple-target" in result.stdout.lower()
+
+
+def test_number_keys_coexist_with_transport_shortcuts(qapp) -> None:  # noqa: ANN001, ARG001
+    """Digits still switch targets (keyPressEvent) while Space drives the transport bar."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+    from PyQt6.QtWidgets import QApplication
+
+    from skelarm.scenario import load_scenario
+    from tools.multi_target_simulator import MultiTargetReachSimulator
+
+    window = MultiTargetReachSimulator(load_scenario(_EXAMPLE))
+    window.show()
+    window.activateWindow()
+    QApplication.processEvents()
+
+    QTest.keyClick(window, Qt.Key.Key_2)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    assert window.active_index == 1  # digits reach keyPressEvent (not bound as shortcuts)
+
+    QTest.keyClick(window, Qt.Key.Key_Space)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    assert window.running is True  # Space fired the transport toggle
+    window.pause()

@@ -131,6 +131,15 @@ def test_finish_button_keeps_text_and_gains_icon(qapp) -> None:  # noqa: ANN001,
     assert not window.finish_button.icon().isNull()
 
 
+def test_finish_f_shortcut(qapp) -> None:  # noqa: ANN001, ARG001
+    """The finish button is bound to F, advertised in its tooltip."""
+    window = RecorderWindow(Skeleton.from_toml(_FOUR_DOF), mode="ik")
+    shortcut = window.finish_button.shortcut()
+    assert shortcut is not None
+    assert shortcut.toString() == "F"
+    assert window.finish_button.toolTip() == "Finish (F)"
+
+
 def test_no_joint_limits_flag_disables_enforcement() -> None:
     """The ``--no-joint-limits`` flag parses and defaults to enforcing limits."""
     parser = build_parser()

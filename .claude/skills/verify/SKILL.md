@@ -38,6 +38,11 @@ Run with `uv run python <driver>.py` from the repo root (tools import `tools._sc
 
 ## Gotchas
 
+- To fire keyboard shortcuts offscreen (`QTest.keyClick`), the window must be *active*:
+  `w.show(); w.activateWindow(); QApplication.processEvents()` first — without activation
+  WindowShortcut QShortcuts silently never fire. `QPushButton.setShortcut` uses
+  `animateClick`, so `clicked` arrives ~100 ms after the key: `QTest.qWait(200)`.
+
 - Pass `--no-plot` to the dynamics simulator or it opens a matplotlib window after `exec()`.
 - Avoid clicking **Export…** in a driver — it opens a modal `QFileDialog` and hangs.
 - To exercise the player's auto-pause-at-end, raise `speed_spin` (e.g. `setValue(10.0)`)
@@ -54,3 +59,6 @@ Run with `uv run python <driver>.py` from the repo root (tools import `tools._sc
   programmatic `pause()`/`resume()` syncs the toggle.
 - Player: play at speed, auto-pause at the last frame (toggle unchecks), frame-step,
   back-to-start (pauses at frame 0), step past the end clamps.
+- Keyboard shortcuts: `Space` play/pause, `→`/`F` step, `R` reset in every transport
+  window; player adds `←`/`B` previous frame, `Home`/`End`; inspector `R` = Reset pose;
+  recorder `F` = Finish; multi-target digits 1–9 still switch targets.

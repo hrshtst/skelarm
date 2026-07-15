@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from PyQt6.QtCore import QTimer
-from PyQt6.QtGui import QCloseEvent, QColor
+from PyQt6.QtGui import QCloseEvent, QColor, QKeySequence
 from PyQt6.QtWidgets import QApplication, QHBoxLayout, QLabel, QMainWindow, QPushButton, QVBoxLayout, QWidget
 
 from skelarm import (
@@ -141,6 +141,8 @@ class RecorderWindow(QMainWindow):
         controls.addWidget(self.status_label)
         self.finish_button = QPushButton("Finish")
         self.finish_button.setIcon(make_icon("mdi6.check"))
+        self.finish_button.setShortcut(QKeySequence("F"))
+        self.finish_button.setToolTip("Finish (F)")
         self.finish_button.clicked.connect(self._finish)
         controls.addWidget(self.finish_button)
         controls.addStretch()

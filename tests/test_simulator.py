@@ -342,7 +342,7 @@ def test_transport_bar_starts_paused(qapp) -> None:  # noqa: ANN001, ARG001
     sim = _simulator()
     assert sim.running is False
     assert not sim.pause_button.isChecked()
-    assert sim.pause_button.toolTip() == "Play"
+    assert sim.pause_button.toolTip() == "Play (Space)"
     assert sim.step_button.isEnabled()
 
 
