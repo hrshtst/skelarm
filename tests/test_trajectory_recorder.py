@@ -168,3 +168,9 @@ def test_runs_as_a_standalone_script() -> None:
     )
     assert result.returncode == 0, result.stderr
     assert "trajectory" in result.stdout.lower()
+
+
+def test_q_shortcut_bound(qapp) -> None:  # noqa: ANN001, ARG001
+    """The recorder binds Q to close (which saves via closeEvent, like the window's X)."""
+    window = RecorderWindow(Skeleton.from_toml(_FOUR_DOF), mode="ik")
+    assert window.quit_shortcut.key().toString() == "Q"

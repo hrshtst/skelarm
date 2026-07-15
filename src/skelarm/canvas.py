@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 )
 
 from skelarm.kinematics import compute_inverse_kinematics
+from skelarm.widgets import bind_quit_key
 
 if TYPE_CHECKING:
     import numpy as np
@@ -352,6 +353,7 @@ class SkelarmViewer(QMainWindow):
 
         self.setWindowTitle("Skelarm Viewer")
         self.resize(1024, 768)
+        self.quit_shortcut = bind_quit_key(self)
 
         # Main layout container
         central_widget = QWidget()

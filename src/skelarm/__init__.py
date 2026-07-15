@@ -85,7 +85,7 @@ from .scenario import (
 from .simulator import SimulatorCanvas, SkelarmSimulator
 from .skeleton import Link, LinkProp, Skeleton
 from .trajectory import Trajectory, evaluate_schedule
-from .widgets import TransportBar, make_icon
+from .widgets import TransportBar, bind_quit_key, make_icon
 
 __all__ = [
     "FILTERS",
@@ -125,6 +125,7 @@ __all__ = [
     "active_target_index",
     "adaptive_shaping_ratio",
     "apply_active_target",
+    "bind_quit_key",
     "build_controller",
     "build_curve",
     "butterworth_lowpass",

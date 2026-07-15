@@ -107,7 +107,7 @@ For an interactive version, launch the real-time GUI simulator and press/drag in
 uv run python examples/interactive_dynamics.py
 ```
 
-To simulate an arbitrary robot, use the generalized tool in `tools/`. Every simulator window opens paused, with a media-player-style transport bar at the top of the control panel — icon buttons for play/pause (`Space`), single-step (`→`/`F`, while paused), and reset (`R`); pass `--run` to start simulating immediately on launch. This tool adds a live viscous-friction control (joint damping that dissipates energy), a status panel (kinetic energy and tip position/speed), and an optional tip-trajectory plot when the window closes:
+To simulate an arbitrary robot, use the generalized tool in `tools/`. Every simulator window opens paused, with a media-player-style transport bar at the top of the control panel — icon buttons for play/pause (`Space`), single-step (`→`/`F`, while paused), and reset (`R`), and `Q` closes any of the GUI tools; pass `--run` to start simulating immediately on launch. This tool adds a live viscous-friction control (joint damping that dissipates energy), a status panel (kinetic energy and tip position/speed), and an optional tip-trajectory plot when the window closes:
 
 ```bash
 uv run python tools/dynamics_simulator.py examples/four_dof_robot.toml

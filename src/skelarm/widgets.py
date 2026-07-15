@@ -24,6 +24,17 @@ def _hinted(label: str, keys: tuple[str, ...]) -> str:
     return f"{label} ({'/'.join(_KEY_GLYPHS.get(key, key) for key in keys)})"
 
 
+def bind_quit_key(window: QWidget) -> QShortcut:
+    """Bind ``Q`` to close ``window``, returning the created shortcut.
+
+    Closing goes through the normal ``close()`` path, so ``closeEvent``
+    handlers (e.g. the trajectory recorder's save-on-close) still run.
+    """
+    shortcut = QShortcut(QKeySequence("Q"), window)
+    shortcut.activated.connect(window.close)
+    return shortcut
+
+
 def make_icon(name: str) -> QIcon:
     """Return a QtAwesome icon by name.
 

@@ -412,3 +412,18 @@ def test_home_end_shortcuts(qapp) -> None:  # noqa: ANN001, ARG001
     QTest.keyClick(window, Qt.Key.Key_Home)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
     assert window.frame == 0
     assert window.is_playing is False
+
+
+def test_q_shortcut_closes_the_window(qapp) -> None:  # noqa: ANN001, ARG001
+    """Pressing Q closes the player window."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+    from PyQt6.QtWidgets import QApplication
+
+    window = PlaybackWindow(_log())
+    assert window.quit_shortcut.key().toString() == "Q"
+
+    _activate(window)
+    QTest.keyClick(window, Qt.Key.Key_Q)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    QApplication.processEvents()
+    assert not window.isVisible()

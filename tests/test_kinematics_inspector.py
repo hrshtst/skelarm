@@ -217,3 +217,20 @@ def test_selecting_method_routes_to_solver(qapp) -> None:  # noqa: ANN001, ARG00
 
     inspector.canvas.solve_to_world(0.5, 1.2)
     assert inspector.canvas.last_ik_result is not None
+
+
+def test_q_shortcut_closes_the_window(qapp) -> None:  # noqa: ANN001, ARG001
+    """Pressing Q closes the inspector window (inherited from the viewer base)."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+    from PyQt6.QtWidgets import QApplication
+
+    inspector = _inspector(2)
+    assert inspector.quit_shortcut.key().toString() == "Q"
+
+    inspector.show()
+    inspector.activateWindow()
+    QApplication.processEvents()
+    QTest.keyClick(inspector, Qt.Key.Key_Q)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    QApplication.processEvents()
+    assert not inspector.isVisible()

@@ -47,7 +47,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from skelarm import SkelarmCanvas, StateLog, Task, TransportBar, compute_forward_kinematics, make_icon
+from skelarm import SkelarmCanvas, StateLog, Task, TransportBar, bind_quit_key, compute_forward_kinematics, make_icon
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # allow `tools.` imports when run as a script
 from tools._scenario_cli import task_overlays
@@ -162,6 +162,7 @@ class PlaybackWindow(QMainWindow):
         self.home_shortcut.activated.connect(self.reset_button.click)
         self.end_shortcut = QShortcut(QKeySequence("End"), self)
         self.end_shortcut.activated.connect(self._on_end_shortcut)
+        self.quit_shortcut = bind_quit_key(self)
 
         controls.addWidget(QLabel("Playback speed"))
         self.speed_spin = QDoubleSpinBox()

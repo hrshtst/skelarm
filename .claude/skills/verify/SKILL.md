@@ -61,4 +61,5 @@ Run with `uv run python <driver>.py` from the repo root (tools import `tools._sc
   back-to-start (pauses at frame 0), step past the end clamps.
 - Keyboard shortcuts: `Space` play/pause, `→`/`F` step, `R` reset in every transport
   window; player adds `←`/`B` previous frame, `Home`/`End`; inspector `R` = Reset pose;
-  recorder `F` = Finish; multi-target digits 1–9 still switch targets.
+  recorder `F` = Finish; `Q` closes every tool window (goes through `closeEvent`);
+  multi-target digits 1–9 still switch targets.

@@ -409,3 +409,20 @@ def test_programmatic_pause_syncs_the_transport_bar(qapp) -> None:  # noqa: ANN0
     sim.pause()
     assert not sim.pause_button.isChecked()
     assert sim.step_button.isEnabled()
+
+
+def test_q_shortcut_closes_the_window(qapp) -> None:  # noqa: ANN001, ARG001
+    """Pressing Q closes the simulator window."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+    from PyQt6.QtWidgets import QApplication
+
+    sim = _simulator()
+    assert sim.quit_shortcut.key().toString() == "Q"
+
+    sim.show()
+    sim.activateWindow()
+    QApplication.processEvents()
+    QTest.keyClick(sim, Qt.Key.Key_Q)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    QApplication.processEvents()
+    assert not sim.isVisible()

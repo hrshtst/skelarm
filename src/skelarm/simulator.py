@@ -22,7 +22,7 @@ from skelarm.canvas import _GOAL_COLOR, SkelarmCanvas, draw_arrow
 from skelarm.dynamics import integrate_with_limits
 from skelarm.kinematics import compute_forward_kinematics, compute_jacobian
 from skelarm.recording import StateLog
-from skelarm.widgets import TransportBar
+from skelarm.widgets import TransportBar, bind_quit_key
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -232,6 +232,7 @@ class SkelarmSimulator(QMainWindow):
         self.canvas.target_tolerance = target_tolerance
         self.setWindowTitle("Skelarm Simulator")
         self.resize(1024, 768)
+        self.quit_shortcut = bind_quit_key(self)
         if self._controller is not None:
             self._controller.reset(skeleton)
 

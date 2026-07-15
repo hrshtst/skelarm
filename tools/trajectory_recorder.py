@@ -40,6 +40,7 @@ from skelarm import (
     Skeleton,
     StateLog,
     Task,
+    bind_quit_key,
     compute_inverse_kinematics,
     compute_jacobian,
     integrate_with_limits,
@@ -123,6 +124,7 @@ class RecorderWindow(QMainWindow):
 
         self.setWindowTitle("Skelarm Trajectory Recorder")
         self.resize(1024, 768)
+        self.quit_shortcut = bind_quit_key(self)
         central = QWidget()
         self.setCentralWidget(central)
         layout = QHBoxLayout(central)
