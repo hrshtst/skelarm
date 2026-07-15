@@ -250,7 +250,7 @@ class SkelarmSimulator(QMainWindow):
         self.transport_bar = TransportBar()
         self.transport_bar.play_button.toggled.connect(self._on_play_toggled)
         self.transport_bar.step_button.clicked.connect(self._on_step_clicked)
-        self.transport_bar.reset_button.clicked.connect(self.reset)
+        self.transport_bar.reset_button.clicked.connect(self._on_reset_clicked)
         controls.addWidget(self.transport_bar)
         # Historical aliases so tests and scripts keep addressing the buttons directly.
         self.pause_button = self.transport_bar.play_button
@@ -347,6 +347,11 @@ class SkelarmSimulator(QMainWindow):
         """Advance a single render tick while paused."""
         if not self.running:
             self.step()
+
+    def _on_reset_clicked(self) -> None:
+        """Pause the loop and restore the initial state."""
+        self.pause()
+        self.reset()
 
     @property
     def is_recording(self) -> bool:

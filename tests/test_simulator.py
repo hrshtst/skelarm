@@ -373,8 +373,8 @@ def test_step_button_advances_one_tick_while_paused(qapp) -> None:  # noqa: ANN0
     assert sim.time == pytest.approx(t0 + 0.02)
 
 
-def test_reset_button_restores_pose_and_clock(qapp) -> None:  # noqa: ANN001, ARG001
-    """The reset button restores the initial pose and zeros the clock."""
+def test_reset_button_pauses_and_restores_pose_and_clock(qapp) -> None:  # noqa: ANN001, ARG001
+    """The reset button pauses the loop and restores the initial pose and clock."""
     sim = _simulator()
     q0 = sim.skeleton.q.copy()
     tip = sim.skeleton.links[-1]
@@ -383,9 +383,21 @@ def test_reset_button_restores_pose_and_clock(qapp) -> None:  # noqa: ANN001, AR
         sim.step()
     assert not np.allclose(sim.skeleton.q, q0)
 
+    sim.resume()
     sim.reset_button.click()
+    assert sim.running is False
+    assert not sim.pause_button.isChecked()
+    assert sim.step_button.isEnabled()
     assert sim.skeleton.q == pytest.approx(q0)
     assert sim.time == pytest.approx(0.0)
+
+
+def test_programmatic_reset_does_not_pause(qapp) -> None:  # noqa: ANN001, ARG001
+    """Calling reset() directly restores the state but leaves the loop running."""
+    sim = _simulator()
+    sim.resume()
+    sim.reset()
+    assert sim.running is True
 
 
 def test_programmatic_pause_syncs_the_transport_bar(qapp) -> None:  # noqa: ANN001, ARG001
