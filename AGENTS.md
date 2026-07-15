@@ -49,6 +49,7 @@ For bug fixes, first add a test that reproduces the bug (red), then fix it. Wher
 ## Workflow
 
 - Commits land directly on `main`. Use Conventional Commit prefixes (`feat:`, `fix:`, `docs:`, `chore:`).
+- A Claude Code PostToolUse hook (`.claude/settings.json`) ruff-formats and autofixes every edited `.py`, but with `--unfixable F401,SIM105` so an import added before its usage is never deleted mid-edit. Genuinely unused imports are still cleaned up by `make format` and pre-commit.
 - Pre-commit (ruff + basedpyright + mypy) gates every commit; if ruff reformats during the hook, `git add` again before retrying.
 - AI-generated code must be disclosed in PR descriptions (see README §"AI Assistance").
 - Releases follow `RELEASING.md`.
