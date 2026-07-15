@@ -158,6 +158,9 @@ class SkelarmSimulator(QMainWindow):
     displayed prominently, the joint sliders are read-only and show the simulated
     angles, and a checkbox toggles the link centers of mass. Joint limits act as
     hard stops.
+
+    The window opens paused; start the loop from the transport bar's play button
+    or by calling :meth:`resume`.
     """
 
     def __init__(
@@ -244,9 +247,7 @@ class SkelarmSimulator(QMainWindow):
         self.controls_layout = controls  # exposed so subclasses can add_control
         controls.addWidget(QLabel("<b>Simulation</b>"))
 
-        # The simulation starts running, so the toggle begins checked; "Resume"
-        # (not "Play") because clicking it continues an already-started run.
-        self.transport_bar = TransportBar(playing=True, play_label="Resume")
+        self.transport_bar = TransportBar()
         self.transport_bar.play_button.toggled.connect(self._on_play_toggled)
         self.transport_bar.step_button.clicked.connect(self._on_step_clicked)
         self.transport_bar.reset_button.clicked.connect(self.reset)
@@ -288,9 +289,9 @@ class SkelarmSimulator(QMainWindow):
         layout.addWidget(panel, stretch=1)
 
         self._update_displays()
+        # The loop starts paused; the transport bar's play button (or resume()) starts it.
         self._timer = QTimer(self)
         self._timer.timeout.connect(self.step)
-        self._timer.start(_TIMER_MS)
 
     def _on_show_com_toggled(self) -> None:
         """Toggle the center-of-mass overlay on the canvas."""

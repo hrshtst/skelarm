@@ -393,7 +393,8 @@ class PlaybackWindow(QMainWindow):
             self.set_frame(self._frame + 1)
 
     def _on_reset_clicked(self) -> None:
-        """Jump back to the first frame."""
+        """Pause playback and jump back to the first frame."""
+        self.pause()
         self.set_frame(0)
 
     def _on_speed_changed(self, value: float) -> None:

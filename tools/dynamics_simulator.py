@@ -5,9 +5,10 @@ Load a robot arm from a TOML config given on the command line and simulate it in
 real time under zero-torque control. Press and drag the left mouse button in the
 canvas to apply a spring-like external force at the tip (drawn as a red arrow).
 On top of the base :class:`~skelarm.SkelarmSimulator` (whose transport bar provides
-pause/resume, single-step, and reset) this tool adds a live viscous-friction spin box
-(joint damping that dissipates energy), a status panel (kinetic energy and tip
-position/speed), and an optional tip-trajectory plot shown when the GUI closes.
+play/pause, single-step, and reset; the window opens paused unless ``--run`` is given)
+this tool adds a live viscous-friction spin box (joint damping that dissipates energy),
+a status panel (kinetic energy and tip position/speed), and an optional tip-trajectory
+plot shown when the GUI closes.
 
 Usage::
 
@@ -202,6 +203,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--no-plot", action="store_true", help="do not plot the tip trajectory when the GUI closes")
     parser.add_argument(
+        "--run",
+        action="store_true",
+        help="start the simulation immediately on launch (the GUI opens paused by default)",
+    )
+    parser.add_argument(
         "--no-joint-limits",
         action="store_true",
         help="do not enforce joint limits in the dynamics (limits then apply to kinematics only)",
@@ -268,6 +274,8 @@ def main() -> None:
     )
     if args.show_com:
         simulator.com_checkbox.setChecked(True)
+    if args.run:
+        simulator.resume()
 
     simulator.show()
     app.exec()

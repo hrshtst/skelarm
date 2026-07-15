@@ -150,6 +150,8 @@ def main() -> None:
     window = MultiTargetReachSimulator(
         scenario, stiffness=args.stiffness, enforce_limits=resolve_enforce_limits(args, scenario)
     )
+    if args.run:
+        window.resume()
     window.show()
     sys.exit(app.exec())
 

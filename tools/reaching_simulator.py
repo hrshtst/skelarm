@@ -195,6 +195,8 @@ def main() -> None:
 
     app = QApplication(sys.argv)
     window = ReachSimulator(scenario, stiffness=args.stiffness, enforce_limits=resolve_enforce_limits(args, scenario))
+    if args.run:
+        window.resume()
     window.show()
     sys.exit(app.exec())
 

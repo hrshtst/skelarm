@@ -197,13 +197,13 @@ def test_stiffness_property_round_trips(qapp) -> None:  # noqa: ANN001, ARG001
 
 
 def test_pause_and_resume_toggle_the_loop(qapp) -> None:  # noqa: ANN001, ARG001
-    """The simulation runs after construction; pause/resume flip the running state."""
+    """The simulation launches paused; resume/pause flip the running state."""
     sim = _simulator()
-    assert sim.running is True
-    sim.pause()
     assert sim.running is False
     sim.resume()
     assert sim.running is True
+    sim.pause()
+    assert sim.running is False
 
 
 def test_reset_restores_initial_pose_velocity_and_clock(qapp) -> None:  # noqa: ANN001, ARG001
@@ -337,11 +337,13 @@ def test_transport_bar_sits_below_the_title(qapp) -> None:  # noqa: ANN001, ARG0
     assert sim.controls_layout.indexOf(sim.transport_bar) == 1
 
 
-def test_transport_bar_starts_playing(qapp) -> None:  # noqa: ANN001, ARG001
-    """The simulation starts running, so the toggle is checked and step disabled."""
+def test_transport_bar_starts_paused(qapp) -> None:  # noqa: ANN001, ARG001
+    """The simulator launches paused: toggle unchecked, tooltip 'Play', step enabled."""
     sim = _simulator()
-    assert sim.pause_button.isChecked()
-    assert not sim.step_button.isEnabled()
+    assert sim.running is False
+    assert not sim.pause_button.isChecked()
+    assert sim.pause_button.toolTip() == "Play"
+    assert sim.step_button.isEnabled()
 
 
 def test_transport_buttons_alias_the_bar(qapp) -> None:  # noqa: ANN001, ARG001
@@ -352,21 +354,20 @@ def test_transport_buttons_alias_the_bar(qapp) -> None:  # noqa: ANN001, ARG001
     assert sim.reset_button is sim.transport_bar.reset_button
 
 
-def test_pause_button_click_stops_and_resumes_the_loop(qapp) -> None:  # noqa: ANN001, ARG001
-    """Clicking the toggle pauses the loop and enables step; clicking again resumes."""
+def test_play_button_click_starts_and_stops_the_loop(qapp) -> None:  # noqa: ANN001, ARG001
+    """Clicking the toggle starts the loop and disables step; clicking again pauses."""
     sim = _simulator()
-    sim.pause_button.click()
-    assert sim.running is False
-    assert sim.step_button.isEnabled()
     sim.pause_button.click()
     assert sim.running is True
     assert not sim.step_button.isEnabled()
+    sim.pause_button.click()
+    assert sim.running is False
+    assert sim.step_button.isEnabled()
 
 
 def test_step_button_advances_one_tick_while_paused(qapp) -> None:  # noqa: ANN001, ARG001
-    """While paused, the step button advances the clock by exactly one render tick."""
+    """While paused (as launched), the step button advances the clock by one render tick."""
     sim = _simulator()
-    sim.pause_button.click()
     t0 = sim.time
     sim.step_button.click()
     assert sim.time == pytest.approx(t0 + 0.02)
@@ -388,11 +389,11 @@ def test_reset_button_restores_pose_and_clock(qapp) -> None:  # noqa: ANN001, AR
 
 
 def test_programmatic_pause_syncs_the_transport_bar(qapp) -> None:  # noqa: ANN001, ARG001
-    """Calling pause()/resume() directly keeps the toggle and step button in sync."""
+    """Calling resume()/pause() directly keeps the toggle and step button in sync."""
     sim = _simulator()
-    sim.pause()
-    assert not sim.pause_button.isChecked()
-    assert sim.step_button.isEnabled()
     sim.resume()
     assert sim.pause_button.isChecked()
     assert not sim.step_button.isEnabled()
+    sim.pause()
+    assert not sim.pause_button.isChecked()
+    assert sim.step_button.isEnabled()

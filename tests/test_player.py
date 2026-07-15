@@ -226,6 +226,16 @@ def test_reset_button_returns_to_the_first_frame(qapp) -> None:  # noqa: ANN001,
     assert window.frame == 0
 
 
+def test_reset_button_pauses_playback(qapp) -> None:  # noqa: ANN001, ARG001
+    """Clicking 'Back to start' during playback pauses at frame 0 with the toggle unchecked."""
+    window = PlaybackWindow(_log())
+    window.play()
+    window.reset_button.click()
+    assert window.frame == 0
+    assert window.is_playing is False
+    assert window.play_button.isChecked() is False
+
+
 def test_plot_button_keeps_text_and_gains_icon(qapp) -> None:  # noqa: ANN001, ARG001
     """The plot button stays a labeled button but shows a leading icon."""
     window = PlaybackWindow(_log())

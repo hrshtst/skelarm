@@ -147,7 +147,7 @@ def run_headless(
 
 
 def add_override_arguments(parser: argparse.ArgumentParser) -> None:
-    """Add the shared ``--initial`` / ``--pose`` / ``--task`` / ``--controller`` / ``--no-joint-limits`` flags."""
+    """Add the shared ``--initial``/``--pose``/``--task``/``--controller``/``--no-joint-limits``/``--run`` flags."""
     parser.add_argument(
         "--initial", type=Path, default=None, help="TOML file whose [initial] table overrides the base initial pose"
     )
@@ -162,6 +162,11 @@ def add_override_arguments(parser: argparse.ArgumentParser) -> None:
         "--no-joint-limits",
         action="store_true",
         help="override [simulator].enforce_limits off: no dynamics hard stop (limits apply to kinematics only)",
+    )
+    parser.add_argument(
+        "--run",
+        action="store_true",
+        help="start the simulation immediately on launch (the GUI opens paused by default)",
     )
 
 

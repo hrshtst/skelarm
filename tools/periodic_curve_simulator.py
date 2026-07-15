@@ -84,6 +84,8 @@ def main() -> None:
 
     app = QApplication(sys.argv)
     window = CurveTraceSimulator(scenario, stiffness=args.stiffness, enforce_limits=enforce_limits)
+    if args.run:
+        window.resume()
     window.show()
     sys.exit(app.exec())
 

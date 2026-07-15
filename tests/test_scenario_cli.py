@@ -108,12 +108,14 @@ def test_add_override_arguments_parses_the_shared_flags() -> None:
     parser.add_argument("config")
     add_override_arguments(parser)
     args = parser.parse_args(
-        ["c.toml", "--initial", "i.toml", "--pose", "10,20", "--task", "t.toml", "--no-joint-limits"]
+        ["c.toml", "--initial", "i.toml", "--pose", "10,20", "--task", "t.toml", "--no-joint-limits", "--run"]
     )
     assert args.initial == Path("i.toml")
     assert args.pose == "10,20"
     assert args.task == Path("t.toml")
     assert args.no_joint_limits is True
+    assert args.run is True
+    assert parser.parse_args(["c.toml"]).run is False
 
 
 def test_scenario_simulator_inherits_the_transport_bar(qapp) -> None:  # noqa: ANN001, ARG001
@@ -126,12 +128,12 @@ def test_scenario_simulator_inherits_the_transport_bar(qapp) -> None:  # noqa: A
     assert sim.reset_button is sim.transport_bar.reset_button
     assert isinstance(sim.reset_button, QToolButton)
 
-    assert sim.running is True
-    sim.pause_button.click()
-    assert sim.running is False
+    assert sim.running is False  # launches paused
     t0 = sim.time
     sim.step_button.click()
     assert sim.time > t0
+    sim.pause_button.click()
+    assert sim.running is True
 
 
 def test_scenario_simulator_export_button_keeps_text_and_gains_icon(qapp) -> None:  # noqa: ANN001, ARG001

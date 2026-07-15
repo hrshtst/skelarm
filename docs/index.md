@@ -107,7 +107,7 @@ For an interactive version, launch the real-time GUI simulator and press/drag in
 uv run python examples/interactive_dynamics.py
 ```
 
-To simulate an arbitrary robot, use the generalized tool in `tools/`. Every simulator window has a media-player-style transport bar at the top of the control panel — icon buttons for pause/resume, single-step (while paused), and reset — and this tool adds a live viscous-friction control (joint damping that dissipates energy), a status panel (kinetic energy and tip position/speed), and an optional tip-trajectory plot when the window closes:
+To simulate an arbitrary robot, use the generalized tool in `tools/`. Every simulator window opens paused, with a media-player-style transport bar at the top of the control panel — icon buttons for play/pause, single-step (while paused), and reset; pass `--run` to start simulating immediately on launch. This tool adds a live viscous-friction control (joint damping that dissipates energy), a status panel (kinetic energy and tip position/speed), and an optional tip-trajectory plot when the window closes:
 
 ```bash
 uv run python tools/dynamics_simulator.py examples/four_dof_robot.toml
@@ -155,7 +155,7 @@ uv run python tools/reaching_simulator.py examples/reach.toml --save reach.sklog
 uv run python tools/player.py reach.sklog.npz                 # replay a saved run
 ```
 
-The other task types have dedicated interactive simulators sharing the same controls (the transport bar for pause/step/reset, drag to perturb, **Record** / **Export…**, the `--initial`/`--pose`/`--task`/`--controller` overrides, and `--save` for a headless batch). Their runs replay in `tools/player.py` with the task overlay drawn:
+The other task types have dedicated interactive simulators sharing the same controls (the transport bar for play/step/reset — paused on launch unless `--run` is given — drag to perturb, **Record** / **Export…**, the `--initial`/`--pose`/`--task`/`--controller` overrides, and `--save` for a headless batch). Their runs replay in `tools/player.py` with the task overlay drawn:
 
 ```bash
 uv run python tools/multi_target_simulator.py examples/multi_target.toml        # press 1–N to switch the active target live

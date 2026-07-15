@@ -148,20 +148,20 @@ def test_reset_clears_trajectory_and_restores_state(qapp) -> None:  # noqa: ANN0
 
 
 def test_pause_button_toggles_running_and_step_button(qapp) -> None:  # noqa: ANN001, ARG001
-    """Pausing stops the loop and enables single-stepping; resuming reverses it."""
+    """The tool launches paused; the toggle starts the loop and disables single-stepping."""
     sim = _simulator()
-    assert sim.running is True
-    assert sim.step_button.isEnabled() is False
-
-    sim.pause_button.click()
     assert sim.running is False
-    assert sim.pause_button.toolTip() == "Resume"
     assert sim.step_button.isEnabled() is True
 
     sim.pause_button.click()
     assert sim.running is True
     assert sim.pause_button.toolTip() == "Pause"
     assert sim.step_button.isEnabled() is False
+
+    sim.pause_button.click()
+    assert sim.running is False
+    assert sim.pause_button.toolTip() == "Play"
+    assert sim.step_button.isEnabled() is True
 
 
 def test_playback_controls_come_from_the_transport_bar(qapp) -> None:  # noqa: ANN001, ARG001
@@ -171,7 +171,7 @@ def test_playback_controls_come_from_the_transport_bar(qapp) -> None:  # noqa: A
     sim = _simulator()
     assert isinstance(sim.pause_button, QToolButton)
     assert sim.pause_button is sim.transport_bar.play_button
-    assert sim.pause_button.isChecked()  # running from the start
+    assert not sim.pause_button.isChecked()  # launches paused
 
 
 def test_export_button_keeps_text_and_gains_icon(qapp) -> None:  # noqa: ANN001, ARG001
@@ -182,14 +182,22 @@ def test_export_button_keeps_text_and_gains_icon(qapp) -> None:  # noqa: ANN001,
 
 
 def test_single_step_advances_only_while_paused(qapp) -> None:  # noqa: ANN001, ARG001
-    """The step button advances exactly one tick and only when paused."""
+    """The step button advances exactly one tick and only when paused (as launched)."""
     sim = _simulator()
-    sim.pause_button.click()  # pause
     t0 = sim.time
     n0 = len(sim.trajectory[0])
     sim.step_button.click()
     assert sim.time > t0
     assert len(sim.trajectory[0]) == n0 + 1
+
+
+def test_run_flag_parses_and_defaults_off() -> None:
+    """``--run`` starts the simulation on launch; without it the tool opens paused."""
+    from tools.dynamics_simulator import build_parser
+
+    parser = build_parser()
+    assert parser.parse_args(["robot.toml"]).run is False
+    assert parser.parse_args(["robot.toml", "--run"]).run is True
 
 
 def test_status_label_reports_energy_and_tip(qapp) -> None:  # noqa: ANN001, ARG001

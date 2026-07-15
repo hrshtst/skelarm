@@ -48,7 +48,8 @@ Run with `uv run python <driver>.py` from the repo root (tools import `tools._sc
 
 ## Flows worth driving
 
-- Transport bar (all simulators): pause/resume toggle, step-while-paused advances `time`
-  by 0.02 s, reset zeroes the clock, programmatic `pause()` syncs the toggle.
+- Transport bar (all simulators): windows launch paused (`--run` starts immediately);
+  the play toggle starts/stops the loop, step-while-paused advances `time` by 0.02 s,
+  reset zeroes the clock, programmatic `pause()`/`resume()` syncs the toggle.
 - Player: play at speed, auto-pause at the last frame (toggle unchecks), frame-step,
-  back-to-start, step past the end clamps.
+  back-to-start (pauses at frame 0), step past the end clamps.
