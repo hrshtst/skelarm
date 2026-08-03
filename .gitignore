@@ -1,6 +1,8 @@
 ### skelarm ###
 # Recorded run artifacts produced by tools/reach.py and the dynamics simulator.
 *.sklog.npz
+# ...but committed documentation assets (replayable demo logs) are tracked.
+!docs/assets/*.sklog.npz
 
 ### Python ###
 # Byte-compiled / optimized / DLL files
