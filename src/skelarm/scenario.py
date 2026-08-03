@@ -859,23 +859,27 @@ def run_scenario(
 
 
 def scenario_from_log(log: StateLog) -> tuple[Scenario, Mapping[str, Any]]:
-    """Reconstruct the scenario and run parameters embedded in a log by :func:`run_scenario`.
+    """Reconstruct the scenario and run parameters embedded in a log.
+
+    Works with logs written by :func:`run_scenario` and by the interactive
+    scenario simulators; run keys a log does not record (e.g. an interactive
+    run's ``duration``) fall back to the scenario's own values.
 
     Returns
     -------
     tuple[Scenario, Mapping[str, Any]]
         The rebuilt scenario (skeleton posed at the recorded initial state) and the
-        ``run`` parameters (``duration`` / ``dt`` / ``grav_vec``).
+        ``run`` parameters (``duration`` / ``dt`` / ``grav_vec`` / ``enforce_limits``).
 
     Raises
     ------
     ValueError
-        If the log carries no reproduction metadata (was not produced by
-        :func:`run_scenario`).
+        If the log carries no reproduction metadata (it was recorded without an
+        embedded scenario config).
     """
     config = log.extra.get("source_config")
     if not config:
-        msg = "log has no reproduction metadata; it was not produced by run_scenario"
+        msg = "log has no reproduction metadata; it was recorded without an embedded scenario config"
         raise ValueError(msg)
     scenario = scenario_from_config(config)
     # Merge key-by-key: a GUI log records dt / grav_vec / enforce_limits but no
@@ -891,13 +895,16 @@ def scenario_from_log(log: StateLog) -> tuple[Scenario, Mapping[str, Any]]:
 
 
 def rerun_log(log: StateLog) -> StateLog:
-    """Reconstruct and re-simulate a scenario recorded by :func:`run_scenario`.
+    """Reconstruct and re-simulate a scenario from its recorded config and run parameters.
 
     Rebuilds the scenario by reparsing the embedded source config (identical input
-    gives identical state) and re-runs with the recorded run parameters, so
-    deterministic controllers reproduce the original channels exactly (MPC, which
-    calls :func:`scipy.optimize.minimize`, reproduces within a small numerical
-    tolerance on the same platform).
+    gives identical state) and re-runs with the recorded run parameters. For a
+    headless :func:`run_scenario` log, deterministic controllers reproduce the
+    recorded channels exactly (MPC, which calls :func:`scipy.optimize.minimize`,
+    reproduces within a small numerical tolerance on the same platform). For an
+    interactive simulator log the re-run is the *unperturbed* scenario:
+    mouse-applied forces are recorded in the ``ext_force`` channel but not
+    replayed.
 
     Raises
     ------
@@ -917,14 +924,19 @@ def export_scenario_toml(log: StateLog, path: str | Path) -> None:
     """Write the log's embedded scenario config to an editable TOML file.
 
     The output is a standard combined config (``[skeleton]`` / ``[initial]`` /
-    ``[task]`` / ``[controller]``) that :func:`load_scenario` reads back. Re-running
-    the unedited file reproduces the original run exactly for the deterministic
-    controllers, and individual values can be edited for comparison studies.
+    ``[task]`` / ``[simulator]`` / ``[controller]``) that :func:`load_scenario`
+    reads back. It is the **original source config verbatim**: re-running it
+    unedited reproduces a headless, config-driven run exactly for the
+    deterministic controllers, but call-time overrides (a ``duration=`` or
+    ``enforce_limits=`` argument) live only in the run metadata and are not
+    exported, and an interactive run's mouse-applied forces are not part of the
+    config. Individual values can be edited for comparison studies.
 
     Parameters
     ----------
     log : StateLog
-        A log produced by :func:`run_scenario` (carrying the source config).
+        A log carrying an embedded source config (written by :func:`run_scenario`
+        or an interactive scenario simulator).
     path : str | Path
         Destination ``.toml`` path.
 
@@ -935,6 +947,6 @@ def export_scenario_toml(log: StateLog, path: str | Path) -> None:
     """
     config = log.extra.get("source_config")
     if not config:
-        msg = "log has no embedded scenario config to export; it was not produced by run_scenario"
+        msg = "log has no embedded scenario config to export; it was recorded without one"
         raise ValueError(msg)
     Path(path).write_text(dump_toml(config).strip() + "\n", encoding="utf-8")

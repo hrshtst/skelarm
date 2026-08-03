@@ -154,9 +154,13 @@ $$
 q_{k+1} = q_k + \dot{q}_{k+1}\, \Delta t,
 $$
 
-costs nothing extra but changes the character of the scheme: it is symplectic, so
-its energy error stays bounded over long horizons instead of drifting the way
-explicit Euler's does. That stability at a fixed step is why
+costs nothing extra but changes the character of the scheme. This velocity-first
+(semi-implicit) update is the symplectic Euler method for conservative systems
+with constant mass, where its energy error stays bounded over long horizons
+instead of drifting the way explicit Euler's does; the arm's
+configuration-dependent inertia, control torques, friction, and hard-stop
+projection fall outside that guarantee, but the scheme's markedly better
+stability at a fixed step carries over in practice. That is why
 `integrate_with_limits` uses it as `skelarm`'s control-loop and GUI integrator —
 the fixed step keeps the controller cadence exact, and joint limits can be applied
 as hard stops between steps (clamping $q$ and zeroing the clamped joints'

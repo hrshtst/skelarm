@@ -12,7 +12,7 @@ uv run python tools/reaching_simulator.py examples/reach.toml --save reach.sklog
 uv run python tools/player.py reach.sklog.npz                # replay and analyze a saved run
 ```
 
-A scenario combines four sections:
+A scenario combines five sections:
 
 | Section | Purpose | Loader |
 | --- | --- | --- |
@@ -29,7 +29,7 @@ See [Trajectory Tracking Control](../reference/07_control.md) and
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `type` | str | *required* | Task kind — the discriminator that decides what else the task needs. Only `reaching` is built in; more are planned (and you can [add your own](defining_a_task.md)). |
+| `type` | str | *required* | Task kind — the discriminator that decides what else the task needs. Five types are built in (see [Task types](#task-types)), and you can [add your own](defining_a_task.md). |
 | `target` | `[x, y]` or table | *required for `reaching`* | Endpoint goal in meters (see below). Other task types may omit it. |
 | `duration` | float | `2.0` | Total simulated time / planned-motion horizon, in seconds. |
 | `schedule` | str | `"minimum_jerk"` | Time scaling for planned trajectories: `linear`, `cubic`, `quintic`, or `minimum_jerk`. |

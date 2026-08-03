@@ -307,8 +307,10 @@ This explains the behavior Sugihara wanted:
 This is why Sugihara calls the method "solvability-unconcerned": the same
 iteration can be used whether the exact equation is solvable, redundant,
 singular, or unreachable. If the target is reachable, the residual should go to
-zero. If it is unreachable, the solver should return the configuration that
-minimizes the weighted residual while keeping joint deviations small.
+zero. If it is unreachable, the solver settles at the best configuration it
+finds — a local stationary point of the weighted residual (the projected
+iteration has no line search or global optimizer, and may stall at a joint
+limit), while keeping joint deviations small.
 
 Sugihara notes that a line search is the formal way to strengthen global
 convergence. His experiments found the residual-based damping reliable even
@@ -371,8 +373,9 @@ can stop at a slightly suboptimal pose when a limit is active.
 `success` has one strict meaning: the **final** residual norm is within the
 position tolerance ($\lVert e\rVert \le \varepsilon_e$), evaluated on the pose the
 solver ends at regardless of `status`. An unreachable target therefore always ends
-with `success=False` — typically `status="stalled"` at the nonzero-residual pose
-that minimizes the weighted residual. The best-effort pose is still written back
+with `success=False` — typically `status="stalled"` at a nonzero-residual pose
+where the iteration stagnates (a local stationary point, or a joint-limit-clamped
+configuration near one). The best-effort pose is still written back
 to the skeleton, so callers that can use a nearest-approach configuration should
 branch on `success` (or `residual_norm`) rather than assume the target was hit.
 (The reference builder `ik_joint_reference` does exactly that: it keeps the

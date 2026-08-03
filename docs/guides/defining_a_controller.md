@@ -137,8 +137,9 @@ log.save("reach.sklog.npz")
 ```
 
 `run_scenario` embeds the `[controller]` config (gains and all) in the log, so
-`rerun_log` and an exported config reproduce the run exactly (see
-[Reproducible runs](control_configuration.md#reproducible-runs)). **Register the
+`rerun_log` and an exported config reproduce a headless, config-driven run exactly
+— call-time overrides and interactively applied forces are outside the export; see
+[Reproducible runs](control_configuration.md#reproducible-runs). **Register the
 builder at your module's import time** so re-running a saved log always finds the
 type — otherwise `build_controller` raises *unknown controller type*. Re-registering
 a name replaces it; list the registered types with `controller_types()`.
