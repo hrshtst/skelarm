@@ -65,6 +65,23 @@ extra_javascript:
 
 nav:
   - Home: index.md
+  - Getting Started: getting_started.md
+  - User Guides:
+      - Configure a Robot: guides/robot_configuration.md
+      - Kinematics and Posing: guides/kinematics_and_posing.md
+      - Simulate Dynamics: guides/simulate_dynamics.md
+      - Run Controlled Scenarios: guides/running_scenarios.md
+      - Control Configuration Reference: guides/control_configuration.md
+      - Record, Replay, and Re-simulate: guides/recording_replay.md
+      - Teach and Track Trajectories: guides/teaching_trajectories.md
+      - Joint Limits: guides/joint_limits.md
+      - Tool and CLI Reference: guides/tools_reference.md
+  - Developer Guides:
+      - Python API Quick Start: guides/python_api.md
+      - Defining a Task: guides/defining_a_task.md
+      - Defining a Controller: guides/defining_a_controller.md
+      - Architecture: api/architecture.md
+      - Development and Testing: guides/development.md
   - Theory Reference:
       - Overview: reference/index.md
       - Kinematics: reference/01_kinematics.md
@@ -76,14 +93,7 @@ nav:
       - Trajectory Tracking Control: reference/07_control.md
       - Reaching Control: reference/08_reaching_control.md
       - Trajectory Filtering & Interpolation: reference/09_trajectory_filtering.md
-  - Guides:
-      - Robot Configuration: guides/robot_configuration.md
-      - Control Configuration: guides/control_configuration.md
-      - Defining a Task: guides/defining_a_task.md
-      - Defining a Controller: guides/defining_a_controller.md
-      - Joint Limits: guides/joint_limits.md
   - API Reference:
-      - Architecture: api/architecture.md
       - Skeleton: api/skeleton.md
       - Kinematics: api/kinematics.md
       - Dynamics: api/dynamics.md

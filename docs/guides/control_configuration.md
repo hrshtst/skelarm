@@ -1,26 +1,11 @@
 # Control Configuration
 
-A **scenario** file describes a complete controlled run in one TOML document: the
-robot, its start state, the reaching task, and the controller that drives it. It
-adds `[task]` and `[controller]` sections on top of the
-[Robot Configuration](robot_configuration.md) (`[skeleton]` / `[initial]`), and is
-loaded by `skelarm.load_scenario`.
-
-```bash
-uv run python tools/reaching_simulator.py examples/reach.toml             # interactive reach GUI (drag to perturb)
-uv run python tools/reaching_simulator.py examples/reach.toml --save reach.sklog.npz   # headless batch run + log
-uv run python tools/player.py reach.sklog.npz                # replay and analyze a saved run
-```
-
-A scenario combines five sections:
-
-| Section | Purpose | Loader |
-| --- | --- | --- |
-| `[skeleton]` | Robot geometry (links, base length, limits) | `Skeleton.from_toml` |
-| `[initial]` | Start pose / velocity (degrees) | applied by `Skeleton.from_toml` |
-| `[task]` | The goal and how the motion is shaped | `Task.from_toml` |
-| `[simulator]` | How the dynamics are integrated (`dt`, `enforce_limits`) | `Simulator.from_dict` |
-| `[controller]` | The control law and its gains | `build_controller` |
+The key-by-key reference for the `[task]`, `[simulator]`, and `[controller]`
+tables of a scenario file. For the scenario model itself — the five-table
+layout, a complete example, section overrides, and running scenarios from the
+tools or Python — start at [Run Controlled Scenarios](running_scenarios.md);
+the `[skeleton]` / `[initial]` tables are covered in
+[Robot Configuration](robot_configuration.md).
 
 See [Trajectory Tracking Control](../reference/07_control.md) and
 [Reaching Control](../reference/08_reaching_control.md) for the underlying theory.
@@ -234,167 +219,12 @@ Re-optimizing every step is expensive at a small `dt`; use a larger `[simulator]
     controllers converge asymptotically, so give `duration` enough margin for the
     endpoint to settle.
 
-## Example
+## Related
 
-```toml
-[skeleton]
-base_length = 0.0
-[[skeleton.link]]
-length = 1.0
-mass = 1.0
-inertia = 0.1
-com = [0.5, 0.0]
-limits = [-180.0, 180.0]
-[[skeleton.link]]
-length = 0.8
-mass = 0.8
-inertia = 0.05
-com = [0.4, 0.0]
-limits = [-180.0, 180.0]
-
-[initial]
-q = [34.4, 57.3]        # degrees
-
-[task]
-type = "reaching"       # the task kind (required)
-target = [0.55, 1.21]    # endpoint goal (x, y) in meters (required for reaching)
-duration = 2.0
-schedule = "minimum_jerk"
-
-[simulator]
-dt = 0.002              # control / integration step
-enforce_limits = true   # joint-limit hard stop in the dynamics
-
-[controller]
-type = "computed_torque"
-kp = 200.0
-kd = 30.0
-```
-
-Swap the `[controller]` block to try a different law — for example a compliant,
-human-like reach:
-
-```toml
-[controller]
-type = "adaptive_shaping"
-k_task = 150.0
-d_task = 25.0
-t_adapt = 5.0
-```
-
-## Overriding sections for comparison
-
-`tools/reaching_simulator.py` can override the `[initial]`, `[task]`, and `[controller]`
-sections from separate files, so one base config can be reused across a comparison
-sweep without editing it. Each override file supplies the named table (e.g. a file
-with just a `[controller]` block). With `--save PATH` the run is headless (no GUI)
-and the log is written directly, which is convenient for a scripted sweep:
-
-```bash
-# Same robot and task, different controllers:
-uv run python tools/reaching_simulator.py base.toml --controller computed_torque.toml --save ct.sklog.npz
-uv run python tools/reaching_simulator.py base.toml --controller mpc.toml             --save mpc.sklog.npz
-
-# Same controller, different tasks:
-uv run python tools/reaching_simulator.py base.toml --task near.toml --save near.sklog.npz
-uv run python tools/reaching_simulator.py base.toml --task far.toml  --save far.sklog.npz
-```
-
-Without `--save`, the same overrides configure the interactive GUI instead — e.g.
-`tools/reaching_simulator.py base.toml --controller pd.toml` opens the reach GUI driven by the
-PD controller. `--initial FILE` replaces the initial pose from a file's `[initial]`
-table, and `--pose 20,45` then overrides just the joint angles (degrees) — matching
-the kinematics and dynamics tools. The override values are merged into the scenario,
-so each saved run's log still embeds its exact (overridden) config for reproduction.
-
-## Using it from Python
-
-```python
-from skelarm import load_scenario, run_scenario
-
-scenario = load_scenario("examples/reach.toml")
-log = run_scenario(scenario)  # duration from [task], dt from [simulator]
-log.save("reach.sklog.npz")  # replay/analyze with tools/player.py
-```
-
-`run_scenario` runs the fixed-step control loop (like `simulate_controlled`) but
-also embeds the scenario in the log for later reproduction. `build_controller` can
-also be called directly with a `[controller]` mapping, a `Task`, and a `Skeleton`,
-so controllers can be constructed without a file.
-
-## Reproducible runs
-
-"Reproducible" means different things for different run types. Three tiers, from
-strongest to weakest:
-
-1. **Recorded-state playback** — every saved log replays in `tools/player.py` and
-   plots/exports exactly as recorded. This always works: the channels *are* the run.
-2. **Deterministic headless re-simulation** — a `run_scenario` log can be
-   re-simulated with `rerun_log`. The deterministic controllers reproduce the
-   recorded channels exactly; MPC matches within a small numerical tolerance
-   (details below).
-3. **Interactive (GUI) runs** — a GUI recording carries the same config and
-   resolved settings, but mouse-drag tip forces and any GUI friction shaped the
-   recorded motion and are **not replayed** by `rerun_log`: a re-simulation gives
-   the *unperturbed* scenario, not the recorded motion. Use playback (tier 1) to
-   revisit a perturbed run; the drag force is recorded as the `ext_force` channel
-   for analysis.
-
-A log written by `run_scenario` or the interactive scenario simulators embeds — in
-the log's `[extra]` metadata — the **original source config** (the full
-`[skeleton]` / `[initial]` / `[task]` / `[simulator]` / `[controller]` tables,
-exactly as loaded), the resolved run parameters (`dt` / `grav_vec` /
-`enforce_limits`, plus `duration` for headless runs — a GUI run is open-ended, so
-its log records no duration and a re-run falls back to the task's), and the
-`skelarm` / `numpy` / `scipy` versions. `enforce_limits` records the *resolved*
-joint-limit choice, so a `--no-joint-limits` override is reproduced on re-run even
-though the source config still reads `true`.
-
-`rerun_log` reconstructs the scenario and re-simulates it:
-
-```python
-from skelarm import rerun_log
-from skelarm.recording import StateLog
-
-log = StateLog.load("reach.sklog.npz")
-again = rerun_log(log)  # rebuilds the scenario and re-runs the dynamics
-```
-
-Reconstruction reparses the embedded source config, so identical input gives
-identical state. The deterministic controllers (PD, computed torque,
-inverse-dynamics feedforward, and the reaching controllers) reproduce the recorded
-channels **exactly** on the same machine. MPC calls `scipy.optimize.minimize`,
-which is deterministic but only bit-identical for the same `scipy` / BLAS build, so
-an MPC re-run matches within a small numerical tolerance rather than exactly.
-
-### Export an editable config for comparison
-
-To tweak parameters and compare, export the embedded config to an editable TOML and
-re-run it. The export is the **original source config verbatim**: re-running it
-unedited reproduces an unperturbed, config-driven run exactly, while editing a value
-gives a controlled variant. Call-time overrides (a `duration=` or `enforce_limits=`
-argument, a `--no-joint-limits` flag) live only in the run metadata — they are
-honored by `rerun_log` but **not** written into the exported TOML:
-
-```python
-from skelarm import export_scenario_toml, load_scenario, run_scenario
-from skelarm.recording import StateLog
-
-export_scenario_toml(StateLog.load("reach.sklog.npz"), "edited.toml")
-# ... edit a gain / target / duration in edited.toml ...
-variant = run_scenario(load_scenario("edited.toml"))
-```
-
-From the command line, `tools/export_config.py` writes the config from a saved log:
-
-```bash
-uv run python tools/export_config.py reach.sklog.npz --output edited.toml
-uv run python tools/reaching_simulator.py edited.toml                       # explore the edited scenario in the GUI
-uv run python tools/reaching_simulator.py edited.toml --save edited.sklog.npz   # or re-run it headlessly
-```
-
-!!! note "What is not captured"
-    A controller built programmatically (not from a config) has no embedded
-    config, so its run is recorded without reproduction metadata and `rerun_log`
-    (and `export_scenario_toml`) reject it. Re-running is available for scenarios
-    loaded from TOML.
+- [Run Controlled Scenarios](running_scenarios.md) — the scenario model, a
+  complete example, overrides, and the tools.
+- [Record, Replay, and Re-simulate](recording_replay.md) — run metadata and the
+  reproducibility tiers.
+- [Joint Limits](joint_limits.md) — the `enforce_limits` mechanics.
+- [Defining a Task](defining_a_task.md) / [Defining a Controller](defining_a_controller.md)
+  — add your own types.

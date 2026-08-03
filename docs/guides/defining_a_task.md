@@ -178,7 +178,8 @@ utilities are reusable for resampling/smoothing a sampled reference (see the
 ## Reproducibility note
 
 The custom `[task]` keys live in the scenario config, which `run_scenario` embeds
-verbatim in the log (see [Reproducible runs](control_configuration.md#reproducible-runs)).
+verbatim in the log (see
+[Record, Replay, and Re-simulate](recording_replay.md#the-three-reproducibility-tiers)).
 A re-run with `rerun_log` or an exported config reproduces the task exactly —
 **provided the type is registered first**. Call `register_task_type` (and
 `register_controller`) at import time of your module so loading a log that uses the
