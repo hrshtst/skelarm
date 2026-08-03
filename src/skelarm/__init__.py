@@ -83,6 +83,7 @@ from .scenario import (
     run_scenario,
     scenario_from_config,
     scenario_from_log,
+    scenario_run_metadata,
     task_types,
 )
 from .simulator import SimulatorCanvas, SkelarmSimulator
@@ -173,6 +174,7 @@ __all__ = [
     "savitzky_golay",
     "scenario_from_config",
     "scenario_from_log",
+    "scenario_run_metadata",
     "shaping_ratio",
     "simulate_controlled",
     "simulate_robot",

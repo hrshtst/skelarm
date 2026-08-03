@@ -28,6 +28,7 @@ from skelarm import (
     multi_target_specs,
     run_scenario,
     scenario_from_config,
+    scenario_run_metadata,
 )
 
 if TYPE_CHECKING:
@@ -257,7 +258,9 @@ class ScenarioSimulator(SkelarmSimulator):
             stiffness=stiffness,
             enforce_limits=enforce_limits,
             dt=scenario.simulator.dt,
-            log_extra={"source_config": dict(scenario.source_config)} if scenario.source_config else None,
+            # Resolved run settings (dt / gravity / joint limits) plus the source config;
+            # duration is omitted because an interactive run is open-ended.
+            log_extra=scenario_run_metadata(scenario, dt=scenario.simulator.dt, enforce_limits=enforce_limits),
         )
         self._task = scenario.task
 

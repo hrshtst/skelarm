@@ -96,6 +96,42 @@ def test_run_scenario_enforce_limits_override_is_recorded_and_reproduced(tmp_pat
     np.testing.assert_array_equal(replayed.channel("q"), original.channel("q"))
 
 
+def test_scenario_from_log_fills_missing_run_keys(tmp_path: Path) -> None:
+    """A partial run table (e.g. a GUI log without duration) merges with scenario defaults."""
+    config = tmp_path / "reach.toml"
+    _computed_torque(config)
+    log = run_scenario(load_scenario(config), duration=0.1, dt=0.01)
+    log.extra["run"] = {"dt": 0.02, "enforce_limits": False}  # no duration / grav_vec recorded
+
+    scenario, run = scenario_from_log(log)
+    assert run["dt"] == pytest.approx(0.02)  # explicit keys preserved
+    assert run["enforce_limits"] is False
+    assert run["duration"] == pytest.approx(scenario.task.duration)  # missing keys filled
+    assert run["grav_vec"] == pytest.approx([0.0, 0.0])
+
+
+def test_run_metadata_omits_duration_when_unknown(tmp_path: Path) -> None:
+    """scenario_run_metadata leaves out duration for open-ended (GUI) runs."""
+    from dataclasses import replace
+
+    from skelarm.scenario import scenario_run_metadata
+
+    config = tmp_path / "reach.toml"
+    _computed_torque(config)
+    scenario = load_scenario(config)
+
+    extra = scenario_run_metadata(scenario, dt=0.01, enforce_limits=False)
+    assert extra is not None
+    assert "duration" not in extra["run"]
+    assert extra["run"]["dt"] == pytest.approx(0.01)
+    assert extra["run"]["grav_vec"] == pytest.approx([0.0, 0.0])
+    assert extra["run"]["enforce_limits"] is False
+    assert "skelarm" in extra["provenance"]
+
+    programmatic = replace(scenario, source_config=None)
+    assert scenario_run_metadata(programmatic, dt=0.01, enforce_limits=True) is None
+
+
 def test_scenario_from_log_rebuilds_scenario(tmp_path: Path) -> None:
     """scenario_from_log restores the controller, task, and initial pose."""
     config = tmp_path / "reach.toml"

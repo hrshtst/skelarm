@@ -751,32 +751,55 @@ def _provenance() -> dict[str, str]:
     return versions
 
 
-def _reproduction_metadata(
+def scenario_run_metadata(
     scenario: Scenario,
     *,
-    duration: float,
     dt: float,
-    grav_vec: NDArray[np.float64],
     enforce_limits: bool,
+    duration: float | None = None,
+    grav_vec: NDArray[np.float64] | None = None,
 ) -> dict[str, Any] | None:
     """Assemble the ``[extra]`` payload that lets a run be reconstructed and re-run.
 
     Embeds the original source config (the editable ``[skeleton]`` / ``[initial]`` /
-    ``[task]`` / ``[controller]`` tables, exactly as loaded), the actual run
-    parameters (including the resolved ``enforce_limits``, so a call-time override is
-    captured), and the package versions. Returns ``None`` when the scenario carries
-    no ``source_config`` (e.g. a programmatically built controller).
+    ``[task]`` / ``[simulator]`` / ``[controller]`` tables, exactly as loaded), the
+    actual run parameters (including the resolved ``enforce_limits``, so a call-time
+    override is captured), and the package versions. Returns ``None`` when the
+    scenario carries no ``source_config`` (e.g. a programmatically built controller).
+
+    Parameters
+    ----------
+    scenario : Scenario
+        The scenario whose source config to embed.
+    dt : float
+        The control / integration step actually used.
+    enforce_limits : bool
+        The resolved joint-limit hard-stop setting actually used.
+    duration : float | None, optional
+        Simulated duration (seconds). ``None`` — for open-ended runs such as the
+        interactive simulators — omits the key; :func:`scenario_from_log` then
+        falls back to the task's duration.
+    grav_vec : NDArray[np.float64] | None, optional
+        Gravity vector actually used; ``None`` records zero (planar motion).
+
+    Returns
+    -------
+    dict[str, Any] | None
+        The ``[extra]`` payload, or ``None`` without a source config.
     """
     if scenario.source_config is None:
         return None
+    grav = np.zeros(_TASK_DIM, dtype=np.float64) if grav_vec is None else np.asarray(grav_vec, dtype=np.float64)
+    run: dict[str, Any] = {
+        "dt": float(dt),
+        "grav_vec": grav.tolist(),
+        "enforce_limits": bool(enforce_limits),
+    }
+    if duration is not None:
+        run["duration"] = float(duration)
     return {
         "source_config": dict(scenario.source_config),
-        "run": {
-            "duration": float(duration),
-            "dt": float(dt),
-            "grav_vec": grav_vec.tolist(),
-            "enforce_limits": bool(enforce_limits),
-        },
+        "run": run,
         "provenance": _provenance(),
     }
 
@@ -821,7 +844,7 @@ def run_scenario(
     run_dt = scenario.simulator.dt if dt is None else float(dt)
     grav = np.zeros(_TASK_DIM, dtype=np.float64) if grav_vec is None else np.asarray(grav_vec, dtype=np.float64)
     run_enforce_limits = scenario.simulator.enforce_limits if enforce_limits is None else bool(enforce_limits)
-    extra = _reproduction_metadata(
+    extra = scenario_run_metadata(
         scenario, duration=run_duration, dt=run_dt, grav_vec=grav, enforce_limits=run_enforce_limits
     )
     return simulate_controlled(
@@ -855,15 +878,15 @@ def scenario_from_log(log: StateLog) -> tuple[Scenario, Mapping[str, Any]]:
         msg = "log has no reproduction metadata; it was not produced by run_scenario"
         raise ValueError(msg)
     scenario = scenario_from_config(config)
-    run = log.extra.get(
-        "run",
-        {
-            "duration": scenario.task.duration,
-            "dt": scenario.simulator.dt,
-            "grav_vec": [0.0, 0.0],
-            "enforce_limits": scenario.simulator.enforce_limits,
-        },
-    )
+    # Merge key-by-key: a GUI log records dt / grav_vec / enforce_limits but no
+    # duration (the run is open-ended), and older logs may lack the table entirely.
+    defaults: dict[str, Any] = {
+        "duration": scenario.task.duration,
+        "dt": scenario.simulator.dt,
+        "grav_vec": [0.0, 0.0],
+        "enforce_limits": scenario.simulator.enforce_limits,
+    }
+    run = {**defaults, **dict(log.extra.get("run", {}))}
     return scenario, run
 
 

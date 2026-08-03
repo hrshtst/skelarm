@@ -178,3 +178,20 @@ def test_scenario_simulator_honors_configured_dt(qapp, tmp_path: Path) -> None: 
     assert sim.dt == pytest.approx(0.01)
     sim.step()
     assert sim.time == pytest.approx(0.02)  # 2 substeps of 10 ms per render tick
+
+
+def test_scenario_simulator_records_resolved_run_metadata(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """A GUI recording embeds the resolved run settings (dt, gravity, joint limits)."""
+    from tools._scenario_cli import ScenarioSimulator
+
+    sim = ScenarioSimulator(_scenario_with_dt(tmp_path, dt=0.01), enforce_limits=False)
+    sim.start_recording()
+    sim.step()
+    assert sim.state_log is not None
+    run = sim.state_log.extra["run"]
+    assert run["dt"] == pytest.approx(0.01)
+    assert run["grav_vec"] == pytest.approx([0.0, 0.0])
+    assert run["enforce_limits"] is False  # the resolved --no-joint-limits choice
+    assert "duration" not in run  # a GUI run is open-ended
+    assert sim.state_log.extra["source_config"]["task"]["type"] == "reaching"
+    assert "skelarm" in sim.state_log.extra["provenance"]
