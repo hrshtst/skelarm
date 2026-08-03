@@ -178,3 +178,6 @@ pyrightconfig.json
 .claude/*
 !.claude/skills/
 !.claude/settings.json
+
+# Local reference material (PDFs we have no right to redistribute)
+resource/
