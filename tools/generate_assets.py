@@ -7,8 +7,10 @@ Runs entirely headless (offscreen Qt, Agg matplotlib) and is deterministic, so
 the committed assets can be regenerated at any time:
 
 - **Animations** — each demo scenario is run headlessly with ``run_scenario``,
-  saved as a replayable ``.sklog.npz`` next to its GIF, and rendered with the
-  player's export pipeline (task overlays and the side panel included).
+  saved as a replayable ``.sklog.npz``, and rendered with the player's export
+  pipeline (task overlays and the side panel included) to both a **GIF** — for
+  the README, where GitHub only plays GIFs inline — and an **MP4** — for the
+  MkDocs pages via a ``<video>`` tag (smaller, smoother, scrubbable).
 - **Figures** — the plotting examples are executed with ``plt.show`` redirected
   to ``savefig``.
 - **Screenshots** — the GUI tools are instantiated offscreen and grabbed as
@@ -55,8 +57,9 @@ _REPO = Path(__file__).resolve().parents[1]
 _EXAMPLES = _REPO / "examples"
 _ASSETS = _REPO / "docs" / "assets"
 
-_GIF_FPS = 20.0  # output frame rate; modest to keep the committed GIFs small
-_GIF_SIZE_PX = 480  # square frame size; modest to keep the committed GIFs small
+_GIF_FPS = 20.0  # GIF frame rate; modest to keep the committed GIFs small
+_MP4_FPS = 30.0  # MP4 affords a smoother rate at little size cost
+_FRAME_SIZE_PX = 480  # square canvas size; modest to keep the committed files small
 
 # (asset stem, scenario config, playback speed) — speed > 1 compresses long runs.
 _ANIMATIONS: tuple[tuple[str, Path, float], ...] = (
@@ -78,29 +81,31 @@ _INTERACTIVE_CAPTURES: tuple[str, ...] = ("dynamics_drag", "reach_disturb", "mul
 _TEACH_CONFIG = _EXAMPLES / "reach_four_dof_robot.toml"
 
 
-def _export_gif(log_path: Path, gif_path: Path, *, speed: float = 1.0) -> None:
-    """Render a saved log to a side-panel GIF via the player's headless export pipeline."""
+def _export_animation(log_path: Path, stem: str, *, speed: float = 1.0) -> None:
+    """Render a saved log to a side-panel GIF (for the README) and MP4 (for the docs pages)."""
     window = PlaybackWindow(StateLog.load(log_path), speed=speed)
-    frames = window.export(gif_path, fps=_GIF_FPS, size=_GIF_SIZE_PX, panel=True)
+    for suffix, fps in ((".gif", _GIF_FPS), (".mp4", _MP4_FPS)):
+        out = _ASSETS / f"{stem}{suffix}"
+        frames = window.export(out, fps=fps, size=_FRAME_SIZE_PX, panel=True)
+        print(f"wrote {frames} frames to {out}")
     window.close()
-    print(f"wrote {frames} frames to {gif_path}")
 
 
 def _record_animations() -> None:
-    """Run each demo scenario headlessly; save its replayable log and its GIF."""
+    """Run each demo scenario headlessly; save its replayable log and its GIF/MP4 pair."""
     for stem, config, speed in _ANIMATIONS:
         log_path = save_scenario_run(build_scenario(config), _ASSETS / f"{stem}.sklog.npz")
-        _export_gif(log_path, _ASSETS / f"{stem}.gif", speed=speed)
+        _export_animation(log_path, stem, speed=speed)
 
 
 def _export_interactive_captures() -> None:
-    """Render a panel GIF from every interactive capture log present in docs/assets."""
+    """Render a panel GIF/MP4 pair from every interactive capture log present in docs/assets."""
     for stem in _INTERACTIVE_CAPTURES:
         log_path = _ASSETS / f"{stem}.sklog.npz"
         if not log_path.exists():
-            print(f"skipping {stem}.gif: no {log_path} (capture one, see the checklist below)")
+            print(f"skipping {stem}.gif/.mp4: no {log_path} (capture one, see the checklist below)")
             continue
-        _export_gif(log_path, _ASSETS / f"{stem}.gif")
+        _export_animation(log_path, stem)
 
 
 def _record_tracking_animation() -> None:
@@ -130,7 +135,7 @@ def _record_tracking_animation() -> None:
     track_config = _ASSETS / "track.toml"  # regenerable intermediate (gitignored)
     track_config.write_text(dump_toml(config).strip() + "\n", encoding="utf-8")
     log_path = save_scenario_run(build_scenario(track_config), _ASSETS / "trajectory_tracking.sklog.npz")
-    _export_gif(log_path, _ASSETS / "trajectory_tracking.gif")
+    _export_animation(log_path, "trajectory_tracking")
 
 
 def _render_figures() -> None:
@@ -189,17 +194,17 @@ recorded drag force, friction, and target switches; your cursor is not shown).
 1. Drag-to-perturb         uv run python tools/dynamics_simulator.py examples/four_dof_robot.toml --run
    Do: press and drag the tip; release and watch the arm swing freely. Raise the
    friction spin box mid-run to damp it. Export… the log as
-   -> docs/assets/dynamics_drag.sklog.npz        (becomes dynamics_drag.gif)
+   -> docs/assets/dynamics_drag.sklog.npz        (becomes dynamics_drag.gif + .mp4)
 
 2. Disturbing a reach      uv run python tools/reaching_simulator.py examples/reach.toml --run
    Do: let the arm reach the purple target, then drag the tip away and release —
    the controller pulls it back. Export… the log as
-   -> docs/assets/reach_disturb.sklog.npz        (becomes reach_disturb.gif)
+   -> docs/assets/reach_disturb.sklog.npz        (becomes reach_disturb.gif + .mp4)
 
 3. Live target switching   uv run python tools/multi_target_simulator.py examples/multi_target.toml --run
    Do: while it runs, press 1, 2, … to switch the active target and watch the
    arm retarget. Export… the log as
-   -> docs/assets/multi_target_switch.sklog.npz  (becomes multi_target_switch.gif)
+   -> docs/assets/multi_target_switch.sklog.npz  (becomes multi_target_switch.gif + .mp4)
 
 4. Teaching a trajectory   uv run python tools/trajectory_recorder.py \\
                                examples/reach_four_dof_robot.toml --output docs/assets/teach.sklog.npz
@@ -213,7 +218,9 @@ recorded drag force, friction, and target switches; your cursor is not shown).
    Do: this one is a SCREEN RECORDING (the inspector poses kinematically and
    records nothing; the cursor is the demo). Drag a joint slider through its
    range, then click-drag the tip so the IK solution follows the cursor.
-   Capture the window with e.g. Peek or OBS and save it as
+   Capture the window (e.g. Kooha/OBS) as MP4, save it as
+   -> docs/assets/kinematics_posing_demo.mp4
+   and derive the README GIF from it with ffmpeg (palette two-pass):
    -> docs/assets/kinematics_posing_demo.gif
 """
     )
