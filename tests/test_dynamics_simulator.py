@@ -266,7 +266,7 @@ def test_export_writes_loadable_npz(qapp, tmp_path) -> None:  # noqa: ANN001, AR
     loaded = StateLog.load(path)
     assert loaded.producer == "skelarm_simulator"
     assert len(loaded) == len(sim.state_log)
-    assert set(loaded.channel_names) == {"q", "dq", "tau", "ext_force"}
+    assert set(loaded.channel_names) == {"q", "dq", "tau", "ext_force", "friction"}
     assert loaded.build_skeleton().num_joints == sim.skeleton.num_joints
 
 

@@ -384,14 +384,24 @@ class SkelarmSimulator(QMainWindow):
         """Whether each step is being appended to :attr:`state_log`."""
         return self._recording
 
+    def _extra_channel_meta(self) -> dict[str, dict[str, Any]]:
+        """Channel metadata for tool-specific extra recording channels (none in the base simulator)."""
+        return {}
+
+    def _extra_channels(self) -> dict[str, float]:
+        """Tool-specific extra channel values recorded each frame (none in the base simulator)."""
+        return {}
+
     def start_recording(self) -> None:
         """Begin a fresh state log, capturing the current frame as the first sample."""
         joints = [f"j{i + 1}" for i in range(self.skeleton.num_joints)]
-        channel_meta = {
+        channel_meta: dict[str, dict[str, Any]] = {
             "q": {"unit": "rad", "label": "joint angle", "columns": joints},
             "dq": {"unit": "rad/s", "label": "joint velocity", "columns": joints},
             "tau": {"unit": "N*m", "label": "applied joint torque", "columns": joints},
             "ext_force": {"unit": "N", "label": "external tip force", "columns": ["fx", "fy"]},
+            "friction": {"unit": "N*m*s/rad", "label": "viscous friction"},
+            **self._extra_channel_meta(),
         }
         self.state_log = StateLog(
             self.skeleton, producer="skelarm_simulator", channel_meta=channel_meta, extra=self._log_extra
@@ -402,6 +412,8 @@ class SkelarmSimulator(QMainWindow):
             dq=self.skeleton.dq,
             tau=np.zeros(self.skeleton.num_joints),
             ext_force=self.canvas.external_force(self._stiffness),
+            friction=self._friction,
+            **self._extra_channels(),
         )
         self._recording = True
 
@@ -451,6 +463,8 @@ class SkelarmSimulator(QMainWindow):
                 dq=self.skeleton.dq,
                 tau=tau,
                 ext_force=self.canvas.external_force(self._stiffness),
+                friction=self._friction,
+                **self._extra_channels(),
             )
         self._update_displays()
 

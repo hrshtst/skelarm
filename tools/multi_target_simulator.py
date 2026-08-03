@@ -46,6 +46,8 @@ from tools._scenario_cli import (
 )
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from PyQt6.QtGui import QKeyEvent
 
     from skelarm import Scenario
@@ -67,6 +69,19 @@ class MultiTargetReachSimulator(ScenarioSimulator):
         hint.setWordWrap(True)
         self.add_control(hint)
         self._refresh_markers()
+        if self.is_recording:
+            self.start_recording()  # rebuild the log so it carries the active_target channel
+
+    def _extra_channel_meta(self) -> dict[str, dict[str, Any]]:
+        """Describe the recorded active-target index channel."""
+        return {"active_target": {"unit": "index", "label": "active target index"}}
+
+    def _extra_channels(self) -> dict[str, float]:
+        """The live active-target index, recorded each frame so replays can follow switches."""
+        # The base __init__ starts recording before this subclass sets its state; that
+        # interim log is rebuilt at the end of __init__ once _active exists.
+        active = getattr(self, "_active", None)
+        return {} if active is None else {"active_target": float(active)}
 
     @property
     def active_index(self) -> int:

@@ -336,8 +336,21 @@ def test_start_recording_captures_initial_frame_and_each_step(qapp) -> None:  # 
     for _ in range(steps):
         sim.step()
     assert len(sim.state_log) == steps + 1
-    assert set(sim.state_log.channel_names) == {"q", "dq", "tau", "ext_force"}
+    assert set(sim.state_log.channel_names) == {"q", "dq", "tau", "ext_force", "friction"}
     assert sim.state_log.channel("q").shape == (steps + 1, 2)
+
+
+def test_recording_includes_the_friction_channel(qapp) -> None:  # noqa: ANN001, ARG001
+    """The viscous-friction coefficient is recorded per frame, tracking live changes."""
+    sim = _simulator(friction=0.2)
+    sim.start_recording()
+    sim.step()
+    sim.friction = 0.5  # a live change, as from the dynamics tool's spin box
+    sim.step()
+    assert sim.state_log is not None
+    friction = sim.state_log.channel("friction")
+    assert friction[0] == pytest.approx(0.2)
+    assert friction[-1] == pytest.approx(0.5)
 
 
 def test_stop_recording_halts_capture(qapp) -> None:  # noqa: ANN001, ARG001

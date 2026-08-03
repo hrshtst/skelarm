@@ -120,6 +120,21 @@ def test_gui_switch_retargets_the_controller(qapp) -> None:  # noqa: ANN001, ARG
     assert controller.target == pytest.approx([-0.4, 0.9])  # live retarget
 
 
+def test_recording_includes_the_active_target_channel(qapp) -> None:  # noqa: ANN001, ARG001
+    """The active-target index is recorded per frame so replays can follow live switches."""
+    from skelarm.scenario import load_scenario
+    from tools.multi_target_simulator import MultiTargetReachSimulator
+
+    window = MultiTargetReachSimulator(load_scenario(_EXAMPLE))
+    window.step()
+    window.switch_to(2)
+    window.step()
+    assert window.state_log is not None
+    active = window.state_log.channel("active_target")
+    assert active[0] == pytest.approx(0.0)
+    assert active[-1] == pytest.approx(2.0)
+
+
 def test_parser_has_override_and_save_flags() -> None:
     """The multi-target tool gained the shared override flags and --save (like reaching)."""
     from tools.multi_target_simulator import build_parser
