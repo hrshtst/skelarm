@@ -148,6 +148,11 @@ reference content is **embedded** in the run log, so `rerun_log` and exported co
 reproduce the run without the original file. Curve and DOF rules: a
 `joint_trajectory_tracking` reference must have the same joint count as the robot.
 
+The IK-based conversions (`periodic_curve`, `trajectory_tracking`) solve each sample
+with numerical IK and keep the best-effort joint angles even where a sample cannot
+be reached; if any sample ends noticeably off the task path (beyond 0.1 mm), one
+aggregated `UserWarning` reports how many samples deviated and where.
+
 Only these are built in. To add a goal that is not a single target point, or a new
 reference source, see [Defining a Task](defining_a_task.md).
 
@@ -166,6 +171,11 @@ table is optional; an absent `[simulator]` uses the defaults.
 dt = 0.002
 enforce_limits = true
 ```
+
+Headless runs and the interactive simulators integrate with the same `dt`: the GUI
+fits as many physics substeps of `dt` as fill its ~20 ms render frame (e.g. ten
+substeps at `dt = 0.002`), and for a `dt` above the frame period it runs one substep
+per tick with the render timer slowed to match, so wall clock tracks simulated time.
 
 `enforce_limits` is a *run condition*: with the default `true` the fixed-step loop pins
 each joint at its `[qmin, qmax]` bound (a hard stop); with `false` the bounds are dropped
@@ -303,7 +313,7 @@ so each saved run's log still embeds its exact (overridden) config for reproduct
 from skelarm import load_scenario, run_scenario
 
 scenario = load_scenario("examples/reach.toml")
-log = run_scenario(scenario)  # uses the task's duration / dt
+log = run_scenario(scenario)  # duration from [task], dt from [simulator]
 log.save("reach.sklog.npz")  # replay/analyze with tools/player.py
 ```
 
@@ -314,13 +324,31 @@ so controllers can be constructed without a file.
 
 ## Reproducible runs
 
-A log written by `run_scenario` (and by the interactive scenario simulators) is a
-self-contained, re-runnable record. It embeds — in the log's `[extra]` metadata — the
-**original source config** (the full `[skeleton]` / `[initial]` / `[task]` /
-`[simulator]` / `[controller]` tables, exactly as loaded), the actual run parameters (`duration` /
-`dt` / `grav_vec` / `enforce_limits`), and the `skelarm` / `numpy` / `scipy` versions.
-`enforce_limits` records the *resolved* joint-limit choice, so a `--no-joint-limits`
-override is reproduced on re-run even though the source config still reads `true`.
+"Reproducible" means different things for different run types. Three tiers, from
+strongest to weakest:
+
+1. **Recorded-state playback** — every saved log replays in `tools/player.py` and
+   plots/exports exactly as recorded. This always works: the channels *are* the run.
+2. **Deterministic headless re-simulation** — a `run_scenario` log can be
+   re-simulated with `rerun_log`. The deterministic controllers reproduce the
+   recorded channels exactly; MPC matches within a small numerical tolerance
+   (details below).
+3. **Interactive (GUI) runs** — a GUI recording carries the same config and
+   resolved settings, but mouse-drag tip forces and any GUI friction shaped the
+   recorded motion and are **not replayed** by `rerun_log`: a re-simulation gives
+   the *unperturbed* scenario, not the recorded motion. Use playback (tier 1) to
+   revisit a perturbed run; the drag force is recorded as the `ext_force` channel
+   for analysis.
+
+A log written by `run_scenario` or the interactive scenario simulators embeds — in
+the log's `[extra]` metadata — the **original source config** (the full
+`[skeleton]` / `[initial]` / `[task]` / `[simulator]` / `[controller]` tables,
+exactly as loaded), the resolved run parameters (`dt` / `grav_vec` /
+`enforce_limits`, plus `duration` for headless runs — a GUI run is open-ended, so
+its log records no duration and a re-run falls back to the task's), and the
+`skelarm` / `numpy` / `scipy` versions. `enforce_limits` records the *resolved*
+joint-limit choice, so a `--no-joint-limits` override is reproduced on re-run even
+though the source config still reads `true`.
 
 `rerun_log` reconstructs the scenario and re-simulates it:
 
@@ -342,15 +370,18 @@ an MPC re-run matches within a small numerical tolerance rather than exactly.
 ### Export an editable config for comparison
 
 To tweak parameters and compare, export the embedded config to an editable TOML and
-re-run it. Because the export is the original config verbatim, re-running it
-**unedited** reproduces the run exactly; editing a value gives a controlled variant:
+re-run it. The export is the **original source config verbatim**: re-running it
+unedited reproduces an unperturbed, config-driven run exactly, while editing a value
+gives a controlled variant. Call-time overrides (a `duration=` or `enforce_limits=`
+argument, a `--no-joint-limits` flag) live only in the run metadata — they are
+honored by `rerun_log` but **not** written into the exported TOML:
 
 ```python
 from skelarm import export_scenario_toml, load_scenario, run_scenario
 from skelarm.recording import StateLog
 
 export_scenario_toml(StateLog.load("reach.sklog.npz"), "edited.toml")
-# ... edit a gain / target / gravity in edited.toml ...
+# ... edit a gain / target / duration in edited.toml ...
 variant = run_scenario(load_scenario("edited.toml"))
 ```
 

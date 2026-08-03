@@ -6,8 +6,12 @@ A task does not move the arm on its own — a [controller](defining_a_controller
 reads the task (its target and parameters) and produces the joint torques. This
 guide covers configuring the built-in task and **defining a new task type** of your own.
 
-For the full `[task]` schema (target, `duration`, `dt`, `schedule`, `tolerance`,
-`enforce_limits`) see [Control Configuration](control_configuration.md#the-task-section).
+For the full `[task]` schema (`type`, `target` — with optional `label` / `color` /
+`tolerance` — `duration`, `schedule`) see
+[Control Configuration](control_configuration.md#the-task-section). The integration
+settings `dt` and `enforce_limits` are **not** task keys: they live in the separate
+[`[simulator]` table](control_configuration.md#the-simulator-section), and the parser
+rejects them under `[task]`.
 
 ## What a task carries
 
@@ -15,10 +19,9 @@ For the full `[task]` schema (target, `duration`, `dt`, `schedule`, `tolerance`,
 | --- | --- |
 | `type` | The task kind — a label a controller interprets (**required**: the discriminator that decides what else the task needs). |
 | `target` | The task-space goal `(x, y)` in meters. **Required for `reaching`**; other task types may omit it. Drawn as a marker by the tools. |
-| `duration` / `dt` | Run conditions: total simulated time and the fixed control step. |
+| `duration` | Run condition: total simulated time / planned-motion horizon (s). |
 | `schedule` | Time scaling for planned trajectories (`minimum_jerk`, `quintic`, …). |
-| `tolerance` / `label` / `color` | Success radius and marker presentation. |
-| `enforce_limits` | Whether the joint limits act as a dynamics hard stop (see [Joint Limits](joint_limits.md)). |
+| `tolerance` / `label` / `color` | Success radius and marker presentation (sub-keys of `target`). |
 | `params` | **Any extra `[task]` keys**, kept verbatim — how a custom task carries its own data. |
 
 `type` is the only universally required key. The built-in types are `reaching`,
@@ -60,11 +63,13 @@ configuration:
 type = "tracing"
 target = [1.2, 0.0]   # optional for a custom type: a marker point (here the path's start)
 duration = 6.0
-dt = 0.002
 # custom keys -> task.params
 center = [0.8, 0.0]
 radius = 0.4
 period = 3.0
+
+[simulator]
+dt = 0.002            # the integration step lives here, not under [task]
 ```
 
 ```python
@@ -184,5 +189,5 @@ the registered types with `task_types()`.
 
 - [Defining a Controller](defining_a_controller.md) — the logic half of a task.
 - [Control Configuration](control_configuration.md) — the full `[task]` / `[controller]` schema.
-- [Joint Limits](joint_limits.md) — the `enforce_limits` run condition.
+- [Joint Limits](joint_limits.md) — the `[simulator].enforce_limits` hard-stop setting.
 - [Scenario API](../api/scenario.md) — `Task`, `register_task_type`, `task_types`.

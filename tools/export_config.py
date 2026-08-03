@@ -6,7 +6,7 @@ Export the embedded scenario config from a skelarm state log.
 
 Load a ``.sklog.npz`` recording produced by ``run_scenario`` / ``tools/reaching_simulator.py``
 and write its embedded scenario config — the editable ``[skeleton]`` / ``[initial]``
-/ ``[task]`` / ``[controller]`` tables — to a TOML file. Edit a value and re-run it
+/ ``[task]`` / ``[simulator]`` / ``[controller]`` tables — to a TOML file. Edit a value and re-run it
 with ``tools/reaching_simulator.py`` to compare; an unedited re-run reproduces the original
 exactly for the deterministic controllers.
 

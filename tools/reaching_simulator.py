@@ -139,7 +139,7 @@ def run_reach(
         Section overrides; see :func:`build_scenario`.
     enforce_limits : bool | None, optional
         Override the joint-limit hard stop; ``None`` uses the scenario's
-        ``[task].enforce_limits``. The resolved value is embedded for reproducible re-runs.
+        ``[simulator].enforce_limits``. The resolved value is embedded for reproducible re-runs.
 
     Returns
     -------
@@ -170,7 +170,7 @@ def main() -> None:
     if not args.config.exists():
         parser.error(f"config file not found: {args.config}")
 
-    # The CLI flag overrides the config; absent, the scenario's [task].enforce_limits applies.
+    # The CLI flag overrides the config; absent, the scenario's [simulator].enforce_limits applies.
     enforce_override = False if args.no_joint_limits else None
 
     if args.save is not None:

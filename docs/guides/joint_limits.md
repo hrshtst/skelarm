@@ -76,7 +76,9 @@ uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --mode d
 ```
 
 For the interactive simulators the flag *overrides* `[simulator].enforce_limits` off,
-and the resolved value is recorded for a reproducible re-run.
+and the resolved value is recorded in the run metadata. (A re-run of an interactive
+recording reproduces the unperturbed scenario — mouse-drag forces are not replayed;
+see [Reproducible runs](control_configuration.md#reproducible-runs).)
 
 The default keeps the hard stop on. In the recorder this only affects `dynamics`
 mode; `ik` mode always poses through the clamping kinematic setter regardless.
