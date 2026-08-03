@@ -31,7 +31,7 @@ type = "reaching"      # task kind (currently only "reaching")
 # The target may be a plain [x, y] array, or a table with optional
 # label / color (default purple) / tolerance. The tolerance (meters) is the
 # admittable tip-to-target error; the marker's ring is drawn at that radius.
-target = { pos = [0.55, 1.21], tolerance = 0.02 }  # endpoint goal (m), 2 cm success
+target = { pos = [-0.45, 1.55], tolerance = 0.02 }  # endpoint goal (m), 2 cm success
 duration = 2.0         # simulated time / planned-motion horizon (s)
 schedule = "minimum_jerk"
 

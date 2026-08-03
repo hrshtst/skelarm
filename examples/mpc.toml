@@ -27,7 +27,7 @@ q = [34.4, 57.3]  # degrees; endpoint starts near (0.80, 1.36) m
 
 [task]
 type = "reaching"
-target = { pos = [0.55, 1.21], tolerance = 0.02 }
+target = { pos = [-0.45, 1.55], tolerance = 0.02 }
 duration = 2.0
 schedule = "minimum_jerk"
 
