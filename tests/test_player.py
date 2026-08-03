@@ -368,6 +368,24 @@ def test_export_with_panel_widens_the_frame(qapp, tmp_path: Path) -> None:  # no
     assert panel_region.std() > 1.0  # text and sliders rendered, not a uniform background
 
 
+def test_panel_export_pads_only_for_mp4(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """A non-aligned size stays exact for GIFs; mp4 pads the width up to a multiple of 16."""
+    import imageio.v3 as iio
+
+    from tools.player import _EXPORT_PANEL_WIDTH_PX
+
+    window = PlaybackWindow(_log())
+    gif = tmp_path / "replay.gif"
+    window.export(gif, size=127, panel=True)  # 127 + 304 = 431: no GIF codec constraint
+    frame = iio.imread(gif, index=0)
+    assert frame.shape[1] == 127 + _EXPORT_PANEL_WIDTH_PX
+
+    mp4 = tmp_path / "replay.mp4"
+    window.export(mp4, size=120, panel=True)  # 120 + 304 = 424 -> padded to 432
+    frame = iio.imread(mp4, index=0)
+    assert frame.shape[1] == 432  # noqa: PLR2004
+
+
 def test_export_runs_headless_via_cli(tmp_path: Path) -> None:
     """``--export`` runs the tool headless (no window) end-to-end and writes the file."""
     log_path = tmp_path / "run.sklog.npz"

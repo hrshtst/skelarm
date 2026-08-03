@@ -409,7 +409,9 @@ class PlaybackWindow(QMainWindow):
             Composite a simulator-style side panel next to the canvas — the time
             readout, per-joint sliders, and the recorded parameter readouts
             (external force, viscous friction, active target) when those
-            channels exist. Widens each frame by 304 px (default: canvas only).
+            channels exist. Widens each frame by 304 px; for ``.mp4`` output the
+            composited width is additionally padded up to the next multiple of
+            16 so the codec won't rescale it (default: canvas only).
 
         Returns
         -------
@@ -463,10 +465,12 @@ class PlaybackWindow(QMainWindow):
                 if export_panel is not None:
                     export_panel.show_frame(index)
                     frame = np.hstack((frame, self._grab_widget_rgb(export_panel)))
-                    # Guard: keep the composited width a multiple of 16 for mp4 codecs.
-                    pad = (-frame.shape[1]) % 16
-                    if pad:
-                        frame = np.pad(frame, ((0, 0), (0, pad), (0, 0)), mode="edge")
+                    if path.suffix.lower() == ".mp4":
+                        # Guard: keep the composited width a multiple of 16 so ffmpeg
+                        # won't silently rescale; GIFs have no such constraint.
+                        pad = (-frame.shape[1]) % 16
+                        if pad:
+                            frame = np.pad(frame, ((0, 0), (0, pad), (0, 0)), mode="edge")
                 writer.append_data(frame)
         return n_frames
 
