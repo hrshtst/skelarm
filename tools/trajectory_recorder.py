@@ -177,6 +177,7 @@ class RecorderWindow(QMainWindow):
         if self._mode == "dynamics":
             channel_meta["dq"] = {"unit": "rad/s", "label": "joint velocity", "columns": joints}
             channel_meta["ext_force"] = {"unit": "N", "label": "external tip force", "columns": ["fx", "fy"]}
+            channel_meta["friction"] = {"unit": "N*m*s/rad", "label": "viscous friction"}
         return StateLog(self.skeleton, producer="trajectory_recorder", channel_meta=channel_meta)
 
     def tick(self) -> None:
@@ -239,6 +240,7 @@ class RecorderWindow(QMainWindow):
         if self._mode == "dynamics":
             channels["dq"] = self.skeleton.dq
             channels["ext_force"] = self.canvas.external_force(self._stiffness)
+            channels["friction"] = np.asarray(self._friction, dtype=np.float64)
         self.log.record(t, **channels)
 
     def _refresh(self) -> None:

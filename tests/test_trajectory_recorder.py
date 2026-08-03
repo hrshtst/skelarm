@@ -106,6 +106,22 @@ def test_dynamics_mode_records_force_and_replays(qapp, tmp_path: Path) -> None: 
     PlaybackWindow(StateLog.load(out))
 
 
+def test_dynamics_mode_records_the_friction_channel(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Dynamics mode records the applied viscous friction; ik mode has no such channel."""
+    out = tmp_path / "dyn.sklog.npz"
+    window = RecorderWindow(
+        Skeleton.from_toml(_FOUR_DOF), mode="dynamics", sample_rate=100.0, duration=0.4, output=out, friction=0.3
+    )
+    _drive(window)
+    assert window.log.channel("friction")[-1] == pytest.approx(0.3)
+
+    ik = RecorderWindow(
+        Skeleton.from_toml(_FOUR_DOF), mode="ik", sample_rate=50.0, duration=1.0, output=tmp_path / "ik.sklog.npz"
+    )
+    _drive(ik)
+    assert "friction" not in ik.log.channel_names
+
+
 def test_dynamics_enforce_limits_toggles_the_hard_stop(qapp) -> None:  # noqa: ANN001, ARG001
     """``enforce_limits`` controls whether the integrator gets joint bounds (default on)."""
     skeleton = Skeleton.from_toml(_FOUR_DOF)
