@@ -8,7 +8,7 @@ the committed assets can be regenerated at any time:
 
 - **Animations** — each demo scenario is run headlessly with ``run_scenario``,
   saved as a replayable ``.sklog.npz`` next to its GIF, and rendered with the
-  player's export pipeline (task overlays included).
+  player's export pipeline (task overlays and the side panel included).
 - **Figures** — the plotting examples are executed with ``plt.show`` redirected
   to ``savefig``.
 - **Screenshots** — the GUI tools are instantiated offscreen and grabbed as
@@ -16,9 +16,12 @@ the committed assets can be regenerated at any time:
 
 Interactive demonstrations (mouse dragging, live target switching, trajectory
 teaching) cannot be scripted; the checklist printed at the end lists the exact
-commands and actions to capture them. Once a taught ``teach.sklog.npz`` exists
-in ``docs/assets``, re-running this script also generates the
-trajectory-tracking animation from it.
+commands, actions, and file names to capture them. Most only need the GUI's own
+**Record** / **Export…** — save the log under the suggested name in
+``docs/assets`` and re-run this script: it renders a panel GIF from every
+capture log it finds (the replay draws the recorded drag force, friction, and
+target switches), and generates the trajectory-tracking animation once a taught
+``teach.sklog.npz`` exists.
 
 Usage::
 
@@ -64,6 +67,10 @@ _ANIMATIONS: tuple[tuple[str, Path, float], ...] = (
 # Plotting examples rendered to PNG (each calls plt.show() exactly once).
 _FIGURES: tuple[str, ...] = ("basic_plotting", "inverse_kinematics", "reaching", "periodic_curve")
 
+# Interactive capture logs (exported from a GUI's Record / Export…, see the checklist);
+# each present <stem>.sklog.npz is rendered to <stem>.gif with the side panel.
+_INTERACTIVE_CAPTURES: tuple[str, ...] = ("dynamics_drag", "reach_disturb", "multi_target_switch")
+
 _TRACK_CONFIG_TABLES = """
 [task]
 type = "joint_trajectory_tracking"
@@ -81,10 +88,10 @@ kd = 30.0
 """
 
 
-def _export_gif(log_path: Path, gif_path: Path, *, speed: float) -> None:
-    """Render a saved log to a GIF via the player's headless export pipeline."""
+def _export_gif(log_path: Path, gif_path: Path, *, speed: float = 1.0) -> None:
+    """Render a saved log to a side-panel GIF via the player's headless export pipeline."""
     window = PlaybackWindow(StateLog.load(log_path), speed=speed)
-    frames = window.export(gif_path, fps=_GIF_FPS, size=_GIF_SIZE_PX)
+    frames = window.export(gif_path, fps=_GIF_FPS, size=_GIF_SIZE_PX, panel=True)
     window.close()
     print(f"wrote {frames} frames to {gif_path}")
 
@@ -94,6 +101,16 @@ def _record_animations() -> None:
     for stem, config, speed in _ANIMATIONS:
         log_path = save_scenario_run(build_scenario(config), _ASSETS / f"{stem}.sklog.npz")
         _export_gif(log_path, _ASSETS / f"{stem}.gif", speed=speed)
+
+
+def _export_interactive_captures() -> None:
+    """Render a panel GIF from every interactive capture log present in docs/assets."""
+    for stem in _INTERACTIVE_CAPTURES:
+        log_path = _ASSETS / f"{stem}.sklog.npz"
+        if not log_path.exists():
+            print(f"skipping {stem}.gif: no {log_path} (capture one, see the checklist below)")
+            continue
+        _export_gif(log_path, _ASSETS / f"{stem}.gif")
 
 
 def _record_tracking_animation() -> None:
@@ -106,7 +123,7 @@ def _record_tracking_animation() -> None:
     robot_tables = (_EXAMPLES / "four_dof_robot.toml").read_text(encoding="utf-8")
     track_config.write_text(robot_tables + _TRACK_CONFIG_TABLES, encoding="utf-8")
     log_path = save_scenario_run(build_scenario(track_config), _ASSETS / "trajectory_tracking.sklog.npz")
-    _export_gif(log_path, _ASSETS / "trajectory_tracking.gif", speed=1.0)
+    _export_gif(log_path, _ASSETS / "trajectory_tracking.gif")
 
 
 def _render_figures() -> None:
@@ -153,35 +170,42 @@ def _grab_screenshots() -> None:
 
 
 def _print_interactive_checklist() -> None:
-    """List the demonstrations that need a human and a screen recorder."""
+    """List the demonstrations that need a human, with the file names this script expects."""
     print(
         """
-All reproducible assets are in docs/assets/. The following demonstrations need a
-human and a screen recorder (e.g. Peek or OBS for GIFs) — capture each window
-region, then place the recording in docs/assets/:
+All reproducible assets are in docs/assets/. The remaining demonstrations need a
+human. Most only need the GUI's own recording: perform the actions, press
+Export…, save the log under the name given below, then RE-RUN THIS SCRIPT — it
+renders a side-panel GIF from each capture log it finds (the replay draws the
+recorded drag force, friction, and target switches; your cursor is not shown).
 
-1. FK/IK posing            uv run python tools/kinematics_inspector.py examples/four_dof_robot.toml --show-com
-   Do: drag a joint slider through its range, then click-drag the tip around the
-   canvas so the IK solution follows the cursor.
+1. Drag-to-perturb         uv run python tools/dynamics_simulator.py examples/four_dof_robot.toml --run
+   Do: press and drag the tip; release and watch the arm swing freely. Raise the
+   friction spin box mid-run to damp it. Export… the log as
+   -> docs/assets/dynamics_drag.sklog.npz        (becomes dynamics_drag.gif)
 
-2. Drag-to-perturb         uv run python tools/dynamics_simulator.py examples/four_dof_robot.toml --run
-   Do: press and drag the tip; release and watch the arm swing freely (the red
-   arrow is the applied force). Raise the friction spin box mid-run to damp it.
-
-3. Disturbing a reach      uv run python tools/reaching_simulator.py examples/reach.toml --run
+2. Disturbing a reach      uv run python tools/reaching_simulator.py examples/reach.toml --run
    Do: let the arm reach the purple target, then drag the tip away and release —
-   the controller pulls it back.
+   the controller pulls it back. Export… the log as
+   -> docs/assets/reach_disturb.sklog.npz        (becomes reach_disturb.gif)
 
-4. Live target switching   uv run python tools/multi_target_simulator.py examples/multi_target.toml --run
+3. Live target switching   uv run python tools/multi_target_simulator.py examples/multi_target.toml --run
    Do: while it runs, press 1, 2, … to switch the active target and watch the
-   arm retarget.
+   arm retarget. Export… the log as
+   -> docs/assets/multi_target_switch.sklog.npz  (becomes multi_target_switch.gif)
 
-5. Teaching a trajectory   uv run python tools/trajectory_recorder.py \\
+4. Teaching a trajectory   uv run python tools/trajectory_recorder.py \\
                                examples/four_dof_robot.toml --output docs/assets/teach.sklog.npz
    Do: grab the tip and draw a smooth shape (recording starts on the first
-   grab), then press F to finish. Afterwards RE-RUN THIS SCRIPT: it will find
-   docs/assets/teach.sklog.npz and generate the trajectory-tracking animation
-   from it automatically.
+   grab), then press F to finish; the log saves itself. Re-running this script
+   then generates trajectory_tracking.sklog.npz / trajectory_tracking.gif.
+
+5. FK/IK posing            uv run python tools/kinematics_inspector.py examples/four_dof_robot.toml --show-com
+   Do: this one is a SCREEN RECORDING (the inspector poses kinematically and
+   records nothing; the cursor is the demo). Drag a joint slider through its
+   range, then click-drag the tip so the IK solution follows the cursor.
+   Capture the window with e.g. Peek or OBS and save it as
+   -> docs/assets/kinematics_posing_demo.gif
 """
     )
 
@@ -197,6 +221,7 @@ def main() -> None:
     subprocess.run([sys.executable, str(Path(__file__).resolve()), "--figures-only"], check=True)  # noqa: S603
     app = QApplication.instance() or QApplication([])
     _record_animations()
+    _export_interactive_captures()
     _record_tracking_animation()
     _grab_screenshots()
     _print_interactive_checklist()
