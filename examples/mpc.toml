@@ -1,0 +1,45 @@
+# A reaching scenario driven by joint-space MPC.
+# Interactive GUI (drag to apply external forces):
+#   uv run python tools/reaching_simulator.py examples/mpc.toml
+# Headless run that saves a log to replay:
+#   uv run python tools/reaching_simulator.py examples/mpc.toml --save mpc.sklog.npz
+#   uv run python tools/player.py mpc.sklog.npz
+
+[skeleton]
+base_length = 0.0
+
+[[skeleton.link]]
+length = 1.0
+mass = 1.0
+inertia = 0.1
+com = [0.5, 0.0]
+limits = [-180.0, 180.0]
+
+[[skeleton.link]]
+length = 0.8
+mass = 0.8
+inertia = 0.05
+com = [0.4, 0.0]
+limits = [-180.0, 180.0]
+
+[initial]
+q = [34.4, 57.3]  # degrees; endpoint starts near (0.80, 1.36) m
+
+[task]
+type = "reaching"
+target = { pos = [0.55, 1.21], tolerance = 0.02 }
+duration = 2.0
+schedule = "minimum_jerk"
+
+[simulator]
+# MPC re-optimizes every control step, so use a coarser step than the 2 ms
+# default; this is both the plant step and the MPC prediction step.
+dt = 0.05
+
+[controller]
+type = "mpc"
+horizon = 6
+q_weight = 10.0
+dq_weight = 1.0
+tau_weight = 0.001
+terminal_weight = 50.0
