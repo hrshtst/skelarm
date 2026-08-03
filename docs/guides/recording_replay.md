@@ -55,9 +55,11 @@ strongest to weakest:
    `ext_force` channel for analysis.
 
 A log written by `run_scenario` or the interactive scenario simulators embeds —
-in the log's `[extra]` metadata — the **original source config** (the full
-`[skeleton]` / `[initial]` / `[task]` / `[simulator]` / `[controller]` tables,
-exactly as loaded), the resolved run parameters (`dt` / `grav_vec` /
+in the log's `[extra]` metadata — the **resolved, self-contained scenario
+config** (the full `[skeleton]` / `[initial]` / `[task]` / `[simulator]` /
+`[controller]` tables as the run actually used them: section overrides are
+merged in, and a tracking task's file-based reference samples are inlined so the
+log needs no other file), the resolved run parameters (`dt` / `grav_vec` /
 `enforce_limits`, plus `duration` for headless runs — a GUI run is open-ended,
 so its log records no duration and a re-run falls back to the task's), and the
 `skelarm` / `numpy` / `scipy` versions. `enforce_limits` records the *resolved*
@@ -85,8 +87,10 @@ tolerance rather than exactly.
 ## Export an editable config for comparison
 
 To tweak parameters and compare, export the embedded config to an editable TOML
-and re-run it. The export is the **original source config verbatim**: re-running
-it unedited reproduces an unperturbed, config-driven run exactly, while editing
+and re-run it. The export writes the **resolved scenario config the run used**
+(overrides merged, reference samples inlined — not necessarily the input TOML
+byte-for-byte): re-running it unedited reproduces an unperturbed, config-driven
+run exactly, while editing
 a value gives a controlled variant. Call-time overrides (a `duration=` or
 `enforce_limits=` argument, a `--no-joint-limits` flag) live only in the run
 metadata — they are honored by `rerun_log` but **not** written into the exported

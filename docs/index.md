@@ -3,8 +3,8 @@
 A lightweight, physics-based dynamics simulator for a configurable planar robot
 arm. `skelarm` treats the robot as a "skeleton" of N links and focuses on
 kinematics and dynamics — there is no collision detection or detailed shape
-rendering. The supported model is a **horizontal, gravity-free plane**: the
-dynamics are exact for a planar arm lying flat.
+rendering. The supported model is a **horizontal, gravity-free plane**: it
+models a planar arm lying flat.
 
 What it does, in one pass: define a robot in TOML, pose it interactively (FK/IK),
 simulate its dynamics under torque control, run controlled tasks (reaching,
@@ -33,8 +33,8 @@ for headless runs — re-simulates reproducibly.
   [development & testing](guides/development.md).
 - **[Theory Reference](reference/index.md)** — the mathematics behind the
   implementation, from forward kinematics to reaching control.
-- **API Reference** — per-module API docs generated from the source, starting at
-  [Architecture](api/architecture.md).
+- **API Reference** — per-module API docs generated from the source (the
+  [Architecture](api/architecture.md) overview lives under Developer Guides).
 
 ## Capabilities at a glance
 

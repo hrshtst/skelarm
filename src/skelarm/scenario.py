@@ -761,8 +761,9 @@ def scenario_run_metadata(
 ) -> dict[str, Any] | None:
     """Assemble the ``[extra]`` payload that lets a run be reconstructed and re-run.
 
-    Embeds the original source config (the editable ``[skeleton]`` / ``[initial]`` /
-    ``[task]`` / ``[simulator]`` / ``[controller]`` tables, exactly as loaded), the
+    Embeds the resolved scenario config (the editable ``[skeleton]`` / ``[initial]`` /
+    ``[task]`` / ``[simulator]`` / ``[controller]`` tables as the run used them —
+    section overrides merged and file-based reference samples inlined), the
     actual run parameters (including the resolved ``enforce_limits``, so a call-time
     override is captured), and the package versions. Returns ``None`` when the
     scenario carries no ``source_config`` (e.g. a programmatically built controller).
@@ -925,9 +926,11 @@ def export_scenario_toml(log: StateLog, path: str | Path) -> None:
 
     The output is a standard combined config (``[skeleton]`` / ``[initial]`` /
     ``[task]`` / ``[simulator]`` / ``[controller]``) that :func:`load_scenario`
-    reads back. It is the **original source config verbatim**: re-running it
-    unedited reproduces a headless, config-driven run exactly for the
-    deterministic controllers, but call-time overrides (a ``duration=`` or
+    reads back. It is the **resolved scenario config the run used** (section
+    overrides merged, reference samples inlined — not necessarily the input TOML
+    byte-for-byte): re-running it unedited reproduces a headless, config-driven
+    run exactly for the deterministic controllers, but call-time overrides (a
+    ``duration=`` or
     ``enforce_limits=`` argument) live only in the run metadata and are not
     exported, and an interactive run's mouse-applied forces are not part of the
     config. Individual values can be edited for comparison studies.

@@ -64,7 +64,9 @@ from most to least reproducible:
    choice. See [Control Configuration](control_configuration.md#the-simulator-section).
 2. **`run_scenario(..., enforce_limits=...)` / `simulate_controlled(..., enforce_limits=False)`** —
    the programmatic override; `None` (the `run_scenario` default) defers to the
-   scenario's `simulator.enforce_limits`. The resolved value is what gets recorded.
+   scenario's `simulator.enforce_limits`. `run_scenario` records the resolved value
+   in the log's run metadata; a direct `simulate_controlled` call applies it
+   without embedding any reproduction metadata.
 3. **`--no-joint-limits` CLI flag** on the interactive tools (and the
    `SkelarmSimulator` / recorder classes' `enforce_limits=False` argument), which
    omits the bounds from the integrator for that run:
@@ -75,10 +77,13 @@ uv run python tools/reaching_simulator.py examples/reach.toml --no-joint-limits 
 uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --mode dynamics --no-joint-limits
 ```
 
-For the interactive simulators the flag *overrides* `[simulator].enforce_limits` off,
+For the *scenario* simulators the flag *overrides* `[simulator].enforce_limits` off,
 and the resolved value is recorded in the run metadata. (A re-run of an interactive
 recording reproduces the unperturbed scenario — mouse-drag forces are not replayed;
 see [Record, Replay, and Re-simulate](recording_replay.md#the-three-reproducibility-tiers).)
+The generic dynamics simulator and the trajectory recorder apply the flag the same
+way but write plain state logs with no reproduction metadata, so the choice is not
+embedded for re-simulation there.
 
 The default keeps the hard stop on. In the recorder this only affects `dynamics`
 mode; `ik` mode always poses through the clamping kinematic setter regardless.

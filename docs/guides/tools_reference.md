@@ -24,21 +24,25 @@ catalogue; each tool's workflow has its own guide.
 | --- | --- | --- |
 | `--pose 20,45,…` | all simulators, inspector, recorder | Start joint angles in degrees (one per joint). |
 | `--initial FILE` | same | Start pose/velocity from a TOML `[initial]` table. |
-| `--show-com` | inspector, dynamics, player | Draw the link centers of mass. |
+| `--show-com` | inspector, dynamics, recorder, player | Draw the link centers of mass. |
 | `--run` | all simulators | Start simulating immediately (windows open paused by default). |
-| `--no-joint-limits` | dynamics, scenario tools, recorder (`dynamics` mode) | Drop the dynamics hard stop; limits stay on the kinematics. The resolved choice is recorded in the log. |
-| `--task FILE` / `--controller FILE` | scenario tools | Override the named section from a separate file. |
+| `--no-joint-limits` | dynamics, scenario tools, recorder (`dynamics` mode) | Drop the dynamics hard stop; limits stay on the kinematics. Scenario tools record the resolved choice in the log's run metadata; the dynamics simulator and recorder apply it without embedding it. |
+| `--task FILE` / `--controller FILE` | scenario tools | Override the named section from a separate file. The recorder also takes `--task FILE`, only to draw its target. |
 | `--save PATH` | scenario tools | Headless run (no GUI); write the log directly. |
+| `--duration S` | scenario tools (with `--save`), recorder | Override the task's simulated duration / cap the recording length. |
+| `--output PATH` | recorder, `export_config.py` (`-o`) | Output file path (`teach.sklog.npz` / the log path with `.toml` by default). |
 | `--stiffness N` | dynamics, scenario tools, recorder | Spring constant (N/m) of the mouse drag force. |
 | `--friction C` | dynamics, recorder | Viscous joint damping (N·m·s/rad). |
 | `--method NAME` | inspector, recorder (`ik` mode) | Numerical IK method. |
 | `--speed` / `--fps` / `--export PATH` | player | Playback speed, export frame rate, headless video/GIF export. |
-| `--sample-rate` / `--duration` | recorder | Teaching logger configuration. |
+| `--sample-rate HZ` | recorder | Teaching logger sampling rate. |
 | `--no-plot` | dynamics, recorder | Skip the plot shown when the window closes. |
 
 ## Keyboard shortcuts
 
-Every transport-bar window (all simulators, the recorder, and the player):
+Every transport-bar window (all simulators and the player — the trajectory
+recorder has no transport bar; it records continuously after the first grab,
+with `F` to finish and `Q` to close):
 
 | Key | Action |
 | --- | --- |
