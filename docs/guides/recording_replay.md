@@ -2,7 +2,8 @@
 
 Every simulator records its run to a self-contained `*.sklog.npz` **state log**:
 the robot geometry, the recorded channels (joint angles, velocities, torques,
-external tip force), and — for scenario runs — the full scenario config and
+external tip force, viscous friction — plus the live active-target index in the
+multi-target simulator), and — for scenario runs — the full scenario config and
 resolved run settings. This guide covers what you can do with a log: replay it,
 plot it, export it to video, and re-simulate it.
 
@@ -21,7 +22,9 @@ channels…**. A recorded external tip force is drawn as a red arrow (**Show
 external force**). When the log embeds a task (any scenario simulator records
 it), the player draws the task context — the target (the active one emphasized
 for multi-target tasks), the periodic curve, or the reference trajectory — each
-toggled with **Show target(s)** / **Show reference**.
+toggled with **Show target(s)** / **Show reference**. A multi-target recording
+carries the live active-target index, so the emphasized marker follows the
+switches you made during the run.
 
 ## Export to video
 
@@ -34,6 +37,11 @@ output frame rate (`--speed` and `--show-com` apply too):
 uv run python tools/player.py run.sklog.npz --export run.mp4            # headless mp4
 uv run python tools/player.py run.sklog.npz --export run.gif --fps 24   # headless animated gif
 ```
+
+Add `--panel` to composite a simulator-style side panel into each frame: the
+time readout, per-joint sliders, tip position and speed, and the recorded
+parameter readouts (external-force magnitude, viscous friction, active target)
+where the log carries those channels.
 
 ## The three reproducibility tiers
 
