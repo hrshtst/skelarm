@@ -76,6 +76,24 @@ def test_player_emphasizes_the_active_target(qapp, tmp_path: Path) -> None:  # n
     assert window.canvas.show_overlay_targets is False
 
 
+def test_replay_follows_recorded_active_target_switches(qapp) -> None:  # noqa: ANN001, ARG001
+    """The overlay's active marker follows the recorded active_target channel per frame."""
+    from skelarm.scenario import load_scenario
+    from tools.multi_target_simulator import MultiTargetReachSimulator
+
+    sim = MultiTargetReachSimulator(load_scenario(_EXAMPLES / "multi_target.toml"))
+    sim.step()
+    sim.switch_to(2)
+    sim.step()
+    assert sim.state_log is not None
+
+    window = PlaybackWindow(sim.state_log)
+    window._show_frame(0)  # noqa: SLF001
+    assert [active for *_rest, active in window.canvas.overlay_targets] == [True, False, False]
+    window._show_frame(len(sim.state_log) - 1)  # noqa: SLF001
+    assert [active for *_rest, active in window.canvas.overlay_targets] == [False, False, True]
+
+
 def _force_log(frames: int = 5) -> StateLog:
     """A small two-link log that also records an external tip force per frame."""
     link_props = [LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi) for _ in range(2)]

@@ -117,6 +117,9 @@ class PlaybackWindow(QMainWindow):
         # Reconstruct the task from the embedded config to draw its overlays (target /
         # active-target emphasis / periodic curve / reference trajectory).
         self._has_targets, self._has_reference = self._build_task_overlays()
+        # Recorded active-target index (multi-target runs); replays live switches.
+        self._active_target = log.channel("active_target") if "active_target" in log.channel_names else None
+        self._shown_active: int | None = None
 
         self.setWindowTitle("Skelarm Replay")
         self.resize(1024, 768)
@@ -382,6 +385,7 @@ class PlaybackWindow(QMainWindow):
             force = self._force[index]
             self.canvas.tip_force = force if self._show_force else None
             self.force_label.setText(f"Ext. force: {float(np.hypot(force[0], force[1])):.3g} N")
+        self._apply_active_target(index)
         self.canvas.update_skeleton()
         with QSignalBlocker(self.slider):
             self.slider.setValue(index)
@@ -474,6 +478,19 @@ class PlaybackWindow(QMainWindow):
         self.canvas.overlay_targets = targets
         self.canvas.overlay_path = path
         return bool(targets), path is not None
+
+    def _apply_active_target(self, index: int) -> None:
+        """Re-flag the overlay markers to the frame's recorded active target, if recorded."""
+        if self._active_target is None or not self.canvas.overlay_targets:
+            return
+        active = round(float(self._active_target[index]))
+        if active == self._shown_active:
+            return
+        self._shown_active = active
+        self.canvas.overlay_targets = [
+            (pos, color, tolerance, i == active)
+            for i, (pos, color, tolerance, _) in enumerate(self.canvas.overlay_targets)
+        ]
 
     def _on_plot_channels(self) -> None:
         """Open the per-channel analysis plots without blocking the player."""
