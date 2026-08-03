@@ -87,6 +87,7 @@ Load it using `Skeleton.from_toml`:
 
 ```python
 from skelarm import Skeleton
+
 skeleton = Skeleton.from_toml("path/to/robot.toml")
 ```
 
@@ -207,8 +208,11 @@ skeleton.dq = np.array([0.0])
 
 # Simulation parameters
 time_span = (0.0, 1.0)
+
+
 def control_torques(t, skel):
-    return np.array([0.0]) # Zero torque
+    return np.array([0.0])  # Zero torque
+
 
 # Run simulation
 times, q_traj, dq_traj = simulate_robot(skeleton, time_span, control_torques)

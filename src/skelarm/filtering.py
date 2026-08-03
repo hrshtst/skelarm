@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """From-scratch smoothing filters for noisy reference trajectories.
 
 A hand-taught or coarsely sampled reference is often jagged; differentiating it for a

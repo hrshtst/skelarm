@@ -16,6 +16,7 @@ execute the real script with `runpy`:
 
 ```python
 import os, runpy, sys
+
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.argv = ["dynamics_simulator.py", "examples/four_dof_robot.toml", "--no-plot"]
 from PyQt6.QtCore import QTimer
@@ -23,12 +24,14 @@ from PyQt6.QtWidgets import QApplication
 
 orig_exec = QApplication.exec
 
+
 def drive():
     app = QApplication.instance()
     w = next(x for x in app.topLevelWidgets() if x.__class__.__name__ == "DynamicsSimulator")
-    w.grab().save("/tmp/shot.png")   # pixel evidence; icons render offscreen (qtawesome is font-based)
-    w.pause_button.click()           # buttons respond to .click() without a display
+    w.grab().save("/tmp/shot.png")  # pixel evidence; icons render offscreen (qtawesome is font-based)
+    w.pause_button.click()  # buttons respond to .click() without a display
     app.quit()
+
 
 QApplication.exec = lambda *a, **k: (QTimer.singleShot(400, drive), orig_exec())[1]
 runpy.run_path("tools/dynamics_simulator.py", run_name="__main__")

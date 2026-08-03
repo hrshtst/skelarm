@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """End-to-end tests for the trajectory-tracking task types (task-space and joint-space)."""
 
 from __future__ import annotations

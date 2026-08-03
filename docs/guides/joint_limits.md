@@ -37,9 +37,9 @@ Coriolis helpers) solve the equations of motion with no knowledge of `qmin` /
 
 ```python
 dq = dq + ddq * dt
-q  = q  + dq * dt
-q_clamped = np.clip(q, lower, upper)          # pin the angle at the bound
-dq = np.where(q_clamped != q, 0.0, dq)        # zero the velocity of any joint that hit a limit
+q = q + dq * dt
+q_clamped = np.clip(q, lower, upper)  # pin the angle at the bound
+dq = np.where(q_clamped != q, 0.0, dq)  # zero the velocity of any joint that hit a limit
 ```
 
 This is a **fully inelastic, per-joint stop**: a joint that reaches its bound is

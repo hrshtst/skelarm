@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """Trajectory-tracking control: references, torque controllers, and a fixed-step loop.
 
 This module turns a planned reference into joint torques. A task-space trajectory

@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """Reaching simulation example for skelarm.
 
 Loads the combined scenario in ``reach.toml`` (robot + start pose + task +

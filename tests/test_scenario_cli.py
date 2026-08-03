@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """Tests for the shared tools scenario-CLI helpers (tools/_scenario_cli.py)."""
 
 from __future__ import annotations

@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """Full-config embedding, editable export, and re-run reproducibility of logs.
 
 A ``run_scenario`` log embeds the original source config, so ``rerun_log`` and an

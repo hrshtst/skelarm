@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """Tests for the real-time simulator widgets (skelarm.simulator)."""
 
 from __future__ import annotations

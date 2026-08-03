@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """Closed periodic task-space curves for repeated tracing.
 
 A periodic-curve task makes the robot's tip trace a closed planar curve over and over.

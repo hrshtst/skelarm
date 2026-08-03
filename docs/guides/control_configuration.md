@@ -303,8 +303,8 @@ so each saved run's log still embeds its exact (overridden) config for reproduct
 from skelarm import load_scenario, run_scenario
 
 scenario = load_scenario("examples/reach.toml")
-log = run_scenario(scenario)   # uses the task's duration / dt
-log.save("reach.sklog.npz")    # replay/analyze with tools/player.py
+log = run_scenario(scenario)  # uses the task's duration / dt
+log.save("reach.sklog.npz")  # replay/analyze with tools/player.py
 ```
 
 `run_scenario` runs the fixed-step control loop (like `simulate_controlled`) but
@@ -329,7 +329,7 @@ from skelarm import rerun_log
 from skelarm.recording import StateLog
 
 log = StateLog.load("reach.sklog.npz")
-again = rerun_log(log)   # rebuilds the scenario and re-runs the dynamics
+again = rerun_log(log)  # rebuilds the scenario and re-runs the dynamics
 ```
 
 Reconstruction reparses the embedded source config, so identical input gives

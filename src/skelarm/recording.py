@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """Time-series logging of robot states with TOML-described ``.sklog.npz`` files.
 
 A :class:`StateLog` records a sequence of frames, each a timestamp plus a set of

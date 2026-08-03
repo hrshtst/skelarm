@@ -49,6 +49,7 @@ damping for stability (the same `Jᵀ·force` pattern the reaching controllers u
 import numpy as np
 from skelarm import Controller, compute_jacobian
 
+
 class TaskSpaceSpring(Controller):
     """Tip spring toward a fixed target: τ = Jᵀ k (p* − p) − d q̇."""
 
@@ -60,11 +61,11 @@ class TaskSpaceSpring(Controller):
     def control(self, t, skeleton):
         tip = skeleton.links[-1]
         position = np.array([tip.xe, tip.ye])
-        force = self.k_task * (self.target - position)        # task-space restoring force
+        force = self.k_task * (self.target - position)  # task-space restoring force
         return compute_jacobian(skeleton).T @ force - self.d_joint * skeleton.dq
 
     def log_channels(self):
-        return {}   # optionally record internal signals here
+        return {}  # optionally record internal signals here
 ```
 
 Drive it directly — no registration needed for one-off experiments:
@@ -86,11 +87,12 @@ For trajectory-tracking laws, subclass `TrackingController` (it stores a
 import numpy as np
 from skelarm import TrackingController
 
+
 class WeightedPD(TrackingController):
     def control(self, t, skeleton):
-        q_r, dq_r, _ = self.reference.sample(t)   # the joint reference at time t
+        q_r, dq_r, _ = self.reference.sample(t)  # the joint reference at time t
         error = q_r - skeleton.q
-        self._store(q_r, error)                   # makes log_channels emit q_ref / error
+        self._store(q_r, error)  # makes log_channels emit q_ref / error
         return self.kp * error + self.kd * (dq_r - skeleton.dq)
 ```
 
@@ -109,10 +111,14 @@ it); use `task` for the target and run conditions:
 ```python
 from skelarm import register_controller
 
+
 def build_task_space_spring(params, skeleton, task):
-    return TaskSpaceSpring(task.require_target(),   # raises clearly if the task has no target
-                           k_task=params.get("k_task", 200.0),
-                           d_joint=params.get("d_joint", 20.0))
+    return TaskSpaceSpring(
+        task.require_target(),  # raises clearly if the task has no target
+        k_task=params.get("k_task", 200.0),
+        d_joint=params.get("d_joint", 20.0),
+    )
+
 
 register_controller("task_space_spring", build_task_space_spring)
 ```
@@ -126,7 +132,7 @@ k_task = 250.0
 ```python
 from skelarm import load_scenario, run_scenario
 
-log = run_scenario(load_scenario("reach.toml"))   # builds and runs your controller
+log = run_scenario(load_scenario("reach.toml"))  # builds and runs your controller
 log.save("reach.sklog.npz")
 ```
 

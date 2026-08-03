@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """Numerical inverse kinematics example for skelarm.
 
 Solve endpoint inverse kinematics for a redundant (3-link) planar arm with the

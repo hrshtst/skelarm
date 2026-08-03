@@ -70,13 +70,17 @@ period = 3.0
 ```python
 from skelarm import Task, register_task_type
 
-register_task_type("tracing")          # now [task].type = "tracing" validates
-task = Task.from_dict({
-    "type": "tracing",
-    "target": [1.2, 0.0],
-    "center": [0.8, 0.0], "radius": 0.4, "period": 3.0,
-})
-assert task.params["radius"] == 0.4    # extra keys land here
+register_task_type("tracing")  # now [task].type = "tracing" validates
+task = Task.from_dict(
+    {
+        "type": "tracing",
+        "target": [1.2, 0.0],
+        "center": [0.8, 0.0],
+        "radius": 0.4,
+        "period": 3.0,
+    }
+)
+assert task.params["radius"] == 0.4  # extra keys land here
 ```
 
 Only `type` is required; a custom type may omit `target` entirely (it then loads as
@@ -94,6 +98,7 @@ whose builder receives the `Task`:
 import numpy as np
 from skelarm import Controller, compute_jacobian, register_controller
 
+
 class CircleTracer(Controller):
     """Pull the tip along a circle parameterized by the task's params."""
 
@@ -108,9 +113,16 @@ class CircleTracer(Controller):
         force = self.k_task * (goal - np.array([tip.xe, tip.ye]))
         return compute_jacobian(skeleton).T @ force - self.d_joint * skeleton.dq
 
+
 def build_circle_tracer(params, skeleton, task):
-    return CircleTracer(task.params["center"], task.params["radius"], task.params["period"],
-                        k_task=params.get("k_task", 200.0), d_joint=params.get("d_joint", 20.0))
+    return CircleTracer(
+        task.params["center"],
+        task.params["radius"],
+        task.params["period"],
+        k_task=params.get("k_task", 200.0),
+        d_joint=params.get("d_joint", 20.0),
+    )
+
 
 register_controller("circle_tracer", build_circle_tracer)
 ```
@@ -127,7 +139,7 @@ k_task = 200.0
 from skelarm import load_scenario, run_scenario
 
 log = run_scenario(load_scenario("tracing.toml"))
-log.save("tracing.sklog.npz")   # replay with tools/player.py
+log.save("tracing.sklog.npz")  # replay with tools/player.py
 ```
 
 ## Trajectory-tracking tasks (reusing the controllers)
@@ -142,9 +154,11 @@ builds its reference by calling the reference builder registered for the task ty
 ```python
 from skelarm import register_reference_builder, register_task_type, SampledJointReference
 
+
 def build_my_reference(skeleton, task):
     # return a JointReference, e.g. a SampledJointReference(times, q, dq, ddq)
     ...
+
 
 register_task_type("my_reference_task")
 register_reference_builder("my_reference_task", build_my_reference)

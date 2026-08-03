@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """Tests for trajectory-tracking controllers and the fixed-step control loop."""
 
 from __future__ import annotations

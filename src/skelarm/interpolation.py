@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """From-scratch interpolation for resampling reference trajectories.
 
 A recorded or generated reference trajectory is a finite series of samples

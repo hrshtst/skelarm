@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """Simulation example for a 4-DOF robot arm loaded from TOML."""
 
 from __future__ import annotations

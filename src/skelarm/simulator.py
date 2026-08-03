@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """Real-time simulator widgets: drag the tip to apply an external force."""
 
 from __future__ import annotations

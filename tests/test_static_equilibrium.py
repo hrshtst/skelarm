@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """Static-equilibrium checks for the inverse dynamics.
 
 These mirror the "typical configurations and external forces" suggested in the

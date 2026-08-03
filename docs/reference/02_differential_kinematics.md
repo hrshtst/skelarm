@@ -184,14 +184,18 @@ from the Jacobian and basis — comparing them is a built-in consistency check:
 ```python
 import numpy as np
 from skelarm import (
-    Skeleton, LinkProp,
+    Skeleton,
+    LinkProp,
     compute_forward_kinematics,
-    compute_endpoint_velocity, compute_endpoint_acceleration,
+    compute_endpoint_velocity,
+    compute_endpoint_acceleration,
 )
 
 skeleton = Skeleton(
-    [LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi),
-     LinkProp(length=0.8, m=1.0, i=0.1, rgx=0.4, rgy=0.0, qmin=-np.pi, qmax=np.pi)],
+    [
+        LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+        LinkProp(length=0.8, m=1.0, i=0.1, rgx=0.4, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+    ],
     base_length=0.3,
 )
 skeleton.q = np.array([0.4, -0.7])

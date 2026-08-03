@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """Real-time GUI simulation of the 4-DOF arm with interactive tip forces.
 
 The arm runs under zero-torque control (like ``simulate_four_dof.py``). Press and

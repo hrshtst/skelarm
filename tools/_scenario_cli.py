@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """Shared building blocks for the interactive scenario simulators.
 
 Holds the CLI config-override machinery (``--initial`` / ``--pose`` / ``--task`` /

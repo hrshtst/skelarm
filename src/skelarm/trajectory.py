@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """Reference trajectories for motion planning.
 
 A :class:`Trajectory` moves a vector from ``start`` to ``end`` over a fixed

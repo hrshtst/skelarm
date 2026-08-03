@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """Load a full control scenario (robot + task + controller) from one TOML file.
 
 A combined config mirrors the per-section schema used by :meth:`Skeleton.from_toml`:

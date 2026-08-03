@@ -1,3 +1,6 @@
+# Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
+# SPDX-License-Identifier: GPL-3.0-only
+
 """Tests for the from-scratch interpolation utilities (src/skelarm/interpolation.py)."""
 
 from __future__ import annotations
