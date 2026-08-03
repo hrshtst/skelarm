@@ -1687,7 +1687,7 @@ wheels = [
 
 [[package]]
 name = "skelarm"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "imageio", extra = ["ffmpeg"] },
