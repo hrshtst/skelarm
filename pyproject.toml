@@ -1,6 +1,6 @@
 [project]
 name = "skelarm"
-version = "0.2.0"
+version = "0.3.0"
 description = "A simple dynamics simulator for a configurable planar robot arm."
 readme = "README.md"
 license = "GPL-3.0-only"
@@ -237,21 +237,21 @@ python_version = "3.12"
 # editor's global install on PATH) finds numpy/scipy/skelarm rather than
 # reporting import-not-found. Relative to the dir mypy runs from (the repo root).
 python_executable = ".venv/bin/python"
-check_untyped_defs = true       # Type-checks the interior of functions without type annotations.
+check_untyped_defs = true              # Type-checks the interior of functions without type annotations.
 
 # scipy ships no py.typed marker, so mypy cannot resolve its types.
 [[tool.mypy.overrides]]
-  module = ["scipy.*"]
-  ignore_missing_imports = true
+module = ["scipy.*"]
+ignore_missing_imports = true
 
 # qtawesome ships no py.typed marker or stubs either.
 [[tool.mypy.overrides]]
-  module = ["qtawesome", "qtawesome.*"]
-  ignore_missing_imports = true
+module = ["qtawesome", "qtawesome.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]  # so tests can import the tools/ and examples/ packages
+pythonpath = ["."] # so tests can import the tools/ and examples/ packages
 python_files = ["test_*.py", "*_test.py"]
 addopts = ["-ra", "--strict-markers", "--strict-config"]
 markers = [
