@@ -36,8 +36,8 @@ if TYPE_CHECKING:
     from skelarm.control import Controller
     from skelarm.skeleton import Skeleton
 
-_TIMER_MS = 20  # GUI/render period in milliseconds
-_SUBSTEPS = 4  # physics steps per render tick (integration stability)
+_TIMER_MS = 20  # target GUI/render period in milliseconds
+_DEFAULT_DT = 0.005  # physics step preserving the legacy 20 ms / 4-substep loop
 _DEFAULT_STIFFNESS = 0.1  # N/m: external tip force = stiffness * (cursor - tip)
 _ARROW_COLOR = QColor(220, 0, 0)  # red
 _PANEL_WIDTH_PX = 300  # fixed side-panel width so the varying time readout can't resize it
@@ -177,6 +177,7 @@ class SkelarmSimulator(QMainWindow):
         stiffness: float = _DEFAULT_STIFFNESS,
         friction: float = 0.0,
         enforce_limits: bool = True,
+        dt: float = _DEFAULT_DT,
         log_extra: Mapping[str, Any] | None = None,
     ) -> None:
         """Build the simulator window for the given skeleton.
@@ -205,16 +206,32 @@ class SkelarmSimulator(QMainWindow):
             Apply the joint limits as hard stops in the dynamics (default). When
             ``False``, the limits no longer constrain the simulation (they still
             apply to the kinematics setters and inverse kinematics).
+        dt : float, optional
+            Physics/control step in seconds (default 5 ms). Each render tick runs
+            enough substeps of ``dt`` to fill the ~20 ms frame period; a ``dt``
+            above the frame period runs one substep per tick with the timer
+            slowed to match, so wall clock tracks simulated time for any ``dt``.
         log_extra : Mapping[str, Any] | None, optional
             Free-form metadata embedded in the recorded log's ``[extra]`` table (e.g.
             ``{"source_config": ...}`` so a later player can reconstruct the task).
+
+        Raises
+        ------
+        ValueError
+            If ``dt`` is not strictly positive.
         """
         super().__init__()
+        if dt <= 0.0:
+            msg = f"dt must be positive, got {dt}"
+            raise ValueError(msg)
         self.skeleton = skeleton
         self.time = 0.0
         self._controller = controller
         self._stiffness = stiffness
         self._friction = friction
+        self._dt = float(dt)
+        self._substeps = max(1, round(_TIMER_MS / 1000.0 / self._dt))  # physics steps per render tick
+        self._interval_ms = max(1, round(self._substeps * self._dt * 1000.0))  # timer period ≈ wall clock
         self._log_extra = log_extra
         # Joint limits passed to the integrator each step; None disables the hard stop.
         self._lower = (
@@ -329,6 +346,11 @@ class SkelarmSimulator(QMainWindow):
         """Whether the simulation loop is currently advancing."""
         return self._timer.isActive()
 
+    @property
+    def dt(self) -> float:
+        """The physics/control step in seconds (each render tick advances substeps of it)."""
+        return self._dt
+
     def pause(self) -> None:
         """Stop advancing the simulation (the state is frozen until :meth:`resume`)."""
         self._timer.stop()
@@ -337,7 +359,7 @@ class SkelarmSimulator(QMainWindow):
     def resume(self) -> None:
         """Resume advancing the simulation after a :meth:`pause`."""
         if not self._timer.isActive():
-            self._timer.start(_TIMER_MS)
+            self._timer.start(self._interval_ms)
         self.transport_bar.set_playing(True)
 
     def _on_play_toggled(self, playing: bool) -> None:  # noqa: FBT001
@@ -413,8 +435,8 @@ class SkelarmSimulator(QMainWindow):
 
     def step(self) -> None:
         """Advance the dynamics by one render tick under the controller (if any) plus the tip force."""
-        dt = _TIMER_MS / 1000.0 / _SUBSTEPS
-        for _ in range(_SUBSTEPS):
+        dt = self._dt
+        for _ in range(self._substeps):
             # Total torque = active control (zero by default) + the external tip
             # force mapped to joints - joint viscous friction (-friction * dq).
             tau = self._control_torque(dt)

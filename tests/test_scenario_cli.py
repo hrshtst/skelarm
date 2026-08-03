@@ -156,3 +156,25 @@ def test_save_scenario_run_writes_a_replayable_log(tmp_path: Path) -> None:
     log = StateLog.load(out)
     assert "q" in log.channel_names
     assert log.extra["source_config"]["task"]["type"] == "periodic_curve"
+
+
+def _scenario_with_dt(tmp_path: Path, dt: float):  # noqa: ANN202
+    """Build a reaching scenario whose [simulator] table sets the given dt."""
+    config = tmp_path / "scenario.toml"
+    config.write_text(
+        _SKELETON_TOML
+        + '[task]\ntype = "reaching"\ntarget = { pos = [0.55, 1.21] }\nduration = 1.0\n'
+        + f"[simulator]\ndt = {dt}\n"
+        + '[controller]\ntype = "computed_torque"\nkp = 200.0\nkd = 30.0\n'
+    )
+    return build_scenario(config)
+
+
+def test_scenario_simulator_honors_configured_dt(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The GUI physics step is the scenario's [simulator].dt, not a hard-coded value."""
+    from tools._scenario_cli import ScenarioSimulator
+
+    sim = ScenarioSimulator(_scenario_with_dt(tmp_path, dt=0.01))
+    assert sim.dt == pytest.approx(0.01)
+    sim.step()
+    assert sim.time == pytest.approx(0.02)  # 2 substeps of 10 ms per render tick

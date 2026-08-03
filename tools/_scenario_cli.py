@@ -256,6 +256,7 @@ class ScenarioSimulator(SkelarmSimulator):
             target_tolerance=scenario.task.tolerance,
             stiffness=stiffness,
             enforce_limits=enforce_limits,
+            dt=scenario.simulator.dt,
             log_extra={"source_config": dict(scenario.source_config)} if scenario.source_config else None,
         )
         self._task = scenario.task

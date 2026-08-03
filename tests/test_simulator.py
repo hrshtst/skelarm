@@ -27,7 +27,7 @@ def qapp():  # noqa: ANN201
     return QApplication.instance() or QApplication([])
 
 
-def _simulator(qmin: float = -np.pi, qmax: float = np.pi, q: tuple[float, ...] = (0.3, 0.3)):  # noqa: ANN202
+def _simulator(qmin: float = -np.pi, qmax: float = np.pi, q: tuple[float, ...] = (0.3, 0.3), **kwargs):  # noqa: ANN202, ANN003
     """Build a two-link simulator at rest in the given pose."""
     from skelarm.simulator import SkelarmSimulator
 
@@ -35,7 +35,7 @@ def _simulator(qmin: float = -np.pi, qmax: float = np.pi, q: tuple[float, ...] =
     skeleton = Skeleton(link_props)
     skeleton.q = np.array(q)
     skeleton.dq = np.zeros(2)
-    return SkelarmSimulator(skeleton)
+    return SkelarmSimulator(skeleton, **kwargs)
 
 
 def _press(canvas, target: tuple[float, float]) -> None:  # noqa: ANN001
@@ -129,6 +129,51 @@ def test_step_keeps_arm_static_without_force(qapp) -> None:  # noqa: ANN001, ARG
 
     assert sim.time == pytest.approx(0.2)
     assert sim.skeleton.q == pytest.approx(q0, abs=1e-9)
+
+
+def test_dt_parameter_sets_substep_size_and_tick_duration(qapp) -> None:  # noqa: ANN001, ARG001
+    """A configured dt sets the physics substep; one render tick advances substeps * dt."""
+    sim = _simulator(dt=0.002)
+    assert sim.dt == pytest.approx(0.002)
+    sim.step()
+    assert sim.time == pytest.approx(0.02)  # 10 substeps of 2 ms fill the 20 ms render tick
+
+
+def test_dt_larger_than_frame_period_runs_one_substep_per_tick(qapp) -> None:  # noqa: ANN001, ARG001
+    """A dt above the render period gets one substep per tick and a matching timer interval."""
+    sim = _simulator(dt=0.05)
+    sim.step()
+    assert sim.time == pytest.approx(0.05)
+    sim.resume()
+    try:
+        assert sim._timer.interval() == 50  # noqa: SLF001, PLR2004
+    finally:
+        sim.pause()
+
+
+def test_controller_update_runs_once_per_substep_at_dt(qapp) -> None:  # noqa: ANN001, ARG001
+    """The controller sees every physics substep at the configured dt."""
+    from skelarm.control import Controller
+
+    calls: list[tuple[float, float]] = []
+
+    class _Probe(Controller):
+        def update(self, t: float, skeleton, dt: float) -> None:  # noqa: ANN001, ARG002
+            calls.append((t, dt))
+
+        def control(self, t: float, skeleton) -> np.ndarray:  # noqa: ANN001, ARG002
+            return np.zeros(2)
+
+    sim = _simulator(controller=_Probe(), dt=0.01)
+    sim.step()
+    assert [dt for _, dt in calls] == pytest.approx([0.01, 0.01])  # 2 substeps per 20 ms tick
+
+
+def test_non_positive_dt_raises(qapp) -> None:  # noqa: ANN001, ARG001
+    """A zero or negative dt is rejected at construction."""
+    for bad in (0.0, -0.005):
+        with pytest.raises(ValueError, match="dt"):
+            _simulator(dt=bad)
 
 
 def test_joint_sliders_are_read_only(qapp) -> None:  # noqa: ANN001, ARG001
