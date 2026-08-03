@@ -50,7 +50,16 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from skelarm import SkelarmCanvas, StateLog, Task, TransportBar, bind_quit_key, compute_forward_kinematics, make_icon
+from skelarm import (
+    SkelarmCanvas,
+    StateLog,
+    Task,
+    TransportBar,
+    bind_quit_key,
+    compute_forward_kinematics,
+    compute_jacobian,
+    make_icon,
+)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # allow `tools.` imports when run as a script
 from tools._scenario_cli import task_overlays
@@ -60,11 +69,92 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
+    from skelarm import Skeleton
+
 _TIMER_MS = 20  # playback/render period in milliseconds
 _PANEL_WIDTH_PX = 300  # fixed side-panel width so the varying time/frame readout can't resize it
 _EXPORT_FPS = 30.0  # default output frame rate for --export
 _EXPORT_SIZE_PX = 800  # square frame size (px) for --export; a multiple of 16 keeps mp4 codecs happy
 _EXPORT_SUFFIXES = (".mp4", ".gif")  # --export formats, selected from the output path extension
+_EXPORT_PANEL_WIDTH_PX = 304  # --panel side-panel width; a multiple of 16 keeps mp4 codecs happy
+
+
+class _ExportPanel(QWidget):
+    """Simulator-style side panel rendered into ``--panel`` export frames (never shown as a window).
+
+    Mirrors the live simulator's control panel: the bold time readout, one
+    read-only degree-labeled slider per joint, the tip position, and — when the
+    log recorded them — the tip speed, external-force magnitude, viscous
+    friction, and active-target index.
+    """
+
+    def __init__(self, log: StateLog, skeleton: Skeleton) -> None:
+        """Build the panel widgets for the log's joints and recorded channels."""
+        super().__init__()
+        self._skeleton = skeleton  # posed by the export loop before every frame grab
+        self._times = log.times
+        names = log.channel_names
+        self._dq = log.channel("dq") if "dq" in names else None
+        self._force = log.channel("ext_force") if "ext_force" in names else None
+        self._friction = log.channel("friction") if "friction" in names else None
+        self._active = log.channel("active_target") if "active_target" in names else None
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("<b>Simulation</b>"))
+        self._time_label = QLabel()
+        font = self._time_label.font()
+        font.setPointSize(font.pointSize() + 6)
+        font.setBold(True)
+        self._time_label.setFont(font)
+        layout.addWidget(self._time_label)
+
+        self._joint_labels: list[QLabel] = []
+        self._sliders: list[QSlider] = []
+        for link in skeleton.links[1:]:
+            label = QLabel()
+            layout.addWidget(label)
+            slider = QSlider(Qt.Orientation.Horizontal)
+            slider.setRange(round(float(np.degrees(link.prop.qmin))), round(float(np.degrees(link.prop.qmax))))
+            slider.setEnabled(False)  # read-only: shows the replayed angle
+            layout.addWidget(slider)
+            self._joint_labels.append(label)
+            self._sliders.append(slider)
+
+        def _optional_label(present: bool) -> QLabel | None:  # noqa: FBT001
+            if not present:
+                return None
+            label = QLabel()
+            layout.addWidget(label)
+            return label
+
+        self._tip_label = QLabel()
+        layout.addWidget(self._tip_label)
+        self._speed_label = _optional_label(self._dq is not None)
+        self._force_label = _optional_label(self._force is not None)
+        self._friction_label = _optional_label(self._friction is not None)
+        self._active_label = _optional_label(self._active is not None)
+        layout.addStretch(1)
+
+    def show_frame(self, index: int) -> None:
+        """Refresh every readout for frame ``index`` (the shared skeleton is already posed)."""
+        self._time_label.setText(f"t = {float(self._times[index]):.2f} s")
+        sliders = zip(self._sliders, self._joint_labels, self._skeleton.q, strict=True)
+        for i, (slider, label, angle) in enumerate(sliders):
+            deg = round(float(np.degrees(angle)))
+            slider.setValue(deg)
+            label.setText(f"Joint {i + 1}: {deg}°")
+        tip = self._skeleton.links[-1]
+        self._tip_label.setText(f"Tip: ({tip.xe:.3f}, {tip.ye:.3f}) m")
+        if self._speed_label is not None and self._dq is not None:
+            speed = float(np.linalg.norm(compute_jacobian(self._skeleton) @ self._dq[index]))
+            self._speed_label.setText(f"Tip speed: {speed:.3f} m/s")
+        if self._force_label is not None and self._force is not None:
+            force = self._force[index]
+            self._force_label.setText(f"Ext. force: {float(np.hypot(force[0], force[1])):.3g} N")
+        if self._friction_label is not None and self._friction is not None:
+            self._friction_label.setText(f"Friction: {float(self._friction[index]):.3f} N·m·s/rad")
+        if self._active_label is not None and self._active is not None:
+            self._active_label.setText(f"Active target: {round(float(self._active[index])) + 1}")
 
 
 class PlaybackWindow(QMainWindow):
@@ -294,7 +384,9 @@ class PlaybackWindow(QMainWindow):
         figure.tight_layout()
         return figure
 
-    def export(self, path: str | Path, *, fps: float = _EXPORT_FPS, size: int = _EXPORT_SIZE_PX) -> int:
+    def export(
+        self, path: str | Path, *, fps: float = _EXPORT_FPS, size: int = _EXPORT_SIZE_PX, panel: bool = False
+    ) -> int:
         """Render the whole replay to a video / animated GIF on disk, no window shown.
 
         The motion is reconstructed from the log and drawn by the same canvas the
@@ -312,7 +404,12 @@ class PlaybackWindow(QMainWindow):
         fps : float, optional
             Output frame rate in frames per second (default: 30).
         size : int, optional
-            Side length in pixels of the (square) rendered frame (default: 800).
+            Side length in pixels of the (square) rendered canvas (default: 800).
+        panel : bool, optional
+            Composite a simulator-style side panel next to the canvas — the time
+            readout, per-joint sliders, and the recorded parameter readouts
+            (external force, viscous friction, active target) when those
+            channels exist. Widens each frame by 304 px (default: canvas only).
 
         Returns
         -------
@@ -341,6 +438,10 @@ class PlaybackWindow(QMainWindow):
         # Pin the canvas to an exact square: a plain resize() is overridden by the window
         # layout, leaving non-multiple-of-16 dimensions that ffmpeg would silently rescale.
         self.canvas.setFixedSize(size, size)
+        export_panel: _ExportPanel | None = None
+        if panel:
+            export_panel = _ExportPanel(self.log, self.skeleton)
+            export_panel.setFixedSize(_EXPORT_PANEL_WIDTH_PX, size)
         times = self._times
         t0, t_end = float(times[0]), float(times[-1])
         span = t_end - t0
@@ -358,14 +459,22 @@ class PlaybackWindow(QMainWindow):
                 log_t = t0 + (k / fps) * speed
                 index = int(np.clip(np.searchsorted(times, log_t, side="right") - 1, 0, self._n - 1))
                 self._show_frame(index)
-                writer.append_data(self._grab_frame_rgb())
+                frame = self._grab_widget_rgb(self.canvas)
+                if export_panel is not None:
+                    export_panel.show_frame(index)
+                    frame = np.hstack((frame, self._grab_widget_rgb(export_panel)))
+                    # Guard: keep the composited width a multiple of 16 for mp4 codecs.
+                    pad = (-frame.shape[1]) % 16
+                    if pad:
+                        frame = np.pad(frame, ((0, 0), (0, pad), (0, 0)), mode="edge")
+                writer.append_data(frame)
         return n_frames
 
-    def _grab_frame_rgb(self) -> NDArray[np.uint8]:
-        """Grab the current canvas as an ``(H, W, 3)`` uint8 RGB array (offscreen-safe)."""
+    def _grab_widget_rgb(self, widget: QWidget) -> NDArray[np.uint8]:
+        """Grab a widget as an ``(H, W, 3)`` uint8 RGB array (offscreen-safe)."""
         from PyQt6.QtGui import QImage
 
-        image = self.canvas.grab().toImage().convertToFormat(QImage.Format.Format_RGBA8888)
+        image = widget.grab().toImage().convertToFormat(QImage.Format.Format_RGBA8888)
         height, width = image.height(), image.width()
         bits = image.constBits()
         assert bits is not None  # populated for a non-null grabbed image
@@ -520,6 +629,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=_EXPORT_FPS,
         help=f"output frame rate for --export (default: {_EXPORT_FPS:g})",
     )
+    parser.add_argument(
+        "--panel",
+        action="store_true",
+        help="include a simulator-style side panel (time, sliders, parameter readouts) in the --export frames",
+    )
     return parser
 
 
@@ -547,7 +661,7 @@ def main() -> None:
         parser.error(str(exc))
 
     if args.export is not None:
-        frames = window.export(args.export, fps=args.fps)
+        frames = window.export(args.export, fps=args.fps, panel=args.panel)
         print(f"wrote {frames} frames to {args.export}")
         return
 

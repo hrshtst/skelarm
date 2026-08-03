@@ -344,6 +344,30 @@ def test_export_renders_at_the_requested_size(qapp, tmp_path: Path) -> None:  # 
     assert frame.shape[1] == size
 
 
+def test_parser_accepts_panel_flag() -> None:
+    """``--panel`` opts the export into the simulator-style side panel."""
+    args = build_parser().parse_args(["run.sklog.npz", "--export", "out.gif", "--panel"])
+    assert args.panel is True
+    assert build_parser().parse_args(["run.sklog.npz"]).panel is False
+
+
+def test_export_with_panel_widens_the_frame(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """``panel=True`` composites a simulator-style side panel next to the canvas frame."""
+    import imageio.v3 as iio
+
+    from tools.player import _EXPORT_PANEL_WIDTH_PX
+
+    window = PlaybackWindow(_log())
+    out = tmp_path / "replay.mp4"
+    size = 128  # 128 + 304 = 432, a multiple of 16, so ffmpeg won't rescale
+    window.export(out, size=size, panel=True)
+    frame = iio.imread(out, index=0)
+    assert frame.shape[0] == size
+    assert frame.shape[1] == size + _EXPORT_PANEL_WIDTH_PX
+    panel_region = frame[:, size:, :]
+    assert panel_region.std() > 1.0  # text and sliders rendered, not a uniform background
+
+
 def test_export_runs_headless_via_cli(tmp_path: Path) -> None:
     """``--export`` runs the tool headless (no window) end-to-end and writes the file."""
     log_path = tmp_path / "run.sklog.npz"
