@@ -20,9 +20,11 @@ sits at offsets $r_{ix}$ (along the link) and $r_{iy}$ (perpendicular to it).*
 ## 1. Mass properties and the center of mass
 
 Each link $i$ is characterized by its **mass properties**, which depend only on
-the body and not on its motion: the mass $m_i$, the first moments
-$m_i x_{Gi}, m_i y_{Gi}$, and the moment of inertia $I_i$ about the center of mass
-(CoM).
+the body and not on its motion: the mass $m_i$, the body-fixed first moments
+$m_i r_{ix}, m_i r_{iy}$ (built from the CoM offsets in the link frame), and the
+moment of inertia $I_i$ about the center of mass (CoM). The world-frame CoM
+coordinates $x_{Gi}, y_{Gi}$ defined below are *not* body properties — they
+change with the configuration.
 
 The CoM does not generally lie on the line between joints. It is placed at a
 longitudinal distance $r_{ix}$ along the link and a perpendicular offset $r_{iy}$

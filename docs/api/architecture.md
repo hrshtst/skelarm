@@ -119,9 +119,10 @@ close.*
 ## Robot model
 
 [`Skeleton`](skeleton.md) owns the ordered list of `Link` objects (`links[0]` is
-the fixed base; `links[1:]` are the actuated joints), and each `Link` holds an
-immutable `LinkProp` dataclass with its geometry, mass properties, and joint
-limits. The kinematics and dynamics functions operate on a `Skeleton`, and the
+the fixed base; `links[1:]` are the actuated joints), and each `Link` holds a
+`LinkProp` dataclass with its geometry, mass properties, and joint limits —
+treated as fixed after construction by convention (the dataclass itself is not
+frozen). The kinematics and dynamics functions operate on a `Skeleton`, and the
 controllers below read endpoint state from it each step.
 
 ## Controllers

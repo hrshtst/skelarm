@@ -11,10 +11,12 @@ them are worth seeing.
 
 The [forward dynamics](04_forward_dynamics.md) chapter leaves a linear system
 $H \ddot{q} = \tau - b + J_E^{T} f_E$ to solve for $\ddot{q}$ at every step — a
-problem of the general form $A x = b$. Because $H$ is symmetric positive definite,
-it can be solved robustly (Cholesky is the natural specialized choice); `skelarm`
-delegates to NumPy's `numpy.linalg.solve`, an LU-based LAPACK routine. The
-textbook method underlying such solvers is **Gaussian elimination**.
+problem of the general form $A x = b$. Because $H$ is symmetric and — for
+nondegenerate link properties — positive definite, it can be solved robustly
+(Cholesky is the natural specialized choice); `skelarm` delegates to NumPy's
+`numpy.linalg.solve`, an LU-based LAPACK routine, and raises a clear error in the
+degenerate (singular) case. The textbook method underlying such solvers is
+**Gaussian elimination**.
 
 ### Gaussian elimination
 
@@ -29,9 +31,9 @@ The idea is to reduce $A$ to triangular form and then read off the unknowns:
    $x_i = \bigl(b_i - \sum_{j>i} A_{ij} x_j\bigr) / A_{ii}$.
 
 Robust implementations add **pivoting** — reordering rows so the pivot $|A_{kk}|$
-is large — for numerical stability. The equation of motion's $H$ is regular,
-symmetric, and positive definite, so even a naive pivot-free elimination is safe
-here.
+is large — for numerical stability. For physically valid link properties the
+equation of motion's $H$ is regular, symmetric, and positive definite, so even a
+naive pivot-free elimination would be safe here.
 
 ## 2. Least-squares and damping
 
@@ -122,10 +124,13 @@ Simulating motion means integrating the joint acceleration twice, to velocity an
 then position. Stacking the state as $X = [q^{T}, \dot{q}^{T}]^{T}$ recasts the
 second-order dynamics as a first-order system $\dot{X} = f(t, X)$, whose velocity
 half is $\dot{q}$ and whose acceleration half is the
-[forward-dynamics](04_forward_dynamics.md) solve. `skelarm` integrates it with
-SciPy's `scipy.integrate.solve_ivp` using the adaptive `RK45` (Dormand–Prince)
-method, which adjusts its step size automatically to control the error. The two
-fixed-step schemes below are the ideas it refines.
+[forward-dynamics](04_forward_dynamics.md) solve. `skelarm` uses two integration
+paths: the fixed-step **semi-implicit Euler** scheme below is the principal one
+(`integrate_with_limits` — the step of `simulate_controlled`, the interactive
+simulators, and the MPC prediction rollout), while `simulate_robot` integrates the
+uncontrolled dynamics with SciPy's `scipy.integrate.solve_ivp` using the adaptive
+`RK45` (Dormand–Prince) method, which adjusts its step size automatically to
+control the error.
 
 ### Euler's method
 
@@ -139,6 +144,23 @@ $$
 
 It is easy but only first-order accurate (global error $O(\Delta t)$), and it
 drifts off the true trajectory for large steps or stiff dynamics.
+
+### Semi-implicit (symplectic) Euler
+
+Using the **updated** velocity in the position update,
+
+$$
+\dot{q}_{k+1} = \dot{q}_k + \ddot{q}_k\, \Delta t, \qquad
+q_{k+1} = q_k + \dot{q}_{k+1}\, \Delta t,
+$$
+
+costs nothing extra but changes the character of the scheme: it is symplectic, so
+its energy error stays bounded over long horizons instead of drifting the way
+explicit Euler's does. That stability at a fixed step is why
+`integrate_with_limits` uses it as `skelarm`'s control-loop and GUI integrator —
+the fixed step keeps the controller cadence exact, and joint limits can be applied
+as hard stops between steps (clamping $q$ and zeroing the clamped joints'
+velocities; see the [Joint Limits guide](../guides/joint_limits.md)).
 
 ### Runge–Kutta (RK4)
 
@@ -163,4 +185,4 @@ $$
 
 Its global error is $O(\Delta t^{4})$, making it the usual workhorse for smooth
 mechanical systems — and the fixed-step sibling of the adaptive RK45 that
-`skelarm` actually uses.
+`simulate_robot` uses for the uncontrolled dynamics.

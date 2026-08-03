@@ -44,7 +44,9 @@ $$
 Here:
 
 - $H = T^{T} H_\theta T \in \mathbb{R}^{n \times n}$ is the **system inertia
-  matrix** (symmetric, positive definite),
+  matrix** — symmetric, and positive definite for physically valid, nondegenerate
+  link properties (a link with zero mass *and* zero inertia makes it singular,
+  which `compute_forward_dynamics` reports as an error),
 - $b = T^{T} b_\theta \in \mathbb{R}^{n}$ is the **system bias force vector**
   (the velocity-dependent centripetal/Coriolis terms),
 - $\tau$ is the actuator torque vector,
@@ -96,8 +98,11 @@ reuses tested code:
   zero mass and inertia).
 
 !!! note "Gravity and external loads"
-    The arm lives on a horizontal plane, so **gravity is ignored by default** and
-    only contributes if a non-zero `grav_vec` is passed. The external term
+    The supported model is a horizontal planar arm, so **gravity is zero**. The
+    low-level dynamics functions accept a `grav_vec` parameter as an
+    advanced/testing hook (used e.g. by the gravity round-trip test), but it is
+    outside the supported simulator model: no scenario config exposes it and the
+    built-in controllers do not compensate for it. The external term
     $J_E^{T} f_E$ enters through the `fex`/`fey` and `rex`/`rey` fields on each
     `Link`; `compute_forward_dynamics` keeps its torque-only signature and reads
     those loads from the skeleton state.

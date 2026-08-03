@@ -297,17 +297,25 @@ e_{q,k}=q_k-q_{r,k},
 e_{\dot{q},k}=\dot{q}_k-\dot{q}_{r,k}.
 $$
 
-`skelarm`'s `JointSpaceMPC` uses symmetric torque bounds (`tau_max`) and a soft
-joint-limit penalty (`limit_weight`). Hard state constraints,
+`skelarm`'s `JointSpaceMPC` treats the two constraint families differently. The
+**torque bounds are hard**: the solver is `scipy.optimize.minimize` with
+`L-BFGS-B`, whose box bounds enforce
 
 $$
-q_{\min} \le q_k \le q_{\max},
-\qquad
-\tau_{\min} \le \tau_k \le \tau_{\max},
+-\tau_{\max} \le \tau_k \le \tau_{\max}
 $$
 
-are not yet enforced: the solver is `scipy.optimize.minimize` with `L-BFGS-B`,
-whose only hard constraints are box bounds on the torque variables. `JointSpaceMPC`
+exactly on the decision variables (`tau_max`). The **predicted joint-state
+limits**
+
+$$
+q_{\min} \le q_k \le q_{\max}
+$$
+
+are only a soft penalty (`limit_weight`) on the rollout — `L-BFGS-B` cannot impose
+hard constraints on quantities derived from the decision variables, so predicted
+excursions are discouraged, not forbidden (the plant-side hard stop is separate;
+see the [Joint Limits guide](../guides/joint_limits.md)). `JointSpaceMPC`
 optimizes a flattened torque sequence over a small horizon and warm-starts from the
 previous solution. Its controller loop is:
 
@@ -335,9 +343,11 @@ trajectory conversion, and constrained optimal control in the same controller.
     controller once per control interval with the same `dt` as the MPC rollout.
 
 !!! note "Gravity convention"
-    The default `skelarm` arm moves in a horizontal plane, so gravity is zero
-    unless a non-zero `grav_vec` is explicitly supplied. Control formulas should
-    be written against the same convention as `compute_forward_dynamics`.
+    The supported `skelarm` model is a horizontal planar arm: gravity is zero
+    throughout, and the controllers compute no gravity compensation. The low-level
+    dynamics functions accept a `grav_vec` as an advanced/testing hook outside
+    that model — if you pass one, be aware that the built-in controllers' internal
+    models still assume zero gravity.
 
 ## 4. Implementation in `skelarm`
 

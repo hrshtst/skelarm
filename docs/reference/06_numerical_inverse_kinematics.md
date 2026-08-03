@@ -247,9 +247,14 @@ $$
 \overline{W}_n = \bar{w} I_n.
 $$
 
-Sugihara reported $\bar{w}=10^{-3}$ as a robust value in his experiments, and
-`skelarm` exposes it as the `damping` option (default $10^{-3}$) because joint
-units, link scales, and task weights affect the numerical scale.
+Sugihara's fuller treatment (Sugihara 2011, see [References](#references)) does not
+give one universal dimensionless default: the recommended bias is
+**link-scale-dependent**, on the order of $10^{-1}$ down to $10^{-3}\,l^2$ for a
+characteristic link length $l$, because joint units, link scales, and task weights
+set the numerical scale of $J^TJ$. `skelarm`'s `damping` option (default
+$10^{-3}$) is a Sugihara-*inspired* endpoint specialization adapted to this
+library's meter-scale planar arms — tune it with the arm's dimensions rather than
+treating it as a universal constant.
 
 The conditioning argument is easiest to see from the singular value decomposition
 of the weighted Jacobian. For the redundant case, use a full right-singular-vector
@@ -328,18 +333,20 @@ Available methods:
 
 The solver loop is:
 
-1. Copy or set the seed $q_0$.
+1. Copy or set the seed $q_0$ (clamped into the joint limits).
 2. Run `compute_forward_kinematics(skeleton)`.
 3. Read the endpoint from `skeleton.links[-1].xe, skeleton.links[-1].ye`.
 4. Compute $e_k = p^\ast - p(q_k)$ and $E_k = \frac{1}{2}e_k^TW_e e_k$.
-5. Stop with success if $\lVert e_k\rVert \le \varepsilon_e$.
+5. Stop with `"converged"` if $\lVert e_k\rVert \le \varepsilon_e$.
 6. Build $J_k$ with `compute_jacobian(skeleton)`.
-7. Compute $\Delta q_k$ with the selected method.
-8. Stop with stagnation if $\lVert\Delta q_k\rVert \le \varepsilon_q$ or if the
-   residual improvement is below a tolerance.
-9. Apply $q_{k+1}=q_k+\alpha_k\Delta q_k$.
-10. Clamp or reject values outside each joint's `[qmin, qmax]`.
-11. Repeat until success, stagnation, or `max_iterations`.
+7. Compute $\Delta q_k$ with the selected method; a singular linear solve stops
+   with `"singular"`.
+8. Apply $q_{k+1}=\operatorname{clip}(q_k+\alpha_k\Delta q_k)$, clamping each
+   joint into its `[qmin, qmax]` (recording `joint_limits_hit`). Steps are only
+   ever clamped, never rejected.
+9. Stop with `"stalled"` if the **post-clamp** step
+   $\lVert q_{k+1}-q_k\rVert \le \varepsilon_q$.
+10. Repeat until convergence, stall, singularity, or `max_iterations`.
 
 The solver returns an `IKResult` with:
 
@@ -361,12 +368,16 @@ checks the post-clamp step size and reports `"stalled"` instead of looping
 indefinitely. This is a *projected* iteration, not an active-set method, so it
 can stop at a slightly suboptimal pose when a limit is active.
 
-For unreachable targets, `success` does not mean "zero residual." It means one
-of:
-
-- the target was reached within $\varepsilon_e$;
-- the solver found a stationary residual minimum, reported with a nonzero
-  residual norm.
+`success` has one strict meaning: the **final** residual norm is within the
+position tolerance ($\lVert e\rVert \le \varepsilon_e$), evaluated on the pose the
+solver ends at regardless of `status`. An unreachable target therefore always ends
+with `success=False` — typically `status="stalled"` at the nonzero-residual pose
+that minimizes the weighted residual. The best-effort pose is still written back
+to the skeleton, so callers that can use a nearest-approach configuration should
+branch on `success` (or `residual_norm`) rather than assume the target was hit.
+(The reference builder `ik_joint_reference` does exactly that: it keeps the
+best-effort poses and emits one aggregated warning when samples deviate from the
+task path.)
 
 Sugihara-style LM is useful here because the damping grows with residual energy
 instead of relying on the caller to know in advance whether the target is inside
@@ -385,3 +396,20 @@ The solver was developed test-first; `tests/test_inverse_kinematics.py` covers:
 - joint limits are respected after every accepted step (`joint_limits_hit`);
 - for targets generated from random valid configurations, `FK(IK(FK(q)))`
   returns the original endpoint within tolerance.
+
+## References
+
+- Sugihara, T. (2009), ["Solvability-unconcerned inverse kinematics based on
+  Levenberg-Marquardt method with robust
+  damping"](https://doi.org/10.1109/ICHR.2009.5379515), *IEEE-RAS International
+  Conference on Humanoid Robots* — the residual-energy damping argument followed
+  by §6.
+- Sugihara, T. (2011), ["Solvability-Unconcerned Inverse Kinematics by the
+  Levenberg-Marquardt
+  Method"](https://www.jstage.jst.go.jp/article/jrsj/29/3/29_3_269/_article/-char/en),
+  *Journal of the Robotics Society of Japan* 29(3) — the fuller treatment,
+  including the link-scale-dependent bias range.
+
+`skelarm`'s solver is a Sugihara-inspired endpoint specialization: the damping
+scheme follows the papers, while the projected joint-limit clamping, the stall
+criterion, and the default $\bar{w}$ are adaptations of this library.

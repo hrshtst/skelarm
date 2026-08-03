@@ -339,3 +339,30 @@ Like the trackers of the previous chapter, these controllers can also be driven
 from a TOML scenario file (`virtual_spring_damper`, `time_varying_stiffness`,
 `online_shaping`, `position_dependent_shaping`, `adaptive_shaping`); see the
 [Control Configuration](../guides/control_configuration.md) guide.
+
+## References
+
+- Arimoto, S. and Sekimoto, M. (2006), ["Human-like Movements of Robotic Arms
+  with Redundant DOFs: Virtual Spring-Damper Hypothesis to Tackle the Bernstein
+  Problem"](https://doi.org/10.1109/ROBOT.2006.1641977), *IEEE ICRA* — the
+  virtual spring-damper control law of §2.
+- Sekimoto, M. and Arimoto, S. (2006), ["Experimental Study on Reaching Movements
+  of Robot Arms with Redundant DOFs Based upon Virtual Spring-Damper
+  Hypothesis"](https://doi.org/10.1109/IROS.2006.282375), *IEEE/RSJ IROS* — the
+  time-varying stiffness scheme of §3.
+- Seto, F. and Sugihara, T. (2009), ["Online reference shaping with end-point
+  position feedback for large acceleration avoidance on manipulator
+  control"](https://doi.org/10.1109/IROS.2009.5353889), *IEEE/RSJ IROS* — the
+  online reference shaping of §4.
+- Seto, F. and Sugihara, T. (2009), ["Online nonlinear reference shaping with
+  end-point position feedback for human-like smooth reaching
+  motion"](https://doi.org/10.1109/ICHR.2009.5379562), *IEEE-RAS Humanoids* — the
+  position-dependent shaping ratio of §5.
+- Seto, F. and Sugihara, T. (2010), ["Motion Control with Slow and Rapid
+  Adaptation for Smooth Reaching Movement under External Force
+  Disturbance"](https://doi.org/10.1109/IROS.2010.5652721), *IEEE/RSJ IROS* — the
+  adaptation laws of §6.
+
+The control laws follow the papers (with the terminology note of §3); the planar
+endpoint specialization, gain defaults, and the omission of gravity compensation
+(the arm is horizontal) are adaptations of this library.
