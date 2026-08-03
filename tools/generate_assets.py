@@ -34,6 +34,7 @@ import os
 import runpy
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")  # render Qt without a display
@@ -42,6 +43,7 @@ os.environ.setdefault("MPLBACKEND", "Agg")  # render matplotlib without a displa
 from PyQt6.QtWidgets import QApplication, QWidget
 
 from skelarm import StateLog
+from skelarm.recording import dump_toml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # allow `tools.` imports when run as a script
 from tools._scenario_cli import ScenarioSimulator, build_scenario, save_scenario_run
@@ -71,21 +73,9 @@ _FIGURES: tuple[str, ...] = ("basic_plotting", "inverse_kinematics", "reaching",
 # each present <stem>.sklog.npz is rendered to <stem>.gif with the side panel.
 _INTERACTIVE_CAPTURES: tuple[str, ...] = ("dynamics_drag", "reach_disturb", "multi_target_switch")
 
-_TRACK_CONFIG_TABLES = """
-[task]
-type = "joint_trajectory_tracking"
-file = "teach.sklog.npz"
-filter = { kind = "butterworth", cutoff_hz = 8.0, order = 4 }
-interpolator = "cubic_spline"
-
-[simulator]
-dt = 0.002
-
-[controller]
-type = "computed_torque"
-kp = 200.0
-kd = 30.0
-"""
+# The teaching scenario: a 4-DOF arm whose [task] target is drawn while teaching,
+# giving the demonstration a goal; the tracking animation keeps the same marker.
+_TEACH_CONFIG = _EXAMPLES / "reach_four_dof_robot.toml"
 
 
 def _export_gif(log_path: Path, gif_path: Path, *, speed: float = 1.0) -> None:
@@ -114,14 +104,31 @@ def _export_interactive_captures() -> None:
 
 
 def _record_tracking_animation() -> None:
-    """Generate the trajectory-tracking assets when a taught reference exists."""
+    """Generate the trajectory-tracking assets when a taught reference exists.
+
+    The track scenario reuses the teaching config's robot, start pose, and target
+    marker, swapping the task for ``joint_trajectory_tracking`` of the taught log.
+    """
     teach_log = _ASSETS / "teach.sklog.npz"
     if not teach_log.exists():
         print(f"skipping tracking animation: no {teach_log} (teach one first, see the checklist below)")
         return
-    track_config = _ASSETS / "track.toml"
-    robot_tables = (_EXAMPLES / "four_dof_robot.toml").read_text(encoding="utf-8")
-    track_config.write_text(robot_tables + _TRACK_CONFIG_TABLES, encoding="utf-8")
+    config = tomllib.loads(_TEACH_CONFIG.read_text(encoding="utf-8"))
+    task_table: dict[str, object] = {
+        "type": "joint_trajectory_tracking",
+        "file": str(teach_log.resolve()),  # the reference path resolves against the cwd, so keep it absolute
+        "filter": {"kind": "butterworth", "cutoff_hz": 8.0, "order": 4},
+        "interpolator": "cubic_spline",
+        # duration omitted: defaults to the taught reference's length
+    }
+    target = config.get("task", {}).get("target")
+    if target is not None:
+        task_table["target"] = target  # keep the taught scenario's goal marker in the replay
+    config["task"] = task_table
+    config["simulator"] = {"dt": 0.002}
+    config["controller"] = {"type": "computed_torque", "kp": 200.0, "kd": 30.0}
+    track_config = _ASSETS / "track.toml"  # regenerable intermediate (gitignored)
+    track_config.write_text(dump_toml(config).strip() + "\n", encoding="utf-8")
     log_path = save_scenario_run(build_scenario(track_config), _ASSETS / "trajectory_tracking.sklog.npz")
     _export_gif(log_path, _ASSETS / "trajectory_tracking.gif")
 
@@ -195,10 +202,12 @@ recorded drag force, friction, and target switches; your cursor is not shown).
    -> docs/assets/multi_target_switch.sklog.npz  (becomes multi_target_switch.gif)
 
 4. Teaching a trajectory   uv run python tools/trajectory_recorder.py \\
-                               examples/four_dof_robot.toml --output docs/assets/teach.sklog.npz
-   Do: grab the tip and draw a smooth shape (recording starts on the first
-   grab), then press F to finish; the log saves itself. Re-running this script
-   then generates trajectory_tracking.sklog.npz / trajectory_tracking.gif.
+                               examples/reach_four_dof_robot.toml --output docs/assets/teach.sklog.npz
+   Do: the purple target is the goal — grab the tip and demonstrate a smooth
+   motion toward it (recording starts on the first grab), then press F to
+   finish; the log saves itself. Re-running this script then generates
+   trajectory_tracking.sklog.npz / trajectory_tracking.gif on the same robot,
+   with the target marker kept in the replay.
 
 5. FK/IK posing            uv run python tools/kinematics_inspector.py examples/four_dof_robot.toml --show-com
    Do: this one is a SCREEN RECORDING (the inspector poses kinematically and
