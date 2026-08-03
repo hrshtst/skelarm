@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -118,6 +120,27 @@ def test_ik_joint_reference_follows_the_task_path() -> None:
         q_r, _, _ = reference.sample(t)
         assert _tip_at(skeleton, q_r) == pytest.approx(task.sample(t)[0], abs=1e-3)
     assert skeleton.q == pytest.approx(q_before)  # conversion does not mutate the input
+
+
+def test_ik_joint_reference_warns_when_samples_do_not_converge() -> None:
+    """A task path leaving the workspace triggers one aggregated warning about the failed samples."""
+    skeleton = _two_link()  # total reach 1.8 m
+    task = Trajectory(_tip(skeleton), np.array([3.0, 0.0]), duration=1.0)
+
+    with pytest.warns(UserWarning, match="reference samples"):
+        ik_joint_reference(skeleton, task, dt=0.1)
+
+
+def test_ik_joint_reference_reachable_path_does_not_warn() -> None:
+    """A path inside the workspace converts without emitting any warning."""
+    skeleton = _two_link()
+    skeleton.q = np.array([0.6, 1.0])  # folded pose, well inside the workspace
+    p0 = _tip(skeleton)
+    task = Trajectory(p0, p0 + np.array([-0.2, -0.15]), duration=1.0)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        ik_joint_reference(skeleton, task, dt=0.05)
 
 
 def test_resolved_rate_reaches_the_task_target() -> None:

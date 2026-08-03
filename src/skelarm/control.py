@@ -15,6 +15,7 @@ See ``docs/reference/07_control.md`` for the theory.
 
 from __future__ import annotations
 
+import warnings
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Protocol
 
@@ -125,6 +126,12 @@ class SampledTaskReference:
         )
 
 
+# Residual (m) above which a reference sample counts as off the task path. IK's own
+# success bar (position_tolerance, 1e-6 m) is stricter than reference-following needs;
+# this matches the FK/IK round-trip test tolerance so barely-stalled solves stay silent.
+_REFERENCE_WARN_RESIDUAL = 1e-4
+
+
 def ik_joint_reference(
     skeleton: Skeleton,
     task_trajectory: TaskReference,
@@ -155,17 +162,37 @@ def ik_joint_reference(
     -------
     SampledJointReference
         The joint reference ``(q_r, dq_r, ddq_r)``.
+
+    Warns
+    -----
+    UserWarning
+        When one or more samples end more than ``1e-4`` m away from the task
+        path (e.g. it leaves the workspace or a joint limit blocks it). One
+        aggregated warning reports the failure count, the first failing sample
+        time, and the worst residual; the best-effort joint angles are kept, so
+        the reference deviates from the task path at those samples.
     """
     model = skeleton.clone()
     duration = task_trajectory.duration
     times = np.linspace(0.0, duration, round(duration / dt) + 1)
     seed = model.q.copy()
     q_samples = []
+    failures: list[tuple[float, float]] = []  # (sample time, residual norm)
     for t in times:
         target = task_trajectory.sample(float(t))[0]
-        compute_inverse_kinematics(model, target, method=method, q0=seed)
+        result = compute_inverse_kinematics(model, target, method=method, q0=seed)
+        if result.residual_norm > _REFERENCE_WARN_RESIDUAL:
+            failures.append((float(t), result.residual_norm))
         seed = model.q.copy()  # solution is written back to the skeleton; reuse as the next seed
         q_samples.append(seed.copy())
+    if failures:
+        worst_t, worst_residual = max(failures, key=lambda item: item[1])
+        warnings.warn(
+            f"inverse kinematics did not converge on {len(failures)} of {times.size} reference samples "
+            f"(first at t={failures[0][0]:.3g} s; worst residual {worst_residual:.3g} m at t={worst_t:.3g} s); "
+            "the joint reference deviates from the task path there",
+            stacklevel=2,
+        )
     q = np.array(q_samples, dtype=np.float64)
     dq = np.gradient(q, times, axis=0)
     ddq = np.gradient(dq, times, axis=0)
