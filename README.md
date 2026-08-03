@@ -1,268 +1,120 @@
 # skelarm
 
-A lightweight, physics-based dynamics simulator for a configurable planar robot arm. `skelarm` focuses on kinematics and dynamics simulation without collision detection or complex shape rendering, treating the robot as a "skeleton" of links.
+A lightweight, physics-based dynamics simulator for a configurable planar robot
+arm. `skelarm` treats the robot as a "skeleton" of N links and focuses on
+kinematics and dynamics simulation — there is no collision detection or detailed
+shape rendering, and the supported model is a **horizontal, gravity-free plane**.
+Define a robot in TOML, pose it interactively, simulate it under torque control,
+run controlled tasks from a single scenario file, and record every run to a
+self-contained log that replays, plots, and exports to video.
 
-## Features
+Full documentation: **<https://hrshtst.github.io/skelarm/>**
 
-*   **Configurable Robot:** Define arbitrary planar robots with custom link lengths, masses, inertias, and centers of mass, plus a configurable fixed base link. Support for TOML configuration files.
-*   **Kinematics:**
-    *   Forward Kinematics (FK): recursive computation of joint, tip, and center-of-mass position, velocity, and acceleration.
-    *   Differential Kinematics: endpoint Jacobian and centripetal/Coriolis basis, with helpers to evaluate endpoint velocity and acceleration.
-*   **Dynamics (Planar, No Gravity):**
-    *   Inverse Dynamics (ID) using Recursive Newton-Euler algorithm.
-    *   Forward Dynamics (FD) using mass matrix and Coriolis/centrifugal terms.
-    *   Fixed-step (`simulate_controlled`) and adaptive (`scipy.integrate.solve_ivp`) integration.
-    *   **Note:** Gravity is explicitly ignored as the robot operates on a horizontal plane.
-*   **Control:** Trajectory-tracking laws (joint PD, inverse-dynamics feedforward, computed torque), human-like reaching controllers (virtual spring-damper and reference shaping), and joint-space MPC, configured from one combined TOML scenario and extensible at runtime.
-*   **Tasks:** Reaching to a target, multiple-target reaching with live switching, periodic curve tracing (circle, ellipse, lemniscate, rose), and reference-trajectory tracking in task space or per joint — each a registered `[task].type`.
-*   **Trajectory tools:** From-scratch interpolation (linear, natural cubic spline, barycentric Lagrange) and smoothing filters (first-order low-pass, Butterworth, moving average, Savitzky–Golay) for resampling recorded references.
-*   **Recording & Replay:** Runs are recorded to a self-contained `*.sklog.npz` state log (geometry + channels + config) that replays in an analysis player and exports headlessly to an `.mp4` or animated `.gif`. Headless scenario runs also re-simulate reproducibly via `rerun_log`; interactive runs replay their recorded states, but mouse-applied forces are not re-simulated.
-*   **Visualization:**
-    *   Static plotting with `matplotlib`.
-    *   Interactive `PyQt6` GUIs: pose by joint sliders (FK) or click/drag the tip (IK); real-time dynamics and per-task simulators where you drag to apply disturbance forces; and a timeline player that draws the task overlay (target, curve, or reference).
-*   **Quality Assurance:** Fully typed, tested with `pytest` and `hypothesis`, and linted with `ruff`.
+## Quick start
 
-## Getting Started
-
-### Prerequisites
-
-*   Python 3.12 or higher.
-*   `uv` package manager (recommended) or standard `pip`.
-
-### Installation
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/hrshtst/skelarm.git
-    cd skelarm
-    ```
-
-2.  **Install dependencies using `uv` (Recommended):**
-    ```bash
-    uv sync
-    ```
-    Or using `make`:
-    ```bash
-    make install
-    ```
-
-    *Alternatively, using pip:*
-    ```bash
-    pip install .
-    ```
-
-## Usage Examples
-
-### TOML Configuration
-
-You can define robot configurations in TOML files. See `examples/simple_robot.toml`, `examples/four_dof_robot.toml`, or `examples/base_offset_robot.toml` (which sets a non-zero `base_length`).
-
-```toml
-[skeleton]
-base_length = 0.0  # Optional fixed base link offsetting the first joint along +x
-
-[[skeleton.link]]
-length = 1.0
-mass = 2.0
-inertia = 0.5
-com = [0.5, 0.0]        # Center of mass [x, y] relative to joint
-limits = [-180.0, 180.0]  # Joint limits [min, max] in degrees
-
-[[skeleton.link]]
-length = 0.8
-# ...
-
-[initial]
-q = [30.0, 0.0]   # Initial joint angles (degrees), one per joint
-# dq = [0.0, 0.0]  # Optional initial joint velocities (deg/s)
-```
-
-Skeleton keys live under the `[skeleton]` table so the robot can later share a single combined file with `[task]` / `[controller]` sections for reproducible runs; `Skeleton.from_toml` reads only the `[skeleton]` section and ignores the rest. (Legacy flat configs with top-level `base_length` / `[[link]]` are still accepted.)
-
-The initial state is a *run condition* in its own `[initial]` section, so you can compare the same robot from different starting postures by swapping just that block. `q` (degrees) and the optional `dq` (degrees/second) each take one value per joint, and a length mismatch with the robot's DOF raises an error. `[initial].q` supersedes the older per-link `q0` keys.
-
-Joint `limits` are enforced: setting joint angles clamps them into each joint's `[min, max]` range and warns when a value is out of range. A link that omits `limits` defaults to `[-180, 180]` degrees, i.e. one full revolution — so an unspecified joint is capped at ±180°, not left unbounded. How limits behave during a dynamic run — hard stops in the fixed-step simulators, but unconstrained under `simulate_robot` — is covered in the [Joint Limits](docs/guides/joint_limits.md) guide.
-
-Load it using `Skeleton.from_toml`:
-
-```python
-from skelarm import Skeleton
-
-skeleton = Skeleton.from_toml("path/to/robot.toml")
-```
-
-### 4-DOF Simulation Example
-
-Run a dynamic simulation of a 4-DOF robot loaded from a TOML file:
+Requires Python 3.12+ and [`uv`](https://docs.astral.sh/uv/) (plain
+`pip install .` also works):
 
 ```bash
-uv run python examples/simulate_four_dof.py
+git clone https://github.com/hrshtst/skelarm.git
+cd skelarm
+uv sync
 ```
 
-For an interactive version, launch the real-time GUI simulator and press/drag in the canvas to apply an external force at the tip (shown as a red arrow):
+Three commands, from posing to a controlled reach:
 
 ```bash
-uv run python examples/interactive_dynamics.py
-```
-
-To simulate an arbitrary robot, use the generalized tool in `tools/`. Every simulator window opens paused, with a media-player-style transport bar at the top of the control panel — icon buttons for play/pause (`Space`), single-step (`→`/`F`, while paused), and reset (`R`), and `Q` closes any of the GUI tools; pass `--run` to start simulating immediately on launch. This tool adds a live viscous-friction control (joint damping that dissipates energy), a status panel (kinetic energy and tip position/speed), and an optional tip-trajectory plot when the window closes:
-
-```bash
-uv run python tools/dynamics_simulator.py examples/four_dof_robot.toml
-```
-
-Like the kinematics inspector it accepts `--show-com`, `--pose`, and `--initial`, plus `--stiffness <N/m>`, `--friction <N·m·s/rad>`, and `--no-plot`. By default the joint limits act as hard stops in the dynamics; pass `--no-joint-limits` to disable that and let the limits apply to kinematics (IK) only.
-
-### Replaying a Recorded Run
-
-The dynamics simulator records the run (joint angles, velocities, torque, and the external tip force) and can export it as a `*.sklog.npz` state log (recording is on by default; use the **Export…** button). Replay it later — the motion is reconstructed and animated from the log *without* re-running the dynamics — and plot any channel versus time for analysis:
-
-```bash
-uv run python tools/player.py run.sklog.npz
-```
-
-Scrub the timeline, and drive playback from the transport bar under it — icon buttons for play/pause (`Space`), previous/next frame (`←`/`B` and `→`/`F`, while paused), and back to start (`R` or `Home`; `End` jumps to the last frame) — at a chosen speed (`--speed`), toggle the centers of mass (`--show-com`), and open per-channel plots with the **Plot channels…** button. When the log recorded an external tip force, it is drawn as a red arrow at the tip (toggle it with **Show external force**). The log embeds the robot geometry, so the file replays on its own. When the log embeds a task (any scenario simulator records it), the player also draws the task context — the target (the active one emphasized for multi-target tasks), the periodic curve, or the reference trajectory (the per-joint reference is shown in task space via forward kinematics) — each toggled with **Show target(s)** / **Show reference**.
-
-Pass `--export PATH` to render the replay headlessly (no GUI window) to a video or animated GIF instead of opening the player — the format is taken from the extension (`.mp4` or `.gif`), each frame is drawn by the same canvas (task overlay, centers of mass, and force arrow included), and `--fps` sets the output frame rate (`--speed` and `--show-com` apply too):
-
-```bash
-uv run python tools/player.py run.sklog.npz --export run.mp4            # headless mp4
-uv run python tools/player.py run.sklog.npz --export run.gif --fps 24   # headless animated gif
-```
-
-### Teaching a Trajectory
-
-Author a joint trajectory by demonstration: grab the robot's tip with the left mouse button and drag it to teach a motion, recorded to a `*.sklog.npz` log that replays with `tools/player.py`. Recording starts on the first grab and stops at the max duration (or the **Finish** button), sampling at the configured rate; a plot of the recorded motion is shown afterward. Two modes turn the task-space teaching into joint angles:
-
-```bash
-uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml                 # ik mode (default)
-uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --mode dynamics  # force + forward dynamics
-uv run python tools/player.py teach.sklog.npz                                            # replay the recording
-```
-
-In `ik` mode the tip tracks the cursor via the IK solver (`--method`); in `dynamics` mode the drag applies a tip force integrated under forward dynamics with viscous friction (`--stiffness`, `--friction`, with `--no-joint-limits` to drop the dynamics hard stop). `--sample-rate` and `--duration` configure the logger; `--initial`/`--pose` set the start pose, and an optional `[task]` draws a target. The log records per-joint angles and the tip path.
-
-### Reaching & Trajectory Control
-
-A combined scenario file describes the robot (`[skeleton]` / `[initial]`), the reaching goal (`[task]`), and the controller (`[controller]`) in one place. For a quick scripted run that plots the reach, see `examples/reaching.py`. Run `tools/reaching_simulator.py` on the config for an interactive GUI: the controller drives the arm toward the target (a purple marker) and you press/drag the left mouse button to apply an external force at the tip (a red arrow), like the dynamics simulator. Record and **Export…** the run to a `*.sklog.npz`, then replay it:
-
-```bash
-uv run python examples/reaching.py            # scripted reach + plot
-uv run python tools/reaching_simulator.py examples/reach.toml   # interactive GUI (drag to perturb)
-uv run python tools/player.py reach.sklog.npz      # replay an exported run
-```
-
-The `[initial]`, `[task]`, and `[controller]` sections can be overridden from separate files on the command line, so one base config can be compared across controllers or tasks without editing it (`--initial`/`--pose` mirror the kinematics and dynamics tools). Add `--save PATH` to run headlessly (no GUI) and write the log directly — handy for batch comparison:
-
-```bash
-uv run python tools/reaching_simulator.py examples/reach.toml --controller pd.toml          # GUI, different controller
-uv run python tools/reaching_simulator.py examples/reach.toml --task far.toml --save far.sklog.npz   # headless batch
-uv run python tools/reaching_simulator.py examples/reach.toml --initial pose.toml --pose 20,45
-```
-
-Dedicated interactive simulators exist for the other task types, all sharing the same controls (the transport bar for play/step/reset and its keyboard shortcuts — paused on launch unless `--run` is given — drag to perturb, **Record** / **Export…**, the `--initial`/`--pose`/`--task`/`--controller` overrides, and `--save` for a headless batch run). Their runs replay in `tools/player.py` with the task overlay drawn:
-
-```bash
-uv run python tools/multi_target_simulator.py examples/multi_target.toml        # several targets; press 1–N to switch the active one live
-uv run python tools/periodic_curve_simulator.py examples/periodic_curve.toml    # trace a closed curve (drawn behind the arm)
-uv run python tools/trajectory_tracking_simulator.py track.toml                 # track a recorded tip / per-joint reference
-```
-
-The `[controller].type` selects the control law — trajectory tracking (`computed_torque`, `inverse_dynamics_pd`, `joint_pd`), human-like reaching (`virtual_spring_damper`, `time_varying_stiffness`, `online_shaping`, `position_dependent_shaping`, `adaptive_shaping`), or `mpc` — and the remaining keys are its gains. A `[simulator].enforce_limits = false` keeps the joint limits on the kinematics only, dropping the dynamics hard stop for the run (the resolved value is embedded for reproducibility; `--no-joint-limits` overrides it off for one run). The control library is also usable directly via `skelarm.load_scenario` and `skelarm.run_scenario`. The exported log embeds the full scenario config (robot, task, controller, initial state, and run parameters), so a headless run can be re-simulated later with `skelarm.rerun_log` — exactly for the deterministic controllers, and within a small numerical tolerance for MPC (an interactive run re-simulates as its unperturbed scenario: mouse-drag forces are recorded in the log but not replayed). You can also export an editable config from a log (`skelarm.export_scenario_toml`, or `tools/export_config.py`) to tweak a parameter and re-run for comparison. See the [Control Configuration](docs/guides/control_configuration.md) guide for the full scenario schema and per-controller config keys, and the [Trajectory Tracking](docs/reference/07_control.md) and [Reaching Control](docs/reference/08_reaching_control.md) references for the theory.
-
-### Interactive Kinematics (FK & IK)
-
-Launch the PyQt6 GUI to pose a robot arm with the joint sliders (forward kinematics) or by clicking/dragging in the canvas to move the tip (inverse kinematics):
-
-```bash
-uv run python examples/interactive_kinematics.py
-```
-
-To inspect an arbitrary robot, use the generalized tool in `tools/`, which takes a config path:
-
-```bash
+# 1. Pose a 4-DOF arm: joint sliders (FK) or drag the tip (IK)
 uv run python tools/kinematics_inspector.py examples/four_dof_robot.toml
+
+# 2. Simulate its dynamics: press Space to run, drag the tip to apply a force
+uv run python tools/dynamics_simulator.py examples/four_dof_robot.toml
+
+# 3. Run a controlled reach: the controller drives the arm to the target
+uv run python tools/reaching_simulator.py examples/reach.toml
 ```
 
-It also accepts `--method <ik-method>`, `--show-com`, and an initial pose via `--pose 20,45,60,30` (degrees) or `--initial pose.toml` (a TOML file with an `[initial]` table).
+Every simulator records its run — press **Export…** to save a `*.sklog.npz` log
+and replay it with `uv run python tools/player.py <log>`. See
+[Getting Started](docs/getting_started.md) for the guided version.
 
-### Basic Kinematics & Plotting
+## Capabilities
 
-Run a script that defines a robot, computes its kinematics, and plots it using Matplotlib:
+From basic to advanced:
 
-```bash
-uv run python examples/basic_plotting.py
-```
+- **Configurable robot** — arbitrary planar chains from TOML: link lengths,
+  masses, inertias, centers of mass, joint limits, optional base offset
+  ([guide](docs/guides/robot_configuration.md)).
+- **Kinematics** — recursive forward kinematics (positions, velocities,
+  accelerations), endpoint Jacobian, and numerical inverse kinematics
+  (Sugihara-style Levenberg-Marquardt and friends)
+  ([guide](docs/guides/kinematics_and_posing.md)).
+- **Dynamics** — Recursive Newton-Euler inverse dynamics and mass-matrix forward
+  dynamics; fixed-step semi-implicit Euler and adaptive `solve_ivp` integration;
+  gravity is explicitly zero (horizontal plane)
+  ([guide](docs/guides/simulate_dynamics.md)).
+- **Tasks & control** — reaching, multi-target reaching, periodic curve tracing,
+  and trajectory tracking, driven by trajectory-tracking laws, human-like
+  reaching controllers, or joint-space MPC — all from one scenario TOML,
+  extensible at runtime ([guide](docs/guides/running_scenarios.md)).
+- **Trajectory tools** — teach motions by dragging the tip, then smooth
+  (zero-phase filters), resample (from-scratch interpolators), and track them
+  ([guide](docs/guides/teaching_trajectories.md)).
+- **Recording & replay** — self-contained `*.sklog.npz` logs with an analysis
+  player, headless `.mp4`/`.gif` export, and reproducible headless
+  re-simulation ([guide](docs/guides/recording_replay.md)).
 
-### Inverse Kinematics
+## Choose a workflow
 
-Solve endpoint inverse kinematics (default: Sugihara-style Levenberg-Marquardt) and plot the solved pose:
+| I want to… | Run | Guide |
+| --- | --- | --- |
+| Pose or inspect an arm | `tools/kinematics_inspector.py <robot.toml>` | [Kinematics and Posing](docs/guides/kinematics_and_posing.md) |
+| Simulate free dynamics | `tools/dynamics_simulator.py <robot.toml>` | [Simulate Dynamics](docs/guides/simulate_dynamics.md) |
+| Run a controlled task | `tools/reaching_simulator.py <scenario.toml>` | [Run Controlled Scenarios](docs/guides/running_scenarios.md) |
+| Replay / export a run | `tools/player.py <run.sklog.npz>` | [Record, Replay, and Re-simulate](docs/guides/recording_replay.md) |
+| Teach and track a trajectory | `tools/trajectory_recorder.py <robot.toml>` | [Teach and Track Trajectories](docs/guides/teaching_trajectories.md) |
+| Use the Python API | — | [Python API Quick Start](docs/guides/python_api.md) |
 
-```bash
-uv run python examples/inverse_kinematics.py
-```
-
-### Dynamics Simulation
-
-You can use the library to simulate robot motion. See `src/skelarm/dynamics.py` and `tests/test_dynamics.py` for API usage.
+## Minimal Python example
 
 ```python
-from skelarm import LinkProp, Skeleton, simulate_robot
-import numpy as np
+from skelarm import load_scenario, rerun_log, run_scenario
 
-# Define a single link
-link = LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi)
-skeleton = Skeleton([link])
-
-# Initial state
-skeleton.q = np.array([0.0])
-skeleton.dq = np.array([0.0])
-
-# Simulation parameters
-time_span = (0.0, 1.0)
-
-
-def control_torques(t, skel):
-    return np.array([0.0])  # Zero torque
-
-
-# Run simulation
-times, q_traj, dq_traj = simulate_robot(skeleton, time_span, control_torques)
+scenario = load_scenario("examples/reach.toml")
+log = run_scenario(scenario)  # headless controlled run
+log.save("reach.sklog.npz")  # replay with tools/player.py
+again = rerun_log(log)  # deterministic re-simulation from the embedded config
 ```
 
-## Running Tests
-
-This project uses `pytest` for unit testing and `hypothesis` for property-based testing of physics consistency.
-
-To run the full test suite:
-
-```bash
-make test
-# OR
-uv run pytest
-```
-
-To run tests with coverage report:
-
-```bash
-make test-cov
-```
-
-## Development
-
-We use `ruff` for linting and formatting, and `basedpyright` and `mypy` for static type checking.
-
-*   **Linting:** `make lint`
-*   **Formatting:** `make format`
-*   **Type Checking:** `make type-check`
-*   **Run all checks:** `make all`
+Lower-level building blocks (`Skeleton`, FK/IK, forward/inverse dynamics,
+`simulate_robot`) are covered in the
+[Python API Quick Start](docs/guides/python_api.md).
 
 ## Documentation
 
-The project documentation is built using MkDocs.
+- [Getting Started](docs/getting_started.md)
+- [User Guides](https://hrshtst.github.io/skelarm/guides/robot_configuration/) —
+  configuration, simulation, scenarios, recording, joint limits, and the
+  [tool & CLI reference](docs/guides/tools_reference.md)
+- [Theory Reference](docs/reference/index.md) — the mathematics behind the
+  implementation
+- [API Reference](https://hrshtst.github.io/skelarm/api/skeleton/) — generated
+  from the source
+- [Developer Guides](docs/guides/development.md) — extending tasks/controllers,
+  architecture, development workflow
 
-*   **Build Documentation:** `make docs-build`
-*   **Serve Documentation Locally:** `make docs-serve`
+## For developers
+
+```bash
+uv sync --all-extras && uv run pre-commit install
+make all          # format + type-check + test — run before declaring a change done
+make docs-serve   # preview the documentation site
+```
+
+Development is test-first (`pytest` + `hypothesis` property tests), fully typed
+(`basedpyright` + `mypy`), and linted with `ruff`. See
+[Development and Testing](docs/guides/development.md) for the workflow and
+[Architecture](docs/api/architecture.md) for how the modules fit together.
 
 ## License
 
@@ -270,18 +122,16 @@ GPLv3
 
 ## AI Assistance & Development Workflow
 
-This project is developed with the assistance of AI coding agents. The AI is also used to generate commit messages and parts of the documentation, including API and theoretical reference sections.
+This project is developed with the assistance of AI coding agents: the
+maintainer, [Hiroshi Atsuta](https://github.com/hrshtst), writes the project
+guidance and theoretical reference material, the AI implements against them, and
+the maintainer reviews, tests, and revises every change. All responsibility for
+the code in this repository lies with the maintainer.
 
-**Workflow:**
-1.  **Context & Theory (Human):** The maintainer, **[Hiroshi Atsuta](https://github.com/hrshtst)**, establishes the project guidance in `AGENTS.md` and writes the theoretical background implemented as documentation in [docs/reference/](https://github.com/hrshtst/skelarm/tree/main/docs/reference).
-2.  **Scaffolding (AI):** The AI assistant uses these documents and the constraints defined in `AGENTS.md` to implement code scaffolding and initial logic.
-3.  **Review & Revision (Human):** The maintainer reviews, tests, and revises the generated code to ensure quality and correctness. This cycle is repeated during the development.
-
-**Responsibility:**
-All responsibilities for the code hosted in this repository lie with the maintainer. The AI serves strictly as an implementation assistant; final architectural decisions and code quality are human-led.
-
-**Feedback:**
-If you identify problems, or find code that appears to be unoriginal or rights-protected, please notify the maintainer immediately by filing an issue.
-
-**Contributor Policy:**
-External contributors are welcome to use AI tools for assistance, provided they adhere to the same standard of review and responsibility. If you use AI to generate code for a Pull Request, please disclose it in the PR description and ensure you have thoroughly reviewed and tested the code.
+External contributors are welcome to use AI tools under the same standard: if
+you use AI to generate code for a pull request, **disclose it in the PR
+description** and ensure you have thoroughly reviewed and tested the code. If
+you identify problems, or find code that appears to be unoriginal or
+rights-protected, please notify the maintainer by filing an issue. The full
+workflow is described in
+[Development and Testing](docs/guides/development.md).

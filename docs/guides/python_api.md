@@ -32,10 +32,10 @@ The highest-level entry point mirrors the GUI tools — one config, one call:
 from skelarm import load_scenario, rerun_log, run_scenario
 
 scenario = load_scenario("examples/reach.toml")
-log = run_scenario(scenario)   # duration from [task], dt from [simulator]
+log = run_scenario(scenario)  # duration from [task], dt from [simulator]
 log.save("reach.sklog.npz")
 
-again = rerun_log(log)         # deterministic re-simulation from the embedded config
+again = rerun_log(log)  # deterministic re-simulation from the embedded config
 ```
 
 The returned `StateLog` gives channel arrays for analysis
@@ -74,12 +74,12 @@ controller state.
 
 ```python
 from skelarm import (
-    compute_forward_dynamics,    # tau -> ddq (mass matrix solve)
-    compute_inverse_dynamics,    # motion -> tau (Recursive Newton-Euler)
+    compute_forward_dynamics,  # tau -> ddq (mass matrix solve)
+    compute_inverse_dynamics,  # motion -> tau (Recursive Newton-Euler)
     compute_inverse_kinematics,  # endpoint target -> q (check result.success)
-    compute_jacobian,            # endpoint Jacobian
-    ik_joint_reference,          # task path -> joint reference (warns on deviation)
-    simulate_controlled,         # fixed-step control loop
+    compute_jacobian,  # endpoint Jacobian
+    ik_joint_reference,  # task path -> joint reference (warns on deviation)
+    simulate_controlled,  # fixed-step control loop
 )
 ```
 
