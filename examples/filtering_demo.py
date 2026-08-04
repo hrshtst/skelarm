@@ -17,9 +17,12 @@ Butterworth, moving average, Savitzky-Golay — all zero-phase):
    acceleration reduction) printed per filter.
 
 The window-based filters are specified by a window length in seconds so their
-effective cutoff roughly matches the 4 Hz IIR filters on both datasets despite
-the differing sample rates; the comparison is of representative,
-approximately bandwidth-matched settings, not a strict ranking.
+nominal time scale matches the 4 Hz IIR filters on both datasets despite the
+differing sample rates. The final responses still differ by kind: the zero-phase
+forward-backward application squares each magnitude response, pulling the
+effective -3 dB cutoff below the configured value (furthest for the first-order
+low-pass). The comparison is of representative settings matched by nominal
+cutoff / window time scale, not a strict ranking.
 
 Run from the repository root:
 
@@ -47,9 +50,10 @@ _TIP_ZOOM_FROM_S = 6.0  # taught tip-path zoom starts at the slow final approach
 _SEEDS = range(10)  # synthetic noise realizations aggregated into the RMSE statistics
 
 # The demonstrated filters. Window lengths are given in SECONDS (``window_s``) and
-# converted to an odd sample count per dataset, so every filter keeps a roughly
-# matched ~4 Hz effective cutoff at either sample rate — a fixed sample count
-# would remove twice the bandwidth at 50 Hz that it removes at 100 Hz.
+# converted to an odd sample count per dataset, so every filter keeps the same
+# nominal ~4 Hz time scale at either sample rate — a fixed sample count would
+# remove twice the bandwidth at 50 Hz that it removes at 100 Hz. (The zero-phase
+# double pass still shifts each kind's final -3 dB point differently.)
 _FILTERS: dict[str, dict[str, float | int | str]] = {
     "lowpass": {"kind": "lowpass", "cutoff_hz": 4.0},
     "butterworth": {"kind": "butterworth", "cutoff_hz": 4.0, "order": 4},

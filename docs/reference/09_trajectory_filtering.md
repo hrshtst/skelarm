@@ -121,10 +121,13 @@ initial conditions and the signal is reflected at the boundaries, so a constant
 
 ### The four filters compared
 
-`examples/filtering_demo.py` compares all four kinds at representative,
-approximately bandwidth-matched settings (the window filters are specified by a
-window length in seconds, so their effective cutoff stays near the IIR filters'
-4 Hz at either sample rate). On a synthetic signal it reports the RMSE against
+`examples/filtering_demo.py` compares all four kinds at representative settings
+matched by nominal cutoff / window time scale: the window filters are specified
+by a window length in seconds, so the settings scale with the sample rate.
+(The final bandwidths still differ by kind — the zero-phase forward-backward
+application squares each magnitude response, pulling the effective −3 dB cutoff
+below the configured value, furthest for the first-order low-pass.) On a
+synthetic signal it reports the RMSE against
 the known ground truth as a mean over ten noise seeds; on the hand-taught
 recording shipped in `docs/assets/teach.sklog.npz` — where differentiation makes
 the raw hand tremor obvious — the filters cut the acceleration RMS four- to
