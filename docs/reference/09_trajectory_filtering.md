@@ -57,6 +57,27 @@ It is exact for polynomial data, but a high-degree polynomial through many equal
 spaced nodes oscillates wildly near the ends (the **Runge phenomenon**), so reserve
 it for short series.
 
+### The three interpolators compared
+
+`examples/interpolation_demo.py` reconstructs a known smooth reference from
+coarse equispaced samples and measures each interpolator against the analytic
+truth:
+
+```bash
+uv run python examples/interpolation_demo.py
+```
+
+![Interpolator comparison: reconstruction, error, first derivative, and the max error vs node count](../assets/interpolation_demo.png)
+
+At 21 nodes the cubic spline is roughly seven times more accurate than linear
+(RMSE 0.009 vs 0.062), and its analytic first derivative tracks the true one
+where linear's finite-difference slope is a staircase. The Lagrange polynomial
+illustrates the warning above: at intermediate node counts its edge
+oscillations reach absolute errors around 26 — orders of magnitude above the
+spline — even though for this analytic reference it eventually converges once
+the degree resolves the signal. The sweep panel shows all three behaviors side
+by side.
+
 ## 2. Smoothing filters
 
 A jagged reference (e.g. a hand-taught path) has high-frequency content that

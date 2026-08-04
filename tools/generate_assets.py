@@ -74,7 +74,14 @@ _ANIMATIONS: tuple[tuple[str, Path, float], ...] = (
 )
 
 # Plotting examples rendered to PNG (each calls plt.show() exactly once).
-_FIGURES: tuple[str, ...] = ("basic_plotting", "inverse_kinematics", "reaching", "periodic_curve", "filtering_demo")
+_FIGURES: tuple[str, ...] = (
+    "basic_plotting",
+    "inverse_kinematics",
+    "reaching",
+    "periodic_curve",
+    "filtering_demo",
+    "interpolation_demo",
+)
 
 # Interactive capture logs (exported from a GUI's Record / Export…, see the checklist);
 # each present <stem>.sklog.npz is rendered to <stem>.gif with the side panel.
