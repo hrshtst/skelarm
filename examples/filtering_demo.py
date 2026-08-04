@@ -11,10 +11,11 @@ Butterworth, moving average, Savitzky-Golay — all zero-phase):
    is aggregated over several noise seeds (mean shown in the legend, mean +/- std
    printed).
 2. **A taught trajectory** — the hand-demonstrated recording committed at
-   ``docs/assets/teach.sklog.npz``: the most active joint's velocity over time
-   (differentiation amplifies the hand tremor) and a zoomed tip path where the
-   raw pointer quantization is visible, with the smoothness gain (RMS
-   acceleration reduction) printed per filter.
+   ``docs/assets/teach.sklog.npz``: the taught tip path with each filter
+   applied, next to a zoomed view of the slow final approach where the raw
+   pointer quantization is visible. The smoothness gain (tip acceleration RMS
+   reduction) and the deviation from the demonstrated path are printed per
+   filter.
 
 The window-based filters are specified by a window length in seconds so their
 nominal time scale matches the 4 Hz IIR filters on both datasets despite the
@@ -91,8 +92,11 @@ def _rms(values: NDArray[np.float64]) -> float:
 
 
 def _acceleration_rms(values: NDArray[np.float64], dt: float) -> float:
-    """RMS of the finite-difference acceleration — a roughness measure."""
-    return _rms(np.diff(values, n=2) / dt**2)
+    """RMS of the finite-difference acceleration magnitude — a roughness measure."""
+    accel = np.diff(values, n=2, axis=0) / dt**2
+    if accel.ndim > 1:
+        accel = np.linalg.norm(accel, axis=1)
+    return _rms(accel)
 
 
 def _demo_synthetic(ax_full: Axes, ax_zoom: Axes) -> None:
@@ -128,45 +132,45 @@ def _demo_synthetic(ax_full: Axes, ax_zoom: Axes) -> None:
     ax_zoom.set_xlabel("time (s)")
 
 
-def _demo_taught(ax_joint: Axes, ax_tip: Axes) -> None:
-    """Filter the committed hand-taught recording and report the smoothness gain."""
+def _demo_taught(ax_path: Axes, ax_zoom: Axes) -> None:
+    """Filter the committed hand-taught tip path and report the smoothness gain."""
+    from matplotlib.patches import Rectangle
+
     log = StateLog.load(_TEACH_LOG)
     times = log.times
     dt = float(np.mean(np.diff(times)))
-    q = log.channel("q")
     tip = log.channel("tip")
-    joint = int(np.argmax(np.ptp(q, axis=0)))  # the most active joint (largest angle range)
-    raw = q[:, joint]
 
-    print(f"\nTaught trajectory {_TEACH_LOG.name} (joint {joint + 1}, {len(times)} samples at {1 / dt:.0f} Hz):")
-    print(f"  {'unfiltered':<28} accel RMS {_acceleration_rms(raw, dt):8.2f} rad/s^2")
-    ax_joint.plot(times, np.gradient(raw, dt), color="0.7", lw=0.8, label="taught (raw)")
+    print(f"\nTaught trajectory {_TEACH_LOG.name} (tip path, {len(times)} samples at {1 / dt:.0f} Hz):")
+    print(f"  {'unfiltered':<28} tip accel RMS {_acceleration_rms(tip, dt):7.3f} m/s^2")
+    for ax in (ax_path, ax_zoom):
+        ax.plot(tip[:, 0], tip[:, 1], color="0.7", lw=0.9, label="taught tip path (raw)")
     for params in _FILTERS.values():
         kwargs, label = _resolve(params, dt)
-        smoothed = smooth(raw, dt, **kwargs)  # type: ignore[arg-type]
+        smoothed = smooth(tip, dt, **kwargs)  # type: ignore[arg-type]
         accel = _acceleration_rms(smoothed, dt)
-        deviation = _rms(smoothed - raw)
-        print(f"  {label:<28} accel RMS {accel:8.2f} rad/s^2, deviation RMS {deviation:.4f} rad")
-        ax_joint.plot(times, np.gradient(smoothed, dt), lw=1.2, label=f"{label}, accel RMS {accel:.1f}")
+        deviation = _rms(np.linalg.norm(smoothed - tip, axis=1)) * 1000.0
+        print(f"  {label:<28} tip accel RMS {accel:7.3f} m/s^2, deviation RMS {deviation:.2f} mm")
+        ax_path.plot(smoothed[:, 0], smoothed[:, 1], lw=1.2, label=f"{label}, accel RMS {accel:.2f}")
+        ax_zoom.plot(smoothed[:, 0], smoothed[:, 1], lw=1.2)
 
-    ax_joint.set_title(f"Taught joint {joint + 1} velocity (differentiation amplifies the hand jitter)")
-    ax_joint.set_xlabel("time (s)")
-    ax_joint.set_ylabel("velocity (rad/s)")
-    ax_joint.legend(fontsize=7, loc="best")
-
-    ax_tip.plot(tip[:, 0], tip[:, 1], color="0.7", lw=0.8, label="taught tip path (raw)")
-    for params in _FILTERS.values():
-        kwargs, label = _resolve(params, dt)
-        smoothed_tip = smooth(tip, dt, **kwargs)  # type: ignore[arg-type]
-        ax_tip.plot(smoothed_tip[:, 0], smoothed_tip[:, 1], lw=1.2, label=label)
-    # Zoom to the slow final approach, where the millimeter-scale hand jitter is visible.
+    # Zoom bounds: the slow final approach, where the millimeter-scale jitter is visible.
     segment = tip[times >= _TIP_ZOOM_FROM_S]
-    ax_tip.set_xlim(float(segment[:, 0].min()) - 0.005, float(segment[:, 0].max()) + 0.005)
-    ax_tip.set_ylim(float(segment[:, 1].min()) - 0.003, float(segment[:, 1].max()) + 0.003)
-    ax_tip.set_title("Taught tip path (zoom: raw jitter vs smoothed)")
-    ax_tip.set_xlabel("x (m)")
-    ax_tip.set_ylabel("y (m)")
-    ax_tip.legend(fontsize=7, loc="best")
+    x_lo, x_hi = float(segment[:, 0].min()) - 0.005, float(segment[:, 0].max()) + 0.005
+    y_lo, y_hi = float(segment[:, 1].min()) - 0.003, float(segment[:, 1].max()) + 0.003
+
+    ax_path.add_patch(Rectangle((x_lo, y_lo), x_hi - x_lo, y_hi - y_lo, fill=False, ec="k", lw=0.8, ls=":"))
+    ax_path.set_title("Taught tip path (dotted box: zoom region)")
+    ax_path.set_xlabel("x (m)")
+    ax_path.set_ylabel("y (m)")
+    ax_path.set_aspect("equal", adjustable="datalim")
+    ax_path.legend(fontsize=7, loc="best")
+
+    ax_zoom.set_xlim(x_lo, x_hi)
+    ax_zoom.set_ylim(y_lo, y_hi)
+    ax_zoom.set_title("Zoom: final approach, raw pointer jitter vs smoothed")
+    ax_zoom.set_xlabel("x (m)")
+    ax_zoom.set_ylabel("y (m)")
 
 
 def main() -> None:

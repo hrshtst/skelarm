@@ -154,15 +154,16 @@ application squares each magnitude response, pulling the effective −3 dB cutof
 below the configured value, furthest for the first-order low-pass.) On a
 synthetic signal it reports the RMSE against
 the known ground truth as a mean over ten noise seeds; on the hand-taught
-recording shipped in `docs/assets/teach.sklog.npz` — where differentiation makes
-the raw hand tremor obvious — the filters cut the acceleration RMS four- to
-nine-fold while deviating only 2.0–3.1 mrad RMS from the demonstration:
+recording shipped in `docs/assets/teach.sklog.npz` it shows the taught tip path
+and a zoomed view of its final approach — where the raw pointer quantization is
+visible — with the filters cutting the tip acceleration RMS four- to eight-fold
+while deviating only 0.9–1.5 mm RMS from the demonstrated path:
 
 ```bash
 uv run python examples/filtering_demo.py
 ```
 
-![Filter comparison: synthetic noisy-signal comparison (top) and the hand-taught trajectory's velocity and zoomed tip path (bottom)](../assets/filtering_demo.png)
+![Filter comparison: synthetic noisy-signal comparison (top) and the hand-taught tip path with its zoomed final approach (bottom)](../assets/filtering_demo.png)
 
 The zoom panels show the characteristic trade-offs: the first-order low-pass
 attenuates the peak the most for its nominal cutoff, the Butterworth tracks the
