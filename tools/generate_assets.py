@@ -3,14 +3,16 @@
 
 """Generate the reproducible documentation assets in ``docs/assets``.
 
-Runs entirely headless (offscreen Qt, Agg matplotlib) and is deterministic, so
-the committed assets can be regenerated at any time:
+Runs entirely headless (offscreen Qt, Agg matplotlib) and is repeatable, so the
+committed assets can be regenerated at any time (logs embed fresh creation
+timestamps, and pixel output can vary across font/Qt versions):
 
 - **Animations** — each demo scenario is run headlessly with ``run_scenario``,
   saved as a replayable ``.sklog.npz``, and rendered with the player's export
-  pipeline (task overlays and the side panel included) to both a **GIF** — for
-  the README, where GitHub only plays GIFs inline — and an **MP4** — for the
-  MkDocs pages via a ``<video>`` tag (smaller, smoother, scrubbable).
+  pipeline (task overlays and the side panel included) to an **MP4** — used by
+  the MkDocs pages via a ``<video>`` tag (smaller, smoother, scrubbable) — plus
+  a **GIF** for the few stems the README embeds inline (GitHub only plays GIFs
+  inline; see ``_README_GIFS``).
 - **Figures** — the plotting examples are executed with ``plt.show`` redirected
   to ``savefig``.
 - **Screenshots** — the GUI tools are instantiated offscreen and grabbed as
@@ -47,8 +49,7 @@ os.environ.setdefault("MPLBACKEND", "Agg")  # render matplotlib without a displa
 
 from PyQt6.QtWidgets import QApplication, QWidget
 
-from skelarm import StateLog
-from skelarm.recording import dump_toml
+from skelarm import StateLog, scenario_from_config
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # allow `tools.` imports when run as a script
 from tools._scenario_cli import ScenarioSimulator, build_scenario, save_scenario_run
@@ -83,11 +84,16 @@ _INTERACTIVE_CAPTURES: tuple[str, ...] = ("dynamics_drag", "reach_disturb", "mul
 # giving the demonstration a goal; the tracking animation keeps the same marker.
 _TEACH_CONFIG = _EXAMPLES / "reach_four_dof_robot.toml"
 
+# Stems the README embeds as inline GIFs; everything else is MP4-only (the docs
+# pages use <video> tags), keeping multi-megabyte unused GIFs out of the repo.
+_README_GIFS = frozenset({"reach", "reach_disturb", "teach_mouse"})
+
 
 def _export_animation(log_path: Path, stem: str, *, speed: float = 1.0) -> None:
-    """Render a saved log to a side-panel GIF (for the README) and MP4 (for the docs pages)."""
+    """Render a saved log to a side-panel MP4 (docs pages) and, for README stems, a GIF."""
     window = PlaybackWindow(StateLog.load(log_path), speed=speed)
-    for suffix, fps in ((".gif", _GIF_FPS), (".mp4", _MP4_FPS)):
+    formats = [(".mp4", _MP4_FPS)] + ([(".gif", _GIF_FPS)] if stem in _README_GIFS else [])
+    for suffix, fps in formats:
         out = _ASSETS / f"{stem}{suffix}"
         frames = window.export(out, fps=fps, size=_FRAME_SIZE_PX, panel=True)
         print(f"wrote {frames} frames to {out}")
@@ -112,15 +118,15 @@ def _export_interactive_captures() -> None:
 
 
 def _convert_screen_recordings() -> None:
-    """Derive a README GIF from every hand-captured screen recording in docs/assets."""
+    """Derive a README GIF from the hand-captured screen recordings the README embeds."""
     import imageio_ffmpeg
 
     generated = {stem for stem, _, _ in _ANIMATIONS} | set(_INTERACTIVE_CAPTURES) | {"trajectory_tracking"}
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     filters = "fps=12,scale=640:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse"
     for mp4 in sorted(_ASSETS.glob("*.mp4")):
-        if mp4.stem in generated:
-            continue
+        if mp4.stem in generated or mp4.stem not in _README_GIFS:
+            continue  # docs pages embed the MP4 directly; only README stems need a GIF
         gif = mp4.with_suffix(".gif")
         subprocess.run(  # noqa: S603
             [ffmpeg, "-y", "-loglevel", "error", "-i", str(mp4), "-vf", filters, "-loop", "0", str(gif)],
@@ -142,7 +148,10 @@ def _record_tracking_animation() -> None:
     config = tomllib.loads(_TEACH_CONFIG.read_text(encoding="utf-8"))
     task_table: dict[str, object] = {
         "type": "joint_trajectory_tracking",
-        "file": str(teach_log.resolve()),  # the reference path resolves against the cwd, so keep it absolute
+        # Repo-relative provenance (main() pins the cwd to the repo root); the built
+        # scenario inlines the reference samples, so the log stays self-contained
+        # and no machine-local path is embedded anywhere.
+        "file": "docs/assets/teach.sklog.npz",
         "filter": {"kind": "butterworth", "cutoff_hz": 8.0, "order": 4},
         "interpolator": "cubic_spline",
         # duration omitted: defaults to the taught reference's length
@@ -153,9 +162,7 @@ def _record_tracking_animation() -> None:
     config["task"] = task_table
     config["simulator"] = {"dt": 0.002}
     config["controller"] = {"type": "computed_torque", "kp": 200.0, "kd": 30.0}
-    track_config = _ASSETS / "track.toml"  # regenerable intermediate (gitignored)
-    track_config.write_text(dump_toml(config).strip() + "\n", encoding="utf-8")
-    log_path = save_scenario_run(build_scenario(track_config), _ASSETS / "trajectory_tracking.sklog.npz")
+    log_path = save_scenario_run(scenario_from_config(config), _ASSETS / "trajectory_tracking.sklog.npz")
     _export_animation(log_path, "trajectory_tracking")
 
 
@@ -241,14 +248,15 @@ recorded drag force, friction, and target switches; your cursor is not shown).
    range, then click-drag the tip so the IK solution follows the cursor.
    Capture the window (e.g. Kooha/OBS) as MP4 and save it as
    -> docs/assets/kinematics_posing_demo.mp4
-   Re-running this script then derives the README GIF automatically (as it does
-   for any other hand-captured .mp4 you drop into docs/assets).
+   The docs embed hand-captured MP4s directly; a README GIF is derived only for
+   the stems listed in _README_GIFS.
 """
     )
 
 
 def main() -> None:
     """Generate every reproducible asset, then print the interactive checklist."""
+    os.chdir(_REPO)  # embedded reference paths are repo-relative; resolve them regardless of caller cwd
     _ASSETS.mkdir(parents=True, exist_ok=True)
     if "--figures-only" in sys.argv:
         _render_figures()

@@ -183,6 +183,3 @@ pyrightconfig.json
 
 # Local reference material (PDFs we have no right to redistribute)
 resource/
-
-# Regenerable intermediate written by tools/generate_assets.py (embeds a local absolute path)
-docs/assets/track.toml
