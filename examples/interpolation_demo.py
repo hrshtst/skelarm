@@ -15,10 +15,17 @@ coarsely, so every reconstruction error is measurable against the analytic truth
    differences on the query grid.
 3. **Node-count sweep** — the maximum error as the sampling gets denser: linear
    and the spline converge steadily, while the equispaced high-degree Lagrange
-   polynomial suffers wild Runge-type edge oscillations at intermediate node
-   counts (peaking around 26 absolute error here, orders of magnitude above the
-   spline) before eventually converging for this analytic reference — which is
-   why it is reserved for short series.
+   polynomial is wildly non-monotonic: Runge-type edge oscillations peak around
+   26 absolute error at 17 nodes, a transiently tiny error appears near 41
+   nodes, and beyond roughly 60 nodes floating-point ill-conditioning makes the
+   evaluation blow up outright (~1e8 by 81 nodes). Whatever exact arithmetic
+   would do for this analytic reference, the finite-precision implementation
+   does not stay converged — which is why it is reserved for short series.
+
+The reference happens to have zero second derivative at both endpoints, exactly
+matching the natural spline's boundary condition; with nonzero endpoint
+curvature (e.g. a phase-shifted reference) the spline's margin over linear at
+21 nodes narrows from about sevenfold to about fourfold.
 
 Run from the repository root:
 
@@ -40,7 +47,7 @@ if TYPE_CHECKING:
 
 _DURATION = 5.0  # seconds of reference motion
 _DEMO_NODES = 21  # coarse samples for the reconstruction/derivative panels
-_NODE_COUNTS = (6, 9, 13, 17, 21, 26, 31, 41)  # sweep for the convergence panel
+_NODE_COUNTS = (6, 9, 13, 17, 21, 26, 31, 41, 51, 61, 81)  # sweep for the stability panel
 _FINE = np.linspace(0.0, _DURATION, 1001)  # query grid (inside the node range)
 
 

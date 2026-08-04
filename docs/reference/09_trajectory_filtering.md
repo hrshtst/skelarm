@@ -70,13 +70,17 @@ uv run python examples/interpolation_demo.py
 ![Interpolator comparison: reconstruction, error, first derivative, and the max error vs node count](../assets/interpolation_demo.png)
 
 At 21 nodes the cubic spline is roughly seven times more accurate than linear
-(RMSE 0.009 vs 0.062), and its analytic first derivative tracks the true one
-where linear's finite-difference slope is a staircase. The Lagrange polynomial
-illustrates the warning above: at intermediate node counts its edge
-oscillations reach absolute errors around 26 — orders of magnitude above the
-spline — even though for this analytic reference it eventually converges once
-the degree resolves the signal. The sweep panel shows all three behaviors side
-by side.
+(RMSE 0.009 vs 0.062) — a somewhat favorable case, since this reference happens
+to have zero endpoint curvature, exactly the natural boundary condition; with
+nonzero endpoint curvature the margin narrows to about fourfold. The spline's
+analytic first derivative tracks the true one where linear's finite-difference
+slope is a staircase. The Lagrange polynomial illustrates the warning above,
+and the sweep panel shows how untrustworthy a high-degree equispaced fit is:
+edge oscillations reach absolute errors around 26 at 17 nodes, a transiently
+tiny error appears near 41 nodes, and beyond roughly 60 nodes the
+finite-precision evaluation blows up outright (~10⁸ by 81 nodes) — whatever
+exact arithmetic would promise for an analytic signal, the floating-point
+implementation does not stay converged.
 
 ## 2. Smoothing filters
 
