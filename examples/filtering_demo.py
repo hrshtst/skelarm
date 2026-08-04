@@ -7,13 +7,19 @@ Two demonstrations of every filter in ``skelarm.filtering`` (first-order low-pas
 Butterworth, moving average, Savitzky-Golay — all zero-phase):
 
 1. **Artificial noisy data** — a known smooth reference corrupted by seeded white
-   noise, so each filter's error against the ground truth is measurable (the RMSE
-   is shown in the legend and printed).
+   noise, so each filter's error against the ground truth is measurable; the RMSE
+   is aggregated over several noise seeds (mean shown in the legend, mean +/- std
+   printed).
 2. **A taught trajectory** — the hand-demonstrated recording committed at
-   ``docs/assets/teach.sklog.npz``: the jitteriest joint's velocity over time
+   ``docs/assets/teach.sklog.npz``: the most active joint's velocity over time
    (differentiation amplifies the hand tremor) and a zoomed tip path where the
    raw pointer quantization is visible, with the smoothness gain (RMS
    acceleration reduction) printed per filter.
+
+The window-based filters are specified by a window length in seconds so their
+effective cutoff roughly matches the 4 Hz IIR filters on both datasets despite
+the differing sample rates; the comparison is of representative,
+approximately bandwidth-matched settings, not a strict ranking.
 
 Run from the repository root:
 
@@ -38,14 +44,41 @@ _TEACH_LOG = Path(__file__).resolve().parents[1] / "docs" / "assets" / "teach.sk
 
 _ZOOM_WINDOW = (2.3, 3.3)  # synthetic zoom bounds (s), around one peak and descent
 _TIP_ZOOM_FROM_S = 6.0  # taught tip-path zoom starts at the slow final approach
+_SEEDS = range(10)  # synthetic noise realizations aggregated into the RMSE statistics
 
-# The demonstrated filters: label -> smooth() keyword arguments.
+# The demonstrated filters. Window lengths are given in SECONDS (``window_s``) and
+# converted to an odd sample count per dataset, so every filter keeps a roughly
+# matched ~4 Hz effective cutoff at either sample rate — a fixed sample count
+# would remove twice the bandwidth at 50 Hz that it removes at 100 Hz.
 _FILTERS: dict[str, dict[str, float | int | str]] = {
-    "lowpass (4 Hz)": {"kind": "lowpass", "cutoff_hz": 4.0},
-    "butterworth (4 Hz, order 4)": {"kind": "butterworth", "cutoff_hz": 4.0, "order": 4},
-    "moving_average (11)": {"kind": "moving_average", "window": 11},
-    "savgol (21, poly 3)": {"kind": "savgol", "window": 21, "polyorder": 3},
+    "lowpass": {"kind": "lowpass", "cutoff_hz": 4.0},
+    "butterworth": {"kind": "butterworth", "cutoff_hz": 4.0, "order": 4},
+    "moving_average": {"kind": "moving_average", "window_s": 0.10},
+    "savgol": {"kind": "savgol", "window_s": 0.26, "polyorder": 3},
 }
+
+
+def _resolve(params: dict[str, float | int | str], dt: float) -> tuple[dict[str, float | int | str], str]:
+    """Turn a filter spec into ``smooth()`` keyword arguments and a display label.
+
+    ``window_s`` (seconds) becomes an odd ``window`` (samples) for this dataset's
+    sample period, keeping the effective cutoff sample-rate-independent.
+    """
+    kwargs = dict(params)
+    window_s = kwargs.pop("window_s", None)
+    if window_s is not None:
+        window = round(float(window_s) / dt)
+        kwargs["window"] = window + 1 if window % 2 == 0 else window
+    kind = str(kwargs["kind"])
+    if kind == "lowpass":
+        label = f"lowpass ({kwargs['cutoff_hz']:g} Hz)"
+    elif kind == "butterworth":
+        label = f"butterworth ({kwargs['cutoff_hz']:g} Hz, order {kwargs['order']})"
+    elif kind == "moving_average":
+        label = f"moving_average ({kwargs['window']})"
+    else:
+        label = f"savgol ({kwargs['window']}, poly {kwargs['polyorder']})"
+    return kwargs, label
 
 
 def _rms(values: NDArray[np.float64]) -> float:
@@ -59,32 +92,35 @@ def _acceleration_rms(values: NDArray[np.float64], dt: float) -> float:
 
 
 def _demo_synthetic(ax_full: Axes, ax_zoom: Axes) -> None:
-    """Filter a known signal with seeded noise and report each filter's RMSE."""
+    """Filter a known signal under seeded noise; aggregate the RMSE over noise seeds."""
     dt = 0.01  # 100 Hz
     times = np.arange(0.0, 5.0, dt)
     truth = 0.8 * np.sin(2.0 * np.pi * 0.5 * times) + 0.25 * np.sin(2.0 * np.pi * 1.2 * times)
-    noisy = truth + np.random.default_rng(42).normal(0.0, 0.08, times.shape)
+    realizations = [truth + np.random.default_rng(seed).normal(0.0, 0.08, times.shape) for seed in _SEEDS]
+    shown = realizations[0]  # one realization is plotted; the statistics cover them all
 
-    print("Synthetic signal (RMSE against the ground truth):")
-    print(f"  {'unfiltered':<28} {_rms(noisy - truth):.4f}")
+    print(f"Synthetic signal (RMSE against the ground truth, mean +/- std over {len(realizations)} noise seeds):")
+    raw_rmse = [_rms(noisy - truth) for noisy in realizations]
+    print(f"  {'unfiltered':<28} {np.mean(raw_rmse):.4f} +/- {np.std(raw_rmse):.4f}")
     for ax in (ax_full, ax_zoom):
-        ax.plot(times, noisy, color="0.8", lw=0.8, label="noisy input")
+        ax.plot(times, shown, color="0.8", lw=0.8, label="noisy input")
         ax.plot(times, truth, "k--", lw=1.2, label="ground truth")
-    for label, params in _FILTERS.items():
-        smoothed = smooth(noisy, dt, **params)  # type: ignore[arg-type]
-        rmse = _rms(smoothed - truth)
-        print(f"  {label:<28} {rmse:.4f}")
+    for params in _FILTERS.values():
+        kwargs, label = _resolve(params, dt)
+        rmse = [_rms(smooth(noisy, dt, **kwargs) - truth) for noisy in realizations]  # type: ignore[arg-type]
+        print(f"  {label:<28} {np.mean(rmse):.4f} +/- {np.std(rmse):.4f}")
         for ax in (ax_full, ax_zoom):
-            ax.plot(times, smoothed, lw=1.2, label=f"{label}, RMSE {rmse:.3f}")
+            smoothed = smooth(shown, dt, **kwargs)  # type: ignore[arg-type]
+            ax.plot(times, smoothed, lw=1.2, label=f"{label}, RMSE {np.mean(rmse):.3f}")
 
-    ax_full.set_title("Artificial noisy signal")
+    ax_full.set_title("Artificial noisy signal (one of the noise realizations)")
     ax_full.set_xlabel("time (s)")
     ax_full.set_ylabel("value")
     ax_full.legend(fontsize=7, loc="lower left")
     window = (times >= _ZOOM_WINDOW[0]) & (times <= _ZOOM_WINDOW[1])
     ax_zoom.set_xlim(*_ZOOM_WINDOW)
-    ax_zoom.set_ylim(float(noisy[window].min()) - 0.05, float(noisy[window].max()) + 0.05)
-    ax_zoom.set_title("Zoom: lag and ripple differences")
+    ax_zoom.set_ylim(float(shown[window].min()) - 0.05, float(shown[window].max()) + 0.05)
+    ax_zoom.set_title("Zoom: attenuation and shape/ripple differences")
     ax_zoom.set_xlabel("time (s)")
 
 
@@ -95,14 +131,15 @@ def _demo_taught(ax_joint: Axes, ax_tip: Axes) -> None:
     dt = float(np.mean(np.diff(times)))
     q = log.channel("q")
     tip = log.channel("tip")
-    joint = int(np.argmax(np.ptp(q, axis=0)))  # the joint the demonstration moved most
+    joint = int(np.argmax(np.ptp(q, axis=0)))  # the most active joint (largest angle range)
     raw = q[:, joint]
 
     print(f"\nTaught trajectory {_TEACH_LOG.name} (joint {joint + 1}, {len(times)} samples at {1 / dt:.0f} Hz):")
     print(f"  {'unfiltered':<28} accel RMS {_acceleration_rms(raw, dt):8.2f} rad/s^2")
     ax_joint.plot(times, np.gradient(raw, dt), color="0.7", lw=0.8, label="taught (raw)")
-    for label, params in _FILTERS.items():
-        smoothed = smooth(raw, dt, **params)  # type: ignore[arg-type]
+    for params in _FILTERS.values():
+        kwargs, label = _resolve(params, dt)
+        smoothed = smooth(raw, dt, **kwargs)  # type: ignore[arg-type]
         accel = _acceleration_rms(smoothed, dt)
         deviation = _rms(smoothed - raw)
         print(f"  {label:<28} accel RMS {accel:8.2f} rad/s^2, deviation RMS {deviation:.4f} rad")
@@ -114,8 +151,9 @@ def _demo_taught(ax_joint: Axes, ax_tip: Axes) -> None:
     ax_joint.legend(fontsize=7, loc="best")
 
     ax_tip.plot(tip[:, 0], tip[:, 1], color="0.7", lw=0.8, label="taught tip path (raw)")
-    for label, params in _FILTERS.items():
-        smoothed_tip = smooth(tip, dt, **params)  # type: ignore[arg-type]
+    for params in _FILTERS.values():
+        kwargs, label = _resolve(params, dt)
+        smoothed_tip = smooth(tip, dt, **kwargs)  # type: ignore[arg-type]
         ax_tip.plot(smoothed_tip[:, 0], smoothed_tip[:, 1], lw=1.2, label=label)
     # Zoom to the slow final approach, where the millimeter-scale hand jitter is visible.
     segment = tip[times >= _TIP_ZOOM_FROM_S]
@@ -132,7 +170,7 @@ def main() -> None:
     fig, axes = plt.subplots(2, 2, figsize=(12.5, 9))
     _demo_synthetic(axes[0, 0], axes[0, 1])
     _demo_taught(axes[1, 0], axes[1, 1])
-    fig.suptitle("skelarm trajectory filters: synthetic benchmark and hand-taught data")
+    fig.suptitle("skelarm trajectory filters: synthetic comparison and hand-taught data")
     fig.tight_layout()
     plt.show()
 
