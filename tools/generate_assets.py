@@ -15,6 +15,9 @@ the committed assets can be regenerated at any time:
   to ``savefig``.
 - **Screenshots** — the GUI tools are instantiated offscreen and grabbed as
   PNGs.
+- **Screen recordings** — every hand-captured ``.mp4`` dropped into
+  ``docs/assets`` (any stem this script does not generate itself) gets a README
+  GIF derived from it with ffmpeg's palette pipeline.
 
 Interactive demonstrations (mouse dragging, live target switching, trajectory
 teaching) cannot be scripted; the checklist printed at the end lists the exact
@@ -106,6 +109,24 @@ def _export_interactive_captures() -> None:
             print(f"skipping {stem}.gif/.mp4: no {log_path} (capture one, see the checklist below)")
             continue
         _export_animation(log_path, stem)
+
+
+def _convert_screen_recordings() -> None:
+    """Derive a README GIF from every hand-captured screen recording in docs/assets."""
+    import imageio_ffmpeg
+
+    generated = {stem for stem, _, _ in _ANIMATIONS} | set(_INTERACTIVE_CAPTURES) | {"trajectory_tracking"}
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    filters = "fps=12,scale=640:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse"
+    for mp4 in sorted(_ASSETS.glob("*.mp4")):
+        if mp4.stem in generated:
+            continue
+        gif = mp4.with_suffix(".gif")
+        subprocess.run(  # noqa: S603
+            [ffmpeg, "-y", "-loglevel", "error", "-i", str(mp4), "-vf", filters, "-loop", "0", str(gif)],
+            check=True,
+        )
+        print(f"wrote {gif} ({gif.stat().st_size // 1024} KiB) from {mp4.name}")
 
 
 def _record_tracking_animation() -> None:
@@ -218,10 +239,10 @@ recorded drag force, friction, and target switches; your cursor is not shown).
    Do: this one is a SCREEN RECORDING (the inspector poses kinematically and
    records nothing; the cursor is the demo). Drag a joint slider through its
    range, then click-drag the tip so the IK solution follows the cursor.
-   Capture the window (e.g. Kooha/OBS) as MP4, save it as
+   Capture the window (e.g. Kooha/OBS) as MP4 and save it as
    -> docs/assets/kinematics_posing_demo.mp4
-   and derive the README GIF from it with ffmpeg (palette two-pass):
-   -> docs/assets/kinematics_posing_demo.gif
+   Re-running this script then derives the README GIF automatically (as it does
+   for any other hand-captured .mp4 you drop into docs/assets).
 """
     )
 
@@ -239,6 +260,7 @@ def main() -> None:
     _record_animations()
     _export_interactive_captures()
     _record_tracking_animation()
+    _convert_screen_recordings()
     _grab_screenshots()
     _print_interactive_checklist()
     del app

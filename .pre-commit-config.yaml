@@ -9,6 +9,7 @@ repos:
       - id: check-toml
       - id: check-json
       - id: check-added-large-files
+        args: ['--maxkb=10000'] # committed docs/assets demo media (GIFs/MP4s) exceed the 500 KB default
       - id: check-merge-conflict
       - id: check-executables-have-shebangs
       - id: check-illegal-windows-names
