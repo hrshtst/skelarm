@@ -119,6 +119,24 @@ doubling the magnitude roll-off. The filter state is seeded with steady-state
 initial conditions and the signal is reflected at the boundaries, so a constant
 (DC) signal passes through unchanged and edge transients are suppressed.
 
+### The four filters compared
+
+`examples/filtering_demo.py` benchmarks all four kinds on a synthetic signal with
+seeded noise (RMSE against the known ground truth) and on the hand-taught
+recording shipped in `docs/assets/teach.sklog.npz`, where differentiation makes
+the raw hand tremor obvious and every filter cuts the acceleration RMS roughly
+tenfold while deviating less than a few milliradians from the demonstration:
+
+```bash
+uv run python examples/filtering_demo.py
+```
+
+![Filter comparison: synthetic RMSE benchmark (top) and the hand-taught trajectory's velocity and zoomed tip path (bottom)](../assets/filtering_demo.png)
+
+The zoom panels show the characteristic trade-offs: the first-order low-pass
+rounds peaks the most, the Butterworth tracks tightest for a given cutoff, and
+Savitzky–Golay preserves curvature best at the cost of a little residual ripple.
+
 ## 3. How `skelarm` uses them
 
 The `trajectory_tracking` and `joint_trajectory_tracking` task types
