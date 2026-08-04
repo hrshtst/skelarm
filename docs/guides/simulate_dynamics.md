@@ -16,6 +16,11 @@ the tip, drawn as a red arrow. The tool adds a live viscous-friction spin box
 (joint damping that dissipates energy), a status panel (kinetic energy, tip
 position and speed), and an optional tip-trajectory plot when the window closes.
 
+<video controls loop muted playsinline width="640" src="../../assets/dynamics_drag.mp4"></video>
+
+*A captured drag session replayed from its log: the red arrow is the recorded
+tip force, and the panel's friction row follows the live spin-box change.*
+
 Flags: `--show-com`, `--pose`, `--initial` (as in the
 [kinematics inspector](kinematics_and_posing.md)), plus `--stiffness <N/m>` for
 the drag spring, `--friction <N·m·s/rad>`, and `--no-plot`. Joint limits act as

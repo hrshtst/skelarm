@@ -45,6 +45,8 @@ disturb it and watch it recover:
 uv run python tools/reaching_simulator.py examples/reach.toml
 ```
 
+<video controls loop muted playsinline width="640" src="../assets/reach.mp4"></video>
+
 Every simulator window shares the same transport bar (`Space` play/pause, `→`
 step while paused, `R` reset, `Q` quit) and records the run — press **Export…**
 to save a `*.sklog.npz` log, then replay it:

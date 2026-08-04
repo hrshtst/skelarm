@@ -15,6 +15,11 @@ uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --mode d
 uv run python tools/player.py teach.sklog.npz                                            # replay the recording
 ```
 
+<video controls loop muted playsinline width="640" src="../../assets/teach_mouse.mp4"></video>
+
+*A teaching session (screen-recorded with the pointer): the tip is grabbed and
+guided toward the target while the recorder samples the motion.*
+
 Two modes turn the task-space teaching into joint angles:
 
 - **`ik`** — the tip tracks the cursor via the IK solver (`--method`); joint
@@ -53,6 +58,11 @@ kd = 30.0
 ```bash
 uv run python tools/trajectory_tracking_simulator.py track.toml
 ```
+
+<video controls loop muted playsinline width="640" src="../../assets/trajectory_tracking.mp4"></video>
+
+*The taught motion tracked by computed torque: the gray overlay is the (smoothed)
+demonstrated tip path, and the target marker from the teaching scenario is kept.*
 
 Hand-taught motions are jaggy; the `filter` table pre-smooths the reference
 (zero-phase low-pass, Butterworth, moving average, or Savitzky–Golay) and the

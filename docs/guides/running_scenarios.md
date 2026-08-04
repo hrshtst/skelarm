@@ -10,6 +10,11 @@ uv run python tools/reaching_simulator.py examples/reach.toml --save reach.sklog
 uv run python tools/player.py reach.sklog.npz                # replay and analyze a saved run
 ```
 
+<video controls loop muted playsinline width="640" src="../../assets/reach_disturb.mp4"></video>
+
+*Disturbing an interactive reach: the tip is dragged off the target and the
+controller pulls it back — the drag force is recorded and drawn in the replay.*
+
 ## The five-table model
 
 | Section | Purpose | Loader |
@@ -89,6 +94,12 @@ uv run python tools/trajectory_tracking_simulator.py track.toml                 
 Their runs replay in `tools/player.py` with the task overlay (target, curve, or
 reference) drawn — see
 [Record, Replay, and Re-simulate](recording_replay.md).
+
+<video controls loop muted playsinline width="640" src="../../assets/multi_target_switch.mp4"></video>
+
+*Live target switching: number keys retarget the controller mid-run; the
+recorded active-target index drives both the overlay emphasis and the panel row
+in this replay.*
 
 ## Overriding sections for comparison
 

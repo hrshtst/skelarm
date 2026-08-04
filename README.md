@@ -10,6 +10,8 @@ self-contained log that replays, plots, and exports to video.
 
 Full documentation: **<https://hrshtst.github.io/skelarm/>**
 
+![A controlled reach replayed with the side panel: the arm swings to the target while the sliders and readouts track every joint](docs/assets/reach.gif)
+
 ## Quick start
 
 Requires Python 3.12+ and [`uv`](https://docs.astral.sh/uv/) (plain
@@ -74,6 +76,23 @@ From basic to advanced:
 | Replay / export a run | `tools/player.py <run.sklog.npz>` | [Record, Replay, and Re-simulate](docs/guides/recording_replay.md) |
 | Teach and track a trajectory | `tools/trajectory_recorder.py <robot.toml>` | [Teach and Track Trajectories](docs/guides/teaching_trajectories.md) |
 | Use the Python API | — | [Python API Quick Start](docs/guides/python_api.md) |
+
+## Demos
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/reach_disturb.gif" alt="Dragging the arm away from its target; the controller pulls it back"></td>
+    <td width="50%"><img src="docs/assets/teach_mouse.gif" alt="Teaching a trajectory by dragging the tip with the mouse"></td>
+  </tr>
+  <tr>
+    <td align="center">Disturbing a controlled reach — the drag force is recorded and replayed</td>
+    <td align="center">Teaching a trajectory by demonstration</td>
+  </tr>
+</table>
+
+More demos — live target switching, curve tracing, MPC, and the tracked playback
+of the taught motion — are embedded as smaller MP4 videos throughout the
+[documentation](https://hrshtst.github.io/skelarm/).
 
 ## Minimal Python example
 

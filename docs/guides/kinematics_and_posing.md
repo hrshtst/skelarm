@@ -18,6 +18,8 @@ the link centers of mass, and the start pose comes from `--pose 20,45,60,30`
 Press `R` to reset the pose and `Q` to quit (see the
 [tool reference](tools_reference.md) for all shortcuts).
 
+<video controls loop muted playsinline width="640" src="../../assets/kinematics_posing_demo.mp4"></video>
+
 Dragging the tip runs the numerical IK solver each move; joint limits clamp the
 solution, so the arm stops at its bounds rather than folding through them
 ([Joint Limits](joint_limits.md)).
@@ -37,6 +39,8 @@ and plot the solved pose:
 ```bash
 uv run python examples/inverse_kinematics.py
 ```
+
+![The IK example's solved pose, plotted with the endpoint target](../assets/inverse_kinematics.png)
 
 A self-contained interactive example without the config-file tooling:
 

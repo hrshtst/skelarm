@@ -211,7 +211,9 @@ preplanned trajectory. See [Reaching Control](../reference/08_reaching_control.m
 
 MPC predicts with the simulation step, so its control interval is `[simulator].dt`.
 Re-optimizing every step is expensive at a small `dt`; use a larger `[simulator].dt`
-(for example `0.05`) for MPC scenarios.
+(for example `0.05`) for MPC scenarios — `examples/mpc.toml` is a complete one:
+
+<video controls loop muted playsinline width="640" src="../../assets/mpc_reach.mp4"></video>
 
 !!! note "Reach time vs. settling"
     For trajectory-tracking controllers the planned motion spans `[0, duration]`,

@@ -26,6 +26,8 @@ toggled with **Show target(s)** / **Show reference**. A multi-target recording
 carries the live active-target index, so the emphasized marker follows the
 switches you made during the run.
 
+![The player replaying a reach log: timeline, transport bar, and the task overlay](../assets/player.png)
+
 ## Export to video
 
 Pass `--export PATH` to render the replay headlessly to a video or animated GIF
@@ -41,7 +43,9 @@ uv run python tools/player.py run.sklog.npz --export run.gif --fps 24   # headle
 Add `--panel` to composite a simulator-style side panel into each frame: the
 time readout, per-joint sliders, tip position and speed, and the recorded
 parameter readouts (external-force magnitude, viscous friction, active target)
-where the log carries those channels.
+where the log carries those channels. A sample panel export:
+
+<video controls loop muted playsinline width="640" src="../../assets/periodic_curve.mp4"></video>
 
 ## The three reproducibility tiers
 

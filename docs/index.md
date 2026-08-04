@@ -12,6 +12,8 @@ curve tracing, trajectory tracking, MPC) from a single scenario file, and record
 every run to a self-contained log that replays, plots, exports to video, and —
 for headless runs — re-simulates reproducibly.
 
+<video autoplay controls loop muted playsinline width="640" src="assets/reach.mp4"></video>
+
 ## Where to go
 
 - **[Getting Started](getting_started.md)** — install and drive your first robot
