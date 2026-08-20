@@ -142,7 +142,7 @@ GPLv3
 ## AI Assistance & Development Workflow
 
 This project is developed with the assistance of AI coding agents: the
-maintainer, [Hiroshi Atsuta](https://github.com/hrshtst), writes the project
+maintainer ([@hrshtst](https://github.com/hrshtst)) writes the project
 guidance and theoretical reference material, the AI implements against them, and
 the maintainer reviews, tests, and revises every change. All responsibility for
 the code in this repository lies with the maintainer.
