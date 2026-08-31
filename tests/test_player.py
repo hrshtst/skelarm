@@ -490,3 +490,58 @@ def test_q_shortcut_closes_the_window(qapp) -> None:  # noqa: ANN001, ARG001
     QTest.keyClick(window, Qt.Key.Key_Q)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
     QApplication.processEvents()
     assert not window.isVisible()
+
+
+def _playback_extra(target: object) -> dict[str, object]:
+    """Playback-only metadata carrying a task the log cannot re-run."""
+    return {"playback": {"task": {"type": "reaching", "target": target}}}
+
+
+def test_player_draws_playback_only_task_metadata(qapp) -> None:  # noqa: ANN001, ARG001
+    """A log with only ``extra.playback.task`` renders the target marker with its tolerance."""
+    log = _log()
+    log.extra.update(_playback_extra({"pos": [0.4, 0.3], "tolerance": 0.01}))
+    assert "source_config" not in log.extra  # playback metadata never advertises a rerunnable scenario
+    window = PlaybackWindow(log)
+    assert window._has_targets  # noqa: SLF001
+    assert not window._has_reference  # noqa: SLF001
+    ((pos, _color, tolerance, active),) = window.canvas.overlay_targets
+    assert pos.tolist() == [0.4, 0.3]
+    assert tolerance == 0.01  # noqa: PLR2004
+    assert active
+
+
+def test_player_prefers_the_full_source_config_task(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """When a log embeds a full ``source_config``, playback metadata must not override it."""
+    log = _embedded_log("multi_target.toml", tmp_path)
+    log.extra.update(_playback_extra({"pos": [9.0, 9.0]}))
+    window = PlaybackWindow(log)
+    assert len(window.canvas.overlay_targets) == 3  # noqa: PLR2004
+    assert all(pos.tolist() != [9.0, 9.0] for pos, *_rest in window.canvas.overlay_targets)
+
+
+@pytest.mark.parametrize(
+    "task",
+    [
+        {"type": "no_such_task", "target": {"pos": [0.1, 0.2]}},
+        {"type": "reaching"},
+        {"type": "reaching", "target": {"pos": [0.1, 0.2, 0.3]}},
+        {"target": {"pos": [0.1, 0.2]}},
+    ],
+    ids=["unknown-type", "missing-target", "bad-shape", "missing-type"],
+)
+def test_player_rejects_malformed_playback_metadata(qapp, task: dict[str, object]) -> None:  # noqa: ANN001, ARG001
+    """Malformed playback-only metadata is an explicit error, not a silently empty overlay."""
+    log = _log()
+    log.extra.update({"playback": {"task": task}})
+    with pytest.raises(ValueError, match=r"extra\.playback\.task"):
+        PlaybackWindow(log)
+
+
+def test_player_ignores_a_missing_playback_table(qapp) -> None:  # noqa: ANN001, ARG001
+    """Logs without playback metadata behave exactly as before (no overlays, no error)."""
+    log = _log()
+    log.extra.update({"playback": {}})
+    window = PlaybackWindow(log)
+    assert not window._has_targets  # noqa: SLF001
+    assert not window.canvas.overlay_targets

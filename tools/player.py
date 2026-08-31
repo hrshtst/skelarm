@@ -13,6 +13,13 @@ controller's tracking error) without re-running the simulation. When the log
 recorded an external tip force (``ext_force`` channel, as the dynamics simulator
 does), it is drawn as a red arrow at the tip and toggled by "Show external force".
 
+Task overlays come from the embedded ``extra.source_config.task`` (a full,
+rerunnable scenario) or, when a producer has no scenario to embed, from the
+playback-only ``extra.playback.task`` table with the same ``[task]`` schema
+(e.g. ``{type = "reaching", target = {pos = [x, y], tolerance = r}}``). A
+playback-only log can be drawn but not re-run; a malformed playback table is
+rejected on load.
+
 The replay can also be exported headlessly (no GUI window) to an ``.mp4`` video or an
 animated ``.gif`` with ``--export``: each frame is rendered from the same canvas the
 interactive player uses — task overlay, centers of mass, and external-force arrow
@@ -575,18 +582,31 @@ class PlaybackWindow(QMainWindow):
         return 0.4 * reach / peak
 
     def _build_task_overlays(self) -> tuple[bool, bool]:
-        """Reconstruct the task from the embedded config and set the canvas overlays.
+        """Reconstruct the task from the embedded metadata and set the canvas overlays.
 
         Returns ``(has_targets, has_reference)`` so the GUI only adds the toggles whose
-        data is present. Logs without an embedded task draw no overlays.
+        data is present. A full ``extra.source_config.task`` (as embedded by the
+        simulators) always wins; ``extra.playback.task`` is a playback-only fallback
+        for producers that can describe the task (target, tolerance) without a
+        rerunnable scenario. Logs without either draw no overlays.
         """
         task_cfg = self.log.extra.get("source_config", {}).get("task")
-        if not task_cfg:
-            return False, False
-        try:
-            task = Task.from_dict(task_cfg)
-        except (ValueError, KeyError):
-            return False, False
+        if task_cfg:
+            try:
+                task = Task.from_dict(task_cfg)
+            except (ValueError, KeyError):
+                return False, False
+        else:
+            playback_cfg = self.log.extra.get("playback", {}).get("task")
+            if not playback_cfg:
+                return False, False
+            try:
+                task = Task.from_dict(playback_cfg)
+            except (ValueError, KeyError) as exc:
+                # Playback metadata exists only to be drawn; drawing nothing would hide the
+                # producer's mistake, so a malformed table is an explicit error.
+                msg = f"log carries malformed extra.playback.task metadata: {exc}"
+                raise ValueError(msg) from exc
         targets, path = task_overlays(task, self.skeleton)
         self.canvas.overlay_targets = targets
         self.canvas.overlay_path = path
