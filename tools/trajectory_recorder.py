@@ -14,15 +14,17 @@ modes turn that into per-joint angles:
                    (with viscous friction), like ``tools/dynamics_simulator.py``.
 
 Recording starts when you first grab the tip (``t=0``) and stops at the max duration,
-the **Finish** button, or window close. The logger samples at the configured rate,
-independent of the GUI/sim update rate. An optional ``[task]`` target is drawn, and a
-plot of the recorded motion is shown afterward (unless ``--no-plot``).
+the **Finish** button, or window close; a zero or negative ``--duration`` drops the
+cap and records until **Finish** / close. The logger samples at the configured rate,
+independent of the GUI/sim update rate. An optional ``[task]`` target is drawn, and
+``--plot`` shows a plot of the recorded motion afterward.
 
 Usage::
 
     uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml
     uv run python tools/trajectory_recorder.py robot.toml --mode dynamics --sample-rate 100
     uv run python tools/trajectory_recorder.py robot.toml --duration 15 --output run.sklog.npz
+    uv run python tools/trajectory_recorder.py robot.toml --duration 0 --plot   # no cap; plot afterward
     uv run python tools/player.py teach.sklog.npz   # replay the recorded trajectory
 """
 
@@ -60,7 +62,7 @@ _SUBSTEPS = 4  # dynamics-mode physics substeps per refresh tick
 _DRAG_STIFFNESS = 30.0  # N/m for the mouse drag (dynamics mode)
 _FRICTION = 0.2  # joint viscous friction (dynamics mode; "some by default")
 _SAMPLE_RATE = 50.0  # logger sampling rate (Hz)
-_DURATION = 10.0  # max recording duration (s)
+_DURATION = 10.0  # max recording duration (s); zero or negative means no cap
 
 
 class RecorderWindow(QMainWindow):
@@ -68,9 +70,10 @@ class RecorderWindow(QMainWindow):
 
     Recording auto-starts on the first grab and samples at ``sample_rate`` Hz until
     ``duration`` seconds elapse, the **Finish** button is pressed, or the window is
-    closed. In ``ik`` mode the tip tracks the cursor via inverse kinematics each
-    refresh; in ``dynamics`` mode the drag applies a tip force integrated under
-    forward dynamics with viscous friction.
+    closed; a zero or negative ``duration`` removes the time cap. In ``ik`` mode the
+    tip tracks the cursor via inverse kinematics each refresh; in ``dynamics`` mode
+    the drag applies a tip force integrated under forward dynamics with viscous
+    friction.
     """
 
     def __init__(
@@ -93,7 +96,7 @@ class RecorderWindow(QMainWindow):
         self.skeleton = skeleton
         self._mode = mode
         self._sample_dt = 1.0 / sample_rate
-        self._duration = duration
+        self._duration = duration if duration > 0 else None  # None: record until Finish / close
         self._output = Path(output)
         self._method = method
         self._stiffness = stiffness
@@ -193,7 +196,7 @@ class RecorderWindow(QMainWindow):
         else:
             self._step_dynamics()
         self._refresh()
-        if self.time >= self._duration:
+        if self._duration is not None and self.time >= self._duration:
             self._finish()
 
     def _begin(self) -> None:
@@ -246,7 +249,8 @@ class RecorderWindow(QMainWindow):
     def _refresh(self) -> None:
         """Repaint the arm and update the status readout."""
         self.canvas.update_skeleton()
-        self.status_label.setText(f"recording…  t = {self.time:.2f} / {self._duration:.1f} s,  {len(self.log)} samples")
+        cap = "" if self._duration is None else f" / {self._duration:.1f}"
+        self.status_label.setText(f"recording…  t = {self.time:.2f}{cap} s,  {len(self.log)} samples")
 
     def _stop_and_save(self) -> None:
         """Stop recording and save the log (idempotent)."""
@@ -307,7 +311,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--sample-rate", type=float, default=_SAMPLE_RATE, help="logger sampling rate in Hz (default: 50)"
     )
     parser.add_argument(
-        "--duration", type=float, default=_DURATION, help="max recording duration in seconds (default: 10)"
+        "--duration",
+        type=float,
+        default=_DURATION,
+        help="max recording duration in seconds; zero or negative records until Finish / close (default: 10)",
     )
     parser.add_argument("--method", default="lm_sugihara", help="IK solver method (ik mode; default: lm_sugihara)")
     parser.add_argument(
@@ -322,7 +329,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--task", type=Path, default=None, help="TOML file whose [task] target is drawn")
     parser.add_argument("--show-com", action="store_true", help="overlay each link's center of mass")
-    parser.add_argument("--no-plot", action="store_true", help="do not plot the trajectory after recording")
+    parser.add_argument("--plot", action="store_true", help="plot the recorded trajectory after recording")
     parser.add_argument(
         "--no-joint-limits",
         action="store_true",
@@ -379,7 +386,7 @@ def load_setup(args: argparse.Namespace) -> tuple[Skeleton, Task | None]:
 
 
 def main() -> None:
-    """Parse arguments, run the recorder, and plot the result."""
+    """Parse arguments, run the recorder, and plot the result when asked."""
     parser = build_parser()
     args = parser.parse_args()
     try:
@@ -404,7 +411,7 @@ def main() -> None:
     window.show()
     app.exec()
 
-    if window.saved and not args.no_plot:
+    if window.saved and args.plot:
         window.show_plot()
 
 

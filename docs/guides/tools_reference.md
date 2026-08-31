@@ -29,7 +29,7 @@ catalogue; each tool's workflow has its own guide.
 | `--no-joint-limits` | dynamics, scenario tools, recorder (`dynamics` mode) | Drop the dynamics hard stop; limits stay on the kinematics. Scenario tools record the resolved choice in the log's run metadata; the dynamics simulator and recorder apply it without embedding it. |
 | `--task FILE` / `--controller FILE` | scenario tools | Override the named section from a separate file. The recorder also takes `--task FILE`, only to draw its target. |
 | `--save PATH` | scenario tools | Headless run (no GUI); write the log directly. |
-| `--duration S` | scenario tools (with `--save`), recorder | Override the task's simulated duration / cap the recording length. |
+| `--duration S` | scenario tools (with `--save`), recorder | Override the task's simulated duration / cap the recording length (recorder: `0` or negative records until **Finish** / close). |
 | `--output PATH` | recorder, `export_config.py` (`-o`) | Output file path (`teach.sklog.npz` / the log path with `.toml` by default). |
 | `--stiffness N` | dynamics, scenario tools, recorder | Spring constant (N/m) of the mouse drag force. |
 | `--friction C` | dynamics, recorder | Viscous joint damping (N·m·s/rad). |
@@ -37,7 +37,8 @@ catalogue; each tool's workflow has its own guide.
 | `--speed` / `--fps` / `--export PATH` | player | Playback speed, export frame rate, headless video/GIF export. |
 | `--panel` | player | Composite a simulator-style side panel (time, sliders, parameter readouts) into the `--export` frames. |
 | `--sample-rate HZ` | recorder | Teaching logger sampling rate. |
-| `--no-plot` | dynamics, recorder | Skip the plot shown when the window closes. |
+| `--no-plot` | dynamics | Skip the plot shown when the window closes. |
+| `--plot` | recorder | Plot the recorded motion when the window closes (off by default). |
 
 ## Keyboard shortcuts
 

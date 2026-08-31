@@ -19,7 +19,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from skelarm import Skeleton
 from skelarm.recording import StateLog
 from tools.player import PlaybackWindow
-from tools.trajectory_recorder import RecorderWindow, build_parser, load_setup
+from tools.trajectory_recorder import _DURATION, _TIMER_MS, RecorderWindow, build_parser, load_setup
 
 pytestmark = pytest.mark.integration
 
@@ -164,6 +164,32 @@ def test_no_joint_limits_flag_disables_enforcement() -> None:
     parser = build_parser()
     assert parser.parse_args([str(_FOUR_DOF)]).no_joint_limits is False
     assert parser.parse_args([str(_FOUR_DOF), "--no-joint-limits"]).no_joint_limits is True
+
+
+def test_plot_flag_is_opt_in() -> None:
+    """The trajectory plot is off by default and enabled by ``--plot``; ``--no-plot`` is gone."""
+    parser = build_parser()
+    assert parser.parse_args([str(_FOUR_DOF)]).plot is False
+    assert parser.parse_args([str(_FOUR_DOF), "--plot"]).plot is True
+    with pytest.raises(SystemExit):
+        parser.parse_args([str(_FOUR_DOF), "--no-plot"])
+
+
+@pytest.mark.parametrize("duration", [0.0, -1.0])
+def test_nonpositive_duration_records_until_finished(qapp, tmp_path: Path, duration: float) -> None:  # noqa: ANN001, ARG001
+    """A zero or negative duration never auto-stops; Finish ends and saves the recording."""
+    out = tmp_path / "open.sklog.npz"
+    window = RecorderWindow(Skeleton.from_toml(_FOUR_DOF), mode="ik", sample_rate=50.0, duration=duration, output=out)
+    frames = int(1.5 * _DURATION * 1000 / _TIMER_MS)  # well past the default cap
+    _drive(window, frames=frames)
+
+    assert not window.finished
+    assert window.time > _DURATION
+    assert "/" not in window.status_label.text()  # no "t / duration" cap in the readout
+    window._finish()  # noqa: SLF001  # the Finish button's slot
+    assert window.finished
+    assert window.saved
+    assert out.exists()
 
 
 def test_no_recording_without_a_grab(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001

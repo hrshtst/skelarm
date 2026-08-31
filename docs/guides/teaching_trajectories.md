@@ -7,7 +7,7 @@ Author a joint trajectory by demonstration, then have a controller track it.
 Grab the robot's tip with the left mouse button and drag it to teach a motion,
 recorded to a `*.sklog.npz` log. Recording starts on the first grab and stops at
 the max duration (or the **Finish** button, shortcut `F`), sampling at the
-configured rate; a plot of the recorded motion is shown afterward:
+configured rate; `--plot` shows a plot of the recorded motion afterward:
 
 ```bash
 uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml                 # ik mode (default)
@@ -28,7 +28,8 @@ Two modes turn the task-space teaching into joint angles:
   dynamics with viscous friction (`--stiffness`, `--friction`, and
   `--no-joint-limits` to drop the dynamics hard stop).
 
-`--sample-rate` and `--duration` configure the logger; `--initial` / `--pose`
+`--sample-rate` and `--duration` configure the logger (a `--duration` of `0` or
+less drops the time cap and records until **Finish** / close); `--initial` / `--pose`
 set the start pose, and an optional `[task]` in the config draws a target. The
 log records the per-joint angles and the tip path.
 
