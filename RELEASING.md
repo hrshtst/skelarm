@@ -18,12 +18,19 @@ Follow these steps to prepare and publish a new version:
     # ...
     ```
 
+2.  **Update `uv.lock`**: Run `uv lock` after changing `pyproject.toml` so the
+    editable `skelarm` package entry records the new version too.
+
+    ```bash
+    uv lock
+    ```
+
 ### 2. Commit the Version Update
 
 Create a dedicated commit for this version change. It's good practice to have a commit specifically for version updates.
 
 ```bash
-git add pyproject.toml
+git add pyproject.toml uv.lock
 git commit -m "chore: Bump version to v0.2.0" # Use your new version
 ```
 
