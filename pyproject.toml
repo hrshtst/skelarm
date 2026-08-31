@@ -1,6 +1,6 @@
 [project]
 name = "skelarm"
-version = "0.3.0"
+version = "0.4.0"
 description = "A simple dynamics simulator for a configurable planar robot arm."
 readme = "README.md"
 license = "GPL-3.0-only"
