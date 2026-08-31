@@ -37,8 +37,7 @@ catalogue; each tool's workflow has its own guide.
 | `--speed` / `--fps` / `--export PATH` | player | Playback speed, export frame rate, headless video/GIF export. |
 | `--panel` | player | Composite a simulator-style side panel (time, sliders, parameter readouts) into the `--export` frames. |
 | `--sample-rate HZ` | recorder | Teaching logger sampling rate. |
-| `--no-plot` | dynamics | Skip the plot shown when the window closes. |
-| `--plot` | recorder | Plot the recorded motion when the window closes (off by default). |
+| `--plot` | dynamics, recorder | Plot the tip trajectory / recorded motion when the window closes (off by default). |
 
 ## Keyboard shortcuts
 

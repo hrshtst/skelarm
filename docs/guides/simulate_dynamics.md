@@ -23,9 +23,10 @@ tip force, and the panel's friction row follows the live spin-box change.*
 
 Flags: `--show-com`, `--pose`, `--initial` (as in the
 [kinematics inspector](kinematics_and_posing.md)), plus `--stiffness <N/m>` for
-the drag spring, `--friction <N·m·s/rad>`, and `--no-plot`. Joint limits act as
-hard stops in the dynamics by default; `--no-joint-limits` drops the hard stop
-and leaves the limits on the kinematics only ([Joint Limits](joint_limits.md)).
+the drag spring, `--friction <N·m·s/rad>`, and `--plot` to show the tip
+trajectory when the window closes. Joint limits act as hard stops in the
+dynamics by default; `--no-joint-limits` drops the hard stop and leaves the
+limits on the kinematics only ([Joint Limits](joint_limits.md)).
 
 The run is recorded (joint angles, velocities, torque, and the external tip
 force); press **Export…** to save a `*.sklog.npz` log for the

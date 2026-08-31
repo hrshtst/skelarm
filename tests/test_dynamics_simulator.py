@@ -47,13 +47,19 @@ def test_parser_requires_config() -> None:
 
 def test_parser_parses_stiffness_friction_and_flags() -> None:
     """The dynamics-specific options are parsed."""
-    args = build_parser().parse_args(
-        ["robot.toml", "--stiffness", "0.25", "--friction", "0.3", "--show-com", "--no-plot"]
-    )
+    args = build_parser().parse_args(["robot.toml", "--stiffness", "0.25", "--friction", "0.3", "--show-com", "--plot"])
     assert args.stiffness == pytest.approx(0.25)
     assert args.friction == pytest.approx(0.3)
     assert args.show_com is True
-    assert args.no_plot is True
+    assert args.plot is True
+
+
+def test_plot_flag_is_opt_in() -> None:
+    """The tip-trajectory plot is off by default and enabled by ``--plot``; ``--no-plot`` is gone."""
+    parser = build_parser()
+    assert parser.parse_args(["robot.toml"]).plot is False
+    with pytest.raises(SystemExit):
+        parser.parse_args(["robot.toml", "--no-plot"])
 
 
 def test_friction_defaults_to_zero() -> None:

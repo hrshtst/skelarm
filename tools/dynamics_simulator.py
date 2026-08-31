@@ -11,14 +11,14 @@ On top of the base :class:`~skelarm.SkelarmSimulator` (whose transport bar provi
 play/pause, single-step, and reset; the window opens paused unless ``--run`` is given)
 this tool adds a live viscous-friction spin box (joint damping that dissipates energy),
 a status panel (kinetic energy and tip position/speed), and an optional tip-trajectory
-plot shown when the GUI closes.
+plot shown when the GUI closes (``--plot``).
 
 Usage::
 
     uv run python tools/dynamics_simulator.py path/to/robot.toml
     uv run python tools/dynamics_simulator.py robot.toml --friction 0.2 --show-com
     uv run python tools/dynamics_simulator.py robot.toml --stiffness 0.2 --pose 20,45,60,30
-    uv run python tools/dynamics_simulator.py robot.toml --initial pose.toml --no-plot
+    uv run python tools/dynamics_simulator.py robot.toml --initial pose.toml --plot
 """
 
 from __future__ import annotations
@@ -204,7 +204,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="initial joint angles in degrees, e.g. 20,45,60,30 (overrides --initial)",
     )
-    parser.add_argument("--no-plot", action="store_true", help="do not plot the tip trajectory when the GUI closes")
+    parser.add_argument("--plot", action="store_true", help="plot the tip trajectory when the GUI closes")
     parser.add_argument(
         "--run",
         action="store_true",
@@ -283,7 +283,7 @@ def main() -> None:
     simulator.show()
     app.exec()
 
-    if not args.no_plot:
+    if args.plot:
         simulator.show_trajectory_plot()
 
 
