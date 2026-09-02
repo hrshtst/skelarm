@@ -38,8 +38,9 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, NoReturn, cast
 
 import numpy as np
 from PyQt6.QtCore import QSignalBlocker, Qt, QTimer
@@ -597,8 +598,8 @@ class PlaybackWindow(QMainWindow):
             except (ValueError, KeyError):
                 return False, False
         else:
-            playback_cfg = self.log.extra.get("playback", {}).get("task")
-            if not playback_cfg:
+            playback_cfg = _playback_task(self.log.extra)
+            if playback_cfg is None:
                 return False, False
             try:
                 task = Task.from_dict(playback_cfg)
@@ -633,6 +634,27 @@ class PlaybackWindow(QMainWindow):
             return
         self.build_channel_figure()
         plt.show(block=False)
+
+
+def _reject_playback_shape(key: str, value: object) -> NoReturn:
+    """Refuse playback metadata of the wrong shape with the error the schema promises (a ``ValueError``)."""
+    msg = f"log carries malformed {key} metadata: expected a table, got {type(value).__name__}"
+    raise ValueError(msg)
+
+
+def _playback_task(extra: Mapping[str, object]) -> Mapping[str, object] | None:
+    """The ``extra.playback.task`` table, or ``None`` when absent; a non-table shape is a clear error."""
+    playback = extra.get("playback")
+    if playback is None:
+        return None
+    if not isinstance(playback, Mapping):
+        _reject_playback_shape("extra.playback", playback)
+    task = playback.get("task")
+    if task is None:
+        return None
+    if not isinstance(task, Mapping):
+        _reject_playback_shape("extra.playback.task", task)
+    return task
 
 
 def build_parser() -> argparse.ArgumentParser:
