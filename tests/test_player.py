@@ -545,3 +545,21 @@ def test_player_ignores_a_missing_playback_table(qapp) -> None:  # noqa: ANN001,
     window = PlaybackWindow(log)
     assert not window._has_targets  # noqa: SLF001
     assert not window.canvas.overlay_targets
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"playback": "not-a-table"},
+        {"playback": ["task"]},
+        {"playback": {"task": "reaching"}},
+        {"playback": {"task": [1, 2]}},
+    ],
+    ids=["playback-string", "playback-list", "task-string", "task-list"],
+)
+def test_player_rejects_non_mapping_playback_metadata(qapp, extra: dict[str, object]) -> None:  # noqa: ANN001, ARG001
+    """A playback table of the wrong shape is a clear error, never an AttributeError."""
+    log = _log()
+    log.extra.update(extra)
+    with pytest.raises(ValueError, match=r"extra\.playback"):
+        PlaybackWindow(log)
