@@ -243,9 +243,9 @@ recorded drag force, friction, and target switches; your cursor is not shown).
 
 4. Teaching a trajectory   uv run python tools/trajectory_recorder.py \\
                                examples/reach_four_dof_robot.toml --output docs/assets/teach.sklog.npz
-   Do: the purple target is the goal — grab the tip and demonstrate a smooth
-   motion toward it (recording starts on the first grab), then press F to
-   finish; the log saves itself. Re-running this script then generates
+   Do: the purple target is the goal — press Space to start the take, grab
+   the tip and demonstrate a smooth motion toward it, then press S to save
+   and Q to close. Re-running this script then generates
    trajectory_tracking.sklog.npz / trajectory_tracking.gif on the same robot,
    with the target marker kept in the replay.
 

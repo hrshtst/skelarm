@@ -29,7 +29,7 @@ catalogue; each tool's workflow has its own guide.
 | `--no-joint-limits` | dynamics, scenario tools, recorder (`dynamics` mode) | Drop the dynamics hard stop; limits stay on the kinematics. Scenario tools record the resolved choice in the log's run metadata; the dynamics simulator and recorder apply it without embedding it. |
 | `--task FILE` / `--controller FILE` | scenario tools | Override the named section from a separate file. The recorder also takes `--task FILE`, only to draw its target. |
 | `--save PATH` | scenario tools | Headless run (no GUI); write the log directly. |
-| `--duration S` | scenario tools (with `--save`), recorder | Override the task's simulated duration / cap the recording length (recorder: `0` or negative records until **Finish** / close). |
+| `--duration S` | scenario tools (with `--save`), recorder | Override the task's simulated duration / cap the recording length (recorder: a reached cap stops and saves the take but keeps the window open; `0` or negative records until you save). |
 | `--output PATH` | recorder, `export_config.py` (`-o`) | Output file path (`teach.sklog.npz` / the log path with `.toml` by default). |
 | `--stiffness N` | dynamics, scenario tools, recorder | Spring constant (N/m) of the mouse drag force. |
 | `--friction C` | dynamics, recorder | Viscous joint damping (N·m·s/rad). |
@@ -42,8 +42,7 @@ catalogue; each tool's workflow has its own guide.
 ## Keyboard shortcuts
 
 Every transport-bar window (all simulators and the player — the trajectory
-recorder has no transport bar; it records continuously after the first grab,
-with `F` to finish and `Q` to close):
+recorder has no transport bar; its own keys are listed below):
 
 | Key | Action |
 | --- | --- |
@@ -58,7 +57,10 @@ Tool-specific:
 | --- | --- | --- |
 | `←` / `B` | player | Previous frame, while paused |
 | `Home` / `End` | player | Jump to the first / last frame (`R` also returns to start) |
-| `F` | recorder | Finish the recording |
+| `Space` | recorder | Start a take from the reset posture (`--start-on-grab` starts on the first grab instead) |
+| `S` / `Shift+S` | recorder | Save the take and keep it visible / save and prepare the next take |
+| `R` | recorder | Reset; discards only an unsaved take |
+| `Q` | recorder | Close, warning first when unsaved samples exist |
 | `1` … `9` | multi-target simulator | Switch the active target live |
 
 ## Timing
