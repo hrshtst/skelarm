@@ -46,12 +46,16 @@ maximum, late-tick count) is also summarized in the log's ``[extra.acquisition]`
 table. The display repaints at most every 20 ms, independently of sampling.
 
 Outputs: ``--output`` names one exact file (the second take of a session is then refused
-rather than overwriting it). With ``--multi-take`` the name is the base of numbered
-files, ``reach.sklog.npz`` -> ``reach_001.sklog.npz``, ``reach_002.sklog.npz``, ...;
-numbering continues after any file of that base already present, and an existing file is
-never overwritten: the save is refused, reported, and the take stays for a retry. A take
-with no samples beyond ``t = 0`` is never written and consumes no number. Saving opens
-no dialog and no plot; ``--plot`` plots the last visible take after the window closes.
+rather than overwriting it); a name without the ``.npz`` suffix gets it appended, as
+NumPy would, so the file that is checked is the file that is written. With
+``--multi-take`` the name is the base of numbered files, ``reach.sklog.npz`` ->
+``reach_001.sklog.npz``, ``reach_002.sklog.npz``, ...; numbering continues after any file
+of that base already present, and an existing file is never overwritten: the save is
+refused, reported, and the take stays for a retry. Each take is written to a temporary
+file beside its target and published only once complete, so a failed write leaves
+nothing behind. A take with no samples beyond ``t = 0`` is never written and consumes
+no number. Saving opens no dialog and no plot; ``--plot`` plots the last visible take
+after the window closes.
 
 Usage::
 
@@ -65,6 +69,8 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import errno
+import os
 import re
 import sys
 import time as wall_clock
@@ -131,6 +137,11 @@ def _split_log_name(output: Path) -> tuple[str, str]:
     if name.endswith(_LOG_SUFFIX):
         return name[: -len(_LOG_SUFFIX)], _LOG_SUFFIX
     return output.stem, output.suffix
+
+
+def normalized_output(output: Path) -> Path:
+    """Return the file NumPy will actually write for ``output``: ``.npz`` is appended unless already present."""
+    return output if output.suffix == ".npz" else output.with_name(output.name + ".npz")
 
 
 def numbered_output(output: Path, number: int) -> Path:
@@ -281,7 +292,9 @@ class RecorderWindow(QMainWindow):
         self._tick_dt = self.tick_ms / 1000.0
         self._display_every = max(1, round(_DISPLAY_MS / self.tick_ms))
         self._duration = duration if duration > 0 else None  # None: record until saved
-        self._output = Path(output)
+        self._output = normalized_output(Path(output))
+        if self._output != Path(output):
+            print(f"output resolved to {self._output} (NumPy appends .npz)")
         self._multi_take = multi_take
         self._start_on_grab = start_on_grab
         self._method = method
@@ -564,7 +577,7 @@ class RecorderWindow(QMainWindow):
             return False
         self.log.extra["acquisition"] = self._acquisition_meta()
         try:
-            self.log.save(path)
+            self._write_take(path)
         except OSError as exc:
             self._report_save_failure(f"not saved: {exc} (the take is kept for a retry)")
             return False
@@ -577,6 +590,33 @@ class RecorderWindow(QMainWindow):
         print(f"saved take {number:03d} ({len(self.log)} samples) to {path}")
         self._refresh()
         return True
+
+    def _write_take(self, path: Path) -> None:
+        """Write the log to ``path`` through a temporary file, publishing it only once complete.
+
+        The temporary lives beside the target and is hard-linked into place, which fails
+        atomically if ``path`` appeared meanwhile; file systems without hard links fall
+        back to a rename after re-checking. Any failure leaves neither ``path`` nor the
+        temporary behind.
+
+        Raises
+        ------
+        OSError
+            If writing or publishing fails (``FileExistsError`` when ``path`` exists).
+        """
+        temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}.npz")  # keep .npz so NumPy adds nothing
+        try:
+            self.log.save(temporary)
+            try:
+                os.link(temporary, path)
+            except FileExistsError:
+                raise
+            except OSError:
+                if path.exists():
+                    raise FileExistsError(errno.EEXIST, "file exists", str(path)) from None
+                temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def save_and_next(self) -> bool:
         """Save the take, then reset for the next one; the reset happens only after a save.

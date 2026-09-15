@@ -322,6 +322,47 @@ def test_cancelled_close_dialog_is_excluded_from_timing(qapp, tmp_path: Path) ->
     assert meta["wall_max_tick_s"] == pytest.approx(0.01)
 
 
+def test_output_without_npz_suffix_is_written_where_it_is_checked(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """``--output reach`` numbers, checks, and writes ``reach_001.npz``, so a second session never overwrites it."""
+    window = _window(tmp_path, output=tmp_path / "reach")
+    assert window.output_path == tmp_path / "reach_001.npz"
+    _recorded_take(window)
+    assert window.save_take()
+    assert window.last_saved_path == tmp_path / "reach_001.npz"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["reach_001.npz"]
+    payload = (tmp_path / "reach_001.npz").read_bytes()
+
+    second = _window(tmp_path, output=tmp_path / "reach")
+    assert second.take_number == 2  # noqa: PLR2004
+    _recorded_take(second)
+    assert second.save_take()
+    assert (tmp_path / "reach_001.npz").read_bytes() == payload
+    assert (tmp_path / "reach_002.npz").exists()
+
+    single = _window(tmp_path, output=tmp_path / "exact.sklog", multi_take=False)
+    assert single.output_path == tmp_path / "exact.sklog.npz"
+
+
+def test_partial_write_failure_leaves_no_file_and_allows_retry(qapp, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001, ARG001
+    """A write that fails half-way leaves neither the target nor a temporary behind; the retry succeeds."""
+    window = _window(tmp_path)
+    _recorded_take(window, ticks=12)
+    original = StateLog.save
+
+    def failing(_self: StateLog, path: str | Path) -> None:
+        Path(path).write_bytes(b"partial archive")
+        raise OSError("disk full")  # noqa: EM101, TRY003
+
+    monkeypatch.setattr(StateLog, "save", failing)
+    assert not window.save_take()
+    assert not window.output_path.exists()
+    assert list(tmp_path.iterdir()) == []
+    monkeypatch.setattr(StateLog, "save", original)
+    assert window.save_take()
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["take_001.sklog.npz"]
+    assert len(StateLog.load(window.output_path.with_name("take_001.sklog.npz"))) == 13  # noqa: PLR2004
+
+
 # ----------------------------------------------------------------------------------------------
 # Start
 # ----------------------------------------------------------------------------------------------

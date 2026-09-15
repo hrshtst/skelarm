@@ -36,12 +36,16 @@ first grab. Saving never opens a dialog or a plot.
 ### Outputs
 
 `--output` names one exact file; a second take of the same session is then
-refused rather than overwriting it. With `--multi-take` the name is the base of
+refused rather than overwriting it. A name without the `.npz` suffix gets it
+appended, as NumPy would, so the file that is checked is the file that is
+written. With `--multi-take` the name is the base of
 numbered takes (`reach.sklog.npz` → `reach_001.sklog.npz`, `reach_002.sklog.npz`,
 …); numbering continues after any file of that base already present. An existing
 file is never overwritten: the save is refused, reported in the status area and
-on the terminal, and the take stays for a retry. A take holding nothing beyond the
-`t = 0` frame is never written and consumes no number. File names enumerate
+on the terminal, and the take stays for a retry. Each take is written to a
+temporary file beside its target and published only once complete, so a failed
+write leaves nothing behind. A take holding nothing beyond the `t = 0` frame is
+never written and consumes no number. File names enumerate
 attempts; whether a take qualifies for an experiment is decided offline.
 
 ### Acquisition clock
