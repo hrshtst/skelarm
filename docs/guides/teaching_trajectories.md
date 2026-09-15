@@ -14,6 +14,7 @@ window closes:
 uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml                 # ik mode (default)
 uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --mode dynamics  # force + forward dynamics
 uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --output reach.sklog.npz --multi-take
+uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --multi-take --show-tip-trail --show-past-trails
 uv run python tools/player.py reach_001.sklog.npz                                        # replay a take
 ```
 
@@ -49,6 +50,25 @@ file system without hard links refuses the save and keeps the take for a retry
 elsewhere. A take holding nothing beyond the `t = 0` frame is
 never written and consumes no number. File names enumerate
 attempts; whether a take qualifies for an experiment is decided offline.
+
+### Trails
+
+`--show-tip-trail` draws the current take's tip path while you record, built
+from the logged (forward-kinematics) tip samples rather than the cursor path, so
+what you see is exactly what the log holds. `--show-past-trails` keeps the tip
+paths of the takes saved in this session as faint, transparent lines behind the
+current one, so later takes can follow earlier ones. Both overlays are also
+checkboxes in the side panel and can be hidden independently; toggling them
+never moves the robot or changes a logged sample.
+
+Only saved takes enter the history, once each: **S** then **R** and
+**Shift+S** leave the same history, **R** drops an unsaved trail together with
+its take, and pressing **R** while already ready changes nothing. A new session
+always starts with an empty history, whatever files already exist on disk, so a
+practice session leaves no traces in a later one. Each saved log records under
+`[extra.display]` the overlay settings, the color/opacity policy, the takes in
+the history, and the saved takes that were actually visible while that take was
+recorded (the first take of a session naturally lists none).
 
 ### Acquisition clock
 
