@@ -36,12 +36,14 @@ Controls are window-wide keyboard shortcuts mirrored by buttons:
 Acquisition clock: the recorder runs one timer tick per sample period, so
 ``--sample-rate`` must give a whole number of milliseconds (100, 50, 25, 20, 10 Hz, ...).
 Every tick performs exactly one pose update (one IK solve toward the current cursor, or
-the dynamics substeps) and records exactly one sample at the nominal time
-``k * period``. A late timer tick therefore delays the whole trajectory in wall time but
-never duplicates or invents a sample; the realized wall-clock tick spacing (mean,
-maximum, late-tick count) is stored in the log's ``[extra.acquisition]`` table so the
-achieved rate can be verified afterwards. The display repaints at most every 20 ms,
-independently of sampling.
+the dynamics substeps) and records exactly one sample. The sample's ``time`` is the
+actual elapsed time since the take started, read from the wall clock when the tick's
+pose update begins, so a late timer tick shows up as a longer interval instead of being
+hidden; the nominal tick clock ``k * period`` is kept beside it as the ``nominal_time``
+channel. No sample is ever duplicated or invented, and the time spent in the
+unsaved-take warning is excluded from both clocks. The realized tick spacing (mean,
+maximum, late-tick count) is also summarized in the log's ``[extra.acquisition]``
+table. The display repaints at most every 20 ms, independently of sampling.
 
 Outputs: ``--output`` names one exact file (the second take of a session is then refused
 rather than overwriting it). With ``--multi-take`` the name is the base of numbered
@@ -182,17 +184,20 @@ class _TickTiming:
         self.late = 0
         self._last: float | None = None
 
-    def start(self) -> None:
-        """Begin a take: the next tick is measured against now."""
+    def start(self, now: float) -> None:
+        """Begin a take at wall-clock reading ``now``: the next tick is measured against it."""
         self.count = 0
         self.total_s = 0.0
         self.max_s = 0.0
         self.late = 0
-        self._last = wall_clock.perf_counter()
+        self._last = now
 
-    def mark(self) -> None:
-        """Account one recorded tick."""
-        now = wall_clock.perf_counter()
+    def resume(self, now: float) -> None:
+        """Continue after a pause: the next tick is measured against ``now``, not across the pause."""
+        self._last = now
+
+    def mark(self, now: float) -> None:
+        """Account one recorded tick at wall-clock reading ``now``."""
         if self._last is not None:
             elapsed = now - self._last
             self.count += 1
@@ -243,6 +248,9 @@ class RecorderWindow(QMainWindow):
         a :class:`CloseChoice`.
     run_timer : bool, optional
         Drive :meth:`tick` from a live timer (tests drive it by hand).
+    clock : callable, optional
+        Monotonic wall-clock reading in seconds (``time.perf_counter`` by default;
+        tests inject a fake one).
     """
 
     def __init__(
@@ -263,6 +271,7 @@ class RecorderWindow(QMainWindow):
         enforce_limits: bool = True,
         unsaved_prompt: Callable[[], CloseChoice] | None = None,
         run_timer: bool = True,
+        clock: Callable[[], float] = wall_clock.perf_counter,
     ) -> None:
         """Build the recorder window."""
         super().__init__()
@@ -281,6 +290,8 @@ class RecorderWindow(QMainWindow):
         self._task = task
         self._unsaved_prompt: Callable[[], CloseChoice] = unsaved_prompt or self._ask_unsaved
         self._run_timer = run_timer
+        self._clock = clock
+        self._t0 = 0.0  # wall-clock reading at the start of the take (shifted past dialog pauses)
         # When limits are not enforced in the dynamics, the hard stop is disabled and
         # joint limits apply only to the kinematic (IK) path, which always clamps.
         self._lower = (
@@ -429,6 +440,7 @@ class RecorderWindow(QMainWindow):
         channel_meta: dict[str, dict[str, object]] = {
             "q": {"unit": "rad", "label": "joint angle", "columns": joints},
             "tip": {"unit": "m", "label": "tip position", "columns": ["x", "y"]},
+            "nominal_time": {"unit": "s", "label": "nominal tick clock (tick index x period)"},
         }
         if self._mode == "dynamics":
             channel_meta["dq"] = {"unit": "rad/s", "label": "joint velocity", "columns": joints}
@@ -444,13 +456,15 @@ class RecorderWindow(QMainWindow):
         """
         if self._state != "ready":
             return
+        now = self._clock()
         self._state = "recording"
         self._saved = False
         self.time = 0.0
         self._ticks = 0
+        self._t0 = now
         self.log = self._new_log()
-        self._record(0.0)
-        self._timing.start()
+        self._record(0.0, 0.0)
+        self._timing.start(now)
         print(f"take {self._take_number:03d}: recording started")
         self._refresh()
 
@@ -461,14 +475,15 @@ class RecorderWindow(QMainWindow):
                 self.start()
             else:
                 return
-        self._timing.mark()
+        now = self._clock()  # the sample's acquisition time: when this tick's pose update begins
+        self._timing.mark(now)
         if self._mode == "ik":
             self._step_ik()
         else:
             self._step_dynamics()
         self._ticks += 1
-        self.time = self._ticks * self._tick_dt
-        self._record(self.time)
+        self.time = now - self._t0
+        self._record(self.time, self._ticks * self._tick_dt)
         if self._ticks % self._display_every == 0:
             self._refresh()
         if self._duration is not None and self.time >= self._duration - _TICK_TOLERANCE_MS:
@@ -491,12 +506,13 @@ class RecorderWindow(QMainWindow):
             tau = tau - self._friction * self.skeleton.dq
             integrate_with_limits(self.skeleton, tau, dt, self._lower, self._upper)
 
-    def _record(self, t: float) -> None:
-        """Append one frame at time ``t``: joint angles, tip, and (dynamics) dq / force."""
+    def _record(self, t: float, nominal: float) -> None:
+        """Append one frame at elapsed time ``t`` (nominal tick time ``nominal``): joint angles, tip, and more."""
         tip = self.skeleton.links[-1]
         channels: dict[str, NDArray[np.float64]] = {
             "q": self.skeleton.q,
             "tip": np.array([tip.xe, tip.ye], dtype=np.float64),
+            "nominal_time": np.asarray(nominal, dtype=np.float64),
         }
         if self._mode == "dynamics":
             channels["dq"] = self.skeleton.dq
@@ -513,7 +529,10 @@ class RecorderWindow(QMainWindow):
     def _acquisition_meta(self) -> dict[str, object]:
         """Describe the acquisition clock and the realized tick timing of this take."""
         return {
-            "clock": "nominal-tick",
+            "clock": "wall-clock",
+            "time_channel": "seconds since the take started, read when each tick's pose update begins; "
+            "dialog pauses excluded",
+            "nominal_time_channel": "tick index x tick_period_s",
             "mode": self._mode,
             "tick_period_s": self._tick_dt,
             "sample_period_s": self._tick_dt,
@@ -622,18 +641,27 @@ class RecorderWindow(QMainWindow):
             return
         if self._has_unsaved_take():
             self._timer.stop()  # no sampling while the warning is open
+            pause_start = self._clock()
             choice = self._unsaved_prompt()
             if choice is CloseChoice.DISCARD:
                 print(f"discarded unsaved take {self._take_number:03d} ({len(self.log)} samples)")
             elif choice is not CloseChoice.SAVE or not self.save_take():
-                if self._run_timer:
-                    self._timer.start(self.tick_ms)  # cancel: resume exactly where the take was
+                self._resume_after_pause(pause_start)  # cancel: continue exactly where the take was
                 a0.ignore()
                 return
         self._timer.stop()
         self._closed = True
         a0.accept()
         super().closeEvent(a0)
+
+    def _resume_after_pause(self, pause_start: float) -> None:
+        """Continue a take after a dialog: the pause enters neither the timestamps nor the tick statistics."""
+        now = self._clock()
+        if self._state == "recording":
+            self._t0 += now - pause_start
+            self._timing.resume(now)
+        if self._run_timer:
+            self._timer.start(self.tick_ms)
 
     # --------------------------------------------------------------- display ---
 

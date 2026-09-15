@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import weakref
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -66,8 +67,25 @@ class _Prompt:
         return self.choice
 
 
+class _FakeClock:
+    """A deterministic stand-in for the wall clock that tests advance by hand."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+_CLOCKS: weakref.WeakKeyDictionary[RecorderWindow, _FakeClock] = weakref.WeakKeyDictionary()
+
+
 def _window(tmp_path: Path, **overrides: object) -> RecorderWindow:
-    """Build a headless 4-DOF recorder in multi-take mode at 100 Hz without the live timer."""
+    """Build a headless 4-DOF recorder in multi-take mode at 100 Hz on a fake clock, without the live timer."""
+    clock = _FakeClock()
     options: dict[str, object] = {
         "mode": "ik",
         "sample_rate": 100.0,
@@ -75,9 +93,23 @@ def _window(tmp_path: Path, **overrides: object) -> RecorderWindow:
         "output": tmp_path / "take.sklog.npz",
         "multi_take": True,
         "run_timer": False,
+        "clock": clock,
     }
     options.update(overrides)
-    return RecorderWindow(Skeleton.from_toml(_FOUR_DOF), **options)  # type: ignore[arg-type]
+    window = RecorderWindow(Skeleton.from_toml(_FOUR_DOF), **options)  # type: ignore[arg-type]
+    _CLOCKS[window] = clock
+    return window
+
+
+def _clock(window: RecorderWindow) -> _FakeClock:
+    return _CLOCKS[window]
+
+
+def _tick(window: RecorderWindow, ticks: int) -> None:
+    """Advance the fake clock by one period and tick, ``ticks`` times, without dragging."""
+    for _ in range(ticks):
+        _clock(window).advance(window.tick_ms / 1000.0)
+        window.tick()
 
 
 def _cursor(window: RecorderWindow) -> Iterator[tuple[float, float]]:
@@ -91,10 +123,11 @@ def _cursor(window: RecorderWindow) -> Iterator[tuple[float, float]]:
 
 
 def _move(window: RecorderWindow, ticks: int) -> None:
-    """Drag the tip along a moving cursor for ``ticks`` ticks."""
+    """Drag the tip along a moving cursor for ``ticks`` ticks, the fake clock keeping real time."""
     cursor = _cursor(window)
     for _ in range(ticks):
         window.canvas.drag_point = next(cursor)
+        _clock(window).advance(window.tick_ms / 1000.0)
         window.tick()
 
 
@@ -244,12 +277,49 @@ def test_acquisition_metadata_records_the_clock_and_tick_timing(qapp, tmp_path: 
     _recorded_take(window, ticks=25)
     assert window.save_take()
     meta = StateLog.load(_saved_path(window)).extra["acquisition"]
-    assert meta["clock"] == "nominal-tick"
+    assert meta["clock"] == "wall-clock"
     assert meta["tick_period_s"] == pytest.approx(0.01)
     assert meta["pose_updates_per_sample"] == 1
     assert meta["ticks"] == len(window.log) - 1
     assert meta["wall_max_tick_s"] >= meta["wall_mean_tick_s"] >= 0.0
     assert meta["late_ticks"] >= 0
+
+
+def test_sample_times_are_the_actual_elapsed_time(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """A delayed tick is recorded as a longer interval; the nominal tick clock is kept as its own channel."""
+    window = _window(tmp_path)
+    window.start()
+    _move(window, 5)
+    _clock(window).advance(0.19)  # this tick arrives 200 ms after the previous one
+    _move(window, 1)
+    _move(window, 5)
+    times = window.log.times
+    assert np.allclose(np.diff(times), [0.01] * 5 + [0.2] + [0.01] * 5)
+    assert np.allclose(np.diff(window.log.channel("nominal_time")), 0.01)
+    assert window.time == pytest.approx(0.3)
+    assert window.save_take()
+    meta = StateLog.load(_saved_path(window)).extra["acquisition"]
+    assert meta["late_ticks"] == 1
+    assert meta["wall_max_tick_s"] == pytest.approx(0.2)
+
+
+def test_cancelled_close_dialog_is_excluded_from_timing(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The time spent in the unsaved-take warning enters neither the timestamps nor the tick statistics."""
+
+    def cancel_after_ten_seconds() -> CloseChoice:
+        _clock(window).advance(10.0)
+        return CloseChoice.CANCEL
+
+    window = _window(tmp_path, unsaved_prompt=cancel_after_ten_seconds)
+    _recorded_take(window, ticks=15)
+    assert not window.close()
+    _move(window, 5)
+    assert np.allclose(np.diff(window.log.times), 0.01)
+    assert window.time == pytest.approx(0.2)
+    assert window.save_take()
+    meta = StateLog.load(_saved_path(window)).extra["acquisition"]
+    assert meta["late_ticks"] == 0
+    assert meta["wall_max_tick_s"] == pytest.approx(0.01)
 
 
 # ----------------------------------------------------------------------------------------------
@@ -277,8 +347,7 @@ def test_space_starts_from_the_stationary_reset_state(qapp, tmp_path: Path) -> N
     _press(window, Qt.Key.Key_Space)
     assert window.state == "recording"
     assert window.time == 0.0
-    for _ in range(10):
-        window.tick()  # no drag yet: the pre-roll is logged as stationary samples
+    _tick(window, 10)  # no drag yet: the pre-roll is logged as stationary samples
     q = window.log.channel("q")
     assert len(window.log) == 11  # noqa: PLR2004
     assert np.allclose(q, reset)
@@ -584,7 +653,7 @@ def test_cancel_keeps_the_take_and_adds_no_time(qapp, tmp_path: Path) -> None:  
     assert prompt.calls == 1
     assert not window.closed
     assert (window.state, len(window.log), window.time) == before
-    window.tick()  # recording resumes seamlessly
+    _tick(window, 1)  # recording resumes seamlessly
     assert len(window.log) == before[1] + 1
     assert not list(tmp_path.glob("*.npz"))
 
@@ -652,7 +721,7 @@ def test_ik_mode_records_q_and_tip_and_replays(qapp, tmp_path: Path) -> None:  #
     _move(window, 200)
     assert window.saved
     assert out.exists()
-    assert set(window.log.channel_names) == {"q", "tip"}
+    assert set(window.log.channel_names) == {"q", "tip", "nominal_time"}
     assert len(window.log) == 51  # noqa: PLR2004  # t = 0 plus 50 samples up to the 1 s cap
     PlaybackWindow(StateLog.load(out))  # replayable in the player
 

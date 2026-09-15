@@ -49,12 +49,16 @@ attempts; whether a take qualifies for an experiment is decided offline.
 The recorder runs one timer tick per sample period, so `--sample-rate` must give
 a whole number of milliseconds (100, 50, 25, 20, 10 Hz, …). Every tick performs
 exactly one pose update (one IK solve toward the current cursor, or the dynamics
-substeps) and records exactly one sample at the nominal time `k × period`. A late
-timer tick delays the whole trajectory in wall time but never duplicates or
-invents a sample. The realized wall-clock tick spacing of each take (mean,
-maximum, and the count of ticks slower than 1.5 × the period) is stored under
-`[extra.acquisition]` in the log, so the achieved rate can be verified after a
-session. The display repaints at most every 20 ms, independently of sampling.
+substeps) and records exactly one sample. The sample's `time` is the actual
+elapsed time since the take started, read from the wall clock when the tick's
+pose update begins, so a late timer tick shows up as a longer interval rather
+than being hidden; the nominal tick clock `k × period` is kept beside it as the
+`nominal_time` channel. No sample is ever duplicated or invented, and the time
+spent in the unsaved-take warning is excluded from both clocks. The realized tick
+spacing of each take (mean, maximum, and the count of ticks slower than 1.5 × the
+period) is also summarized under `[extra.acquisition]` in the log, so the achieved
+rate can be verified after a session. The display repaints at most every 20 ms,
+independently of sampling.
 
 <video controls loop muted playsinline width="640" src="../../assets/teach_mouse.mp4"></video>
 
