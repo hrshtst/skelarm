@@ -1018,3 +1018,159 @@ def test_trails_are_drawn_and_can_be_hidden(qapp, tmp_path: Path) -> None:  # no
     hidden_again = window.canvas.grab().toImage()
     assert with_trail != plain
     assert hidden_again == plain
+
+
+# ----------------------------------------------------------------------------------------------
+# Display history of the faint saved trails (all saved takes, or only the last one)
+# ----------------------------------------------------------------------------------------------
+
+
+def _save_takes(window: RecorderWindow, *ticks: int, save_then_reset: bool = False) -> None:
+    """Record and save one take per entry of ``ticks`` (drag ticks per take), by Shift+S or by S then R."""
+    for count in ticks:
+        _recorded_take(window, ticks=count)
+        if save_then_reset:
+            assert window.save_take()
+            window.reset_take()
+        else:
+            assert window.save_and_next()
+
+
+def _display(path: Path) -> dict[str, object]:
+    """Return the ``[extra.display]`` table of a saved take."""
+    return StateLog.load(path).extra["display"]
+
+
+def test_past_trail_history_option_defaults_to_all(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The display history is ``all`` unless ``last`` is requested; any other value is rejected."""
+    parser = build_parser()
+    assert parser.parse_args([str(_FOUR_DOF)]).past_trail_history == "all"
+    assert parser.parse_args([str(_FOUR_DOF), "--past-trail-history", "last"]).past_trail_history == "last"
+    with pytest.raises(SystemExit):
+        parser.parse_args([str(_FOUR_DOF), "--past-trail-history", "recent"])
+    assert _window(tmp_path).past_trail_history == "all"
+    assert _window(tmp_path, past_trail_history="last").past_trail_history == "last"
+    with pytest.raises(ValueError, match="past_trail_history"):
+        _window(tmp_path, past_trail_history="recent")
+
+
+def test_last_history_draws_only_the_latest_saved_trail(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """After three saves the canvas draws one faint trail, the latest saved take, behind the current trail."""
+    window = _window(tmp_path, show_tip_trail=True, show_past_trails=True, past_trail_history="last")
+    _save_takes(window, 20, 25, 30)
+    assert [trail.take for trail in window.saved_trails()] == [1, 2, 3]  # the session history is unchanged
+    assert sorted(path.name for path in tmp_path.glob("*.npz")) == [f"take_{n:03d}.sklog.npz" for n in (1, 2, 3)]
+    latest = window.saved_trails()[-1]
+    assert np.array_equal(latest.points, StateLog.load(latest.path).channel("tip"))
+    assert [np.array_equal(t.points, latest.points) for t in window.canvas.trails] == [True]  # ready: past only
+
+    _recorded_take(window, ticks=16)  # an even count: the display refreshes every second tick at 100 Hz
+    assert len(window.canvas.trails) == 2  # noqa: PLR2004  # one past trail plus the current trail
+    past, current = window.canvas.trails
+    assert np.array_equal(past.points, latest.points)
+    assert np.array_equal(current.points, window.log.channel("tip"))
+    assert past.color.alpha() < current.color.alpha()  # faint behind, clear in front
+
+
+def test_last_history_visible_source_after_s_then_r_equals_shift_s(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Each take records the last saved take as its only visible source, identically for S then R and Shift+S."""
+    a = _window(tmp_path / "a", show_past_trails=True, past_trail_history="last")
+    b = _window(tmp_path / "b", show_past_trails=True, past_trail_history="last")
+    for window, save_then_reset in ((a, True), (b, False)):
+        window.output_path.parent.mkdir()
+        _save_takes(window, 20, 20, 20, save_then_reset=save_then_reset)
+    for number, history, visible in ((1, [], []), (2, [1], [1]), (3, [1, 2], [2])):
+        name = f"take_{number:03d}.sklog.npz"
+        display = _display(tmp_path / "a" / name)
+        assert display == _display(tmp_path / "b" / name)
+        assert display["past_trail_history"] == "last"
+        assert display["history_takes"] == history
+        assert display["visible_source_takes"] == visible
+        assert display["visible_source_files"] == [f"take_{n:03d}.sklog.npz" for n in visible]
+    for window in (a, b):
+        assert window.state == "ready"
+        assert [trail.take for trail in window.saved_trails()] == [1, 2, 3]
+        assert [np.array_equal(t.points, window.saved_trails()[-1].points) for t in window.canvas.trails] == [True]
+
+
+def test_last_history_failed_save_does_not_change_the_visible_source(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """A refused save adds nothing to draw: the last successfully saved take stays the visible source."""
+    window = _window(tmp_path, show_past_trails=True, past_trail_history="last")
+    _save_takes(window, 20, 25)
+    last_saved = window.saved_trails()[-1]
+    _recorded_take(window, ticks=30)
+    collision = window.output_path
+    collision.write_bytes(b"someone else's take")
+    assert not window.save_take()
+    assert [trail.take for trail in window.saved_trails()] == [1, 2]
+    assert [np.array_equal(t.points, last_saved.points) for t in window.canvas.trails] == [True]
+    window.reset_take()  # discard the take whose save was refused
+    collision.unlink()
+
+    _recorded_take(window, ticks=30)
+    assert window.save_take()
+    display = _display(tmp_path / "take_003.sklog.npz")
+    assert display["history_takes"] == [1, 2]
+    assert display["visible_source_takes"] == [2]
+    assert display["visible_source_files"] == ["take_002.sklog.npz"]
+
+
+def test_last_history_reset_of_an_unsaved_take_keeps_the_last_saved_trail(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """R drops only the unsaved current trail; the last saved trail stays drawn and the history stays whole."""
+    window = _window(tmp_path, show_tip_trail=True, show_past_trails=True, past_trail_history="last")
+    _save_takes(window, 20, 25)
+    last_saved = window.saved_trails()[-1]
+    _recorded_take(window, ticks=30)
+    assert len(window.canvas.trails) == 2  # noqa: PLR2004  # the last saved trail and the unsaved current trail
+    for _ in range(2):  # the second R, while ready, changes nothing
+        window.reset_take()
+        assert [np.array_equal(t.points, last_saved.points) for t in window.canvas.trails] == [True]
+    assert [trail.take for trail in window.saved_trails()] == [1, 2]
+    assert not (tmp_path / "take_003.sklog.npz").exists()
+
+
+def test_last_history_toggles_never_change_logs(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """In ``last`` mode the checkboxes only change the drawing; a trail shown mid-take is recorded as visible."""
+    window = _window(tmp_path, past_trail_history="last")
+    _save_takes(window, 20, 25)
+    _recorded_take(window, ticks=25)  # both overlays hidden when the take starts
+    q, tip, times = window.log.channel("q").copy(), window.log.channel("tip").copy(), window.log.times.copy()
+    pose = window.skeleton.q.copy()
+    for name in ("tip_trail", "past_trails"):
+        box = window.checkboxes[name]
+        box.setChecked(True)
+        box.setChecked(False)
+        box.setChecked(True)
+    assert len(window.canvas.trails) == 2  # noqa: PLR2004
+    past, current = window.canvas.trails
+    assert np.array_equal(past.points, window.saved_trails()[-1].points)
+    assert np.array_equal(current.points, tip)
+    assert np.array_equal(window.log.channel("q"), q)
+    assert np.array_equal(window.log.channel("tip"), tip)
+    assert np.array_equal(window.log.times, times)
+    assert np.array_equal(window.skeleton.q, pose)
+    assert window.state == "recording"
+
+    assert window.save_take()
+    saved = StateLog.load(tmp_path / "take_003.sklog.npz")
+    assert np.array_equal(saved.channel("q"), q)
+    display = saved.extra["display"]
+    assert display["past_trails_shown_during_take"] is True
+    assert display["visible_source_takes"] == [2]
+
+
+def test_all_history_still_draws_every_saved_trail(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The default ``all`` mode draws every saved take behind the current trail and records its mode."""
+    window = _window(tmp_path, show_tip_trail=True, show_past_trails=True)
+    _save_takes(window, 20, 25, 30)
+    _recorded_take(window, ticks=16)  # an even count: the display refreshes every second tick at 100 Hz
+    *past, current = window.canvas.trails
+    assert len(past) == 3  # noqa: PLR2004
+    assert all(np.array_equal(p.points, s.points) for p, s in zip(past, window.saved_trails(), strict=True))
+    assert np.array_equal(current.points, window.log.channel("tip"))
+    assert window.save_take()
+    display = _display(tmp_path / "take_004.sklog.npz")
+    assert display["past_trail_history"] == "all"
+    assert display["history_takes"] == [1, 2, 3]
+    assert display["visible_source_takes"] == [1, 2, 3]
+    assert display["visible_source_files"] == [f"take_{n:03d}.sklog.npz" for n in (1, 2, 3)]
