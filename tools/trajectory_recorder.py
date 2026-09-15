@@ -52,8 +52,9 @@ NumPy would, so the file that is checked is the file that is written. With
 ``reach_001.sklog.npz``, ``reach_002.sklog.npz``, ...; numbering continues after any file
 of that base already present, and an existing file is never overwritten: the save is
 refused, reported, and the take stays for a retry. Each take is written to a temporary
-file beside its target and published only once complete, so a failed write leaves
-nothing behind. A take with no samples beyond ``t = 0`` is never written and consumes
+file beside its target and published only once complete, by a hard link that refuses an
+existing file; a failed write leaves nothing behind, and a file system without hard
+links refuses the save and keeps the take. A take with no samples beyond ``t = 0`` is never written and consumes
 no number. Saving opens no dialog and no plot; ``--plot`` plots the last visible take
 after the window closes.
 
@@ -69,7 +70,6 @@ Usage::
 from __future__ import annotations
 
 import argparse
-import errno
 import os
 import re
 import sys
@@ -595,8 +595,9 @@ class RecorderWindow(QMainWindow):
         """Write the log to ``path`` through a temporary file, publishing it only once complete.
 
         The temporary lives beside the target and is hard-linked into place, which fails
-        atomically if ``path`` appeared meanwhile; file systems without hard links fall
-        back to a rename after re-checking. Any failure leaves neither ``path`` nor the
+        atomically if ``path`` appeared meanwhile. A file system without hard links gets
+        no rename fallback (a rename could replace a file published in between): the
+        save is refused and the take kept. Any failure leaves neither ``path`` nor the
         temporary behind.
 
         Raises
@@ -611,10 +612,12 @@ class RecorderWindow(QMainWindow):
                 os.link(temporary, path)
             except FileExistsError:
                 raise
-            except OSError:
-                if path.exists():
-                    raise FileExistsError(errno.EEXIST, "file exists", str(path)) from None
-                temporary.replace(path)
+            except OSError as exc:
+                msg = (
+                    f"cannot publish {path} atomically on this file system ({exc.strerror or exc}); "
+                    "save to a location that supports hard links"
+                )
+                raise OSError(msg) from exc
         finally:
             temporary.unlink(missing_ok=True)
 
