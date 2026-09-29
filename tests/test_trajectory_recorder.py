@@ -844,3 +844,177 @@ def test_control_panel_width_is_fixed(qapp, tmp_path: Path) -> None:  # noqa: AN
     window = _window(tmp_path)
     panel = window.controls_panel
     assert panel.minimumWidth() == panel.maximumWidth() == _PANEL_WIDTH_PX
+
+
+# ----------------------------------------------------------------------------------------------
+# Tip trails (current take and faint saved history)
+# ----------------------------------------------------------------------------------------------
+
+
+def test_trail_flags_are_opt_in() -> None:
+    """Both overlays are off unless requested, independently."""
+    parser = build_parser()
+    args = parser.parse_args([str(_FOUR_DOF)])
+    assert args.show_tip_trail is False
+    assert args.show_past_trails is False
+    args = parser.parse_args([str(_FOUR_DOF), "--show-tip-trail"])
+    assert (args.show_tip_trail, args.show_past_trails) == (True, False)
+    args = parser.parse_args([str(_FOUR_DOF), "--show-past-trails"])
+    assert (args.show_tip_trail, args.show_past_trails) == (False, True)
+
+
+def test_current_trail_is_the_logged_tip_path(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The current trail is exactly the logged (FK) tip samples, not the cursor path."""
+    window = _window(tmp_path, show_tip_trail=True)
+    _recorded_take(window, ticks=20)
+    tip = window.log.channel("tip")
+    assert np.array_equal(window.current_trail(), tip)
+    assert len(window.canvas.trails) == 1
+    assert np.array_equal(window.canvas.trails[0].points, tip)
+    assert window.canvas.trails[0].color.alpha() > 200  # noqa: PLR2004  # the current take is drawn clearly
+
+    hidden = _window(tmp_path / "hidden")
+    hidden.output_path.parent.mkdir()
+    _recorded_take(hidden, ticks=20)
+    assert np.array_equal(hidden.current_trail(), hidden.log.channel("tip"))  # always derivable
+    assert hidden.canvas.trails == []  # but not drawn unless asked
+
+
+def test_only_saved_takes_enter_the_history_without_duplicates(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """History gains one entry per successful save, never for discarded, failed, or re-saved takes."""
+    window = _window(tmp_path, show_past_trails=True)
+    _recorded_take(window)
+    window.reset_take()  # unsaved: discarded
+    assert window.saved_trails() == ()
+
+    _recorded_take(window)
+    window.output_path.write_bytes(b"collision")
+    assert not window.save_take()  # failed: nothing enters the history
+    assert window.saved_trails() == ()
+    window.output_path.unlink()
+    assert window.save_take()
+    (first,) = window.saved_trails()
+    assert first.take == 1
+    assert first.path == tmp_path / "take_001.sklog.npz"
+    assert np.array_equal(first.points, StateLog.load(first.path).channel("tip"))
+    assert window.save_and_next()  # already saved: advances without a second entry
+    window.reset_take()
+    window.reset_take()
+    assert [trail.take for trail in window.saved_trails()] == [1]
+
+    _recorded_take(window)
+    assert window.save_and_next()
+    assert [trail.take for trail in window.saved_trails()] == [1, 2]
+
+
+def test_s_then_r_and_shift_s_leave_identical_history(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Both paths add the saved trail exactly once, with the same geometry and take number."""
+    a = _window(tmp_path / "a", show_past_trails=True, show_tip_trail=True)
+    b = _window(tmp_path / "b", show_past_trails=True, show_tip_trail=True)
+    for window in (a, b):
+        window.output_path.parent.mkdir()
+        _recorded_take(window, ticks=20)
+    assert a.save_take()
+    a.reset_take()
+    assert b.save_and_next()
+    for window in (a, b):
+        (trail,) = window.saved_trails()
+        assert trail.take == 1
+        assert len(window.canvas.trails) == 1  # the faint saved trail; no current trail while ready
+        assert window.canvas.trails[0].color.alpha() < 100  # noqa: PLR2004  # faint
+    assert np.array_equal(a.saved_trails()[0].points, b.saved_trails()[0].points)
+
+
+def test_reset_clears_only_the_unsaved_trail(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Saved trails survive reset; an unsaved trail disappears with its take."""
+    window = _window(tmp_path, show_tip_trail=True, show_past_trails=True)
+    _recorded_take(window)
+    assert window.save_take()
+    window.reset_take()
+    assert [np.array_equal(t.points, window.saved_trails()[0].points) for t in window.canvas.trails] == [True]
+    _recorded_take(window, ticks=10)
+    assert len(window.canvas.trails) == 2  # noqa: PLR2004  # past (behind) then current (in front)
+    assert window.canvas.trails[0].color.alpha() < window.canvas.trails[1].color.alpha()
+    window.reset_take()
+    assert len(window.canvas.trails) == 1
+    assert len(window.saved_trails()) == 1
+
+
+def test_display_toggles_never_change_logs_or_pose(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The checkboxes only change what is drawn: samples, timestamps, and posture stay untouched."""
+    from PyQt6.QtCore import Qt
+
+    window = _window(tmp_path)
+    _recorded_take(window, ticks=25)
+    q, tip, times = window.log.channel("q").copy(), window.log.channel("tip").copy(), window.log.times.copy()
+    pose = window.skeleton.q.copy()
+    for name in ("tip_trail", "past_trails"):
+        box = window.checkboxes[name]
+        assert box.focusPolicy() == Qt.FocusPolicy.NoFocus  # Space must never toggle a box
+        box.setChecked(True)
+        box.setChecked(False)
+        box.setChecked(True)
+    assert len(window.canvas.trails) == 1  # tip trail on, no history yet
+    assert np.array_equal(window.log.channel("q"), q)
+    assert np.array_equal(window.log.channel("tip"), tip)
+    assert np.array_equal(window.log.times, times)
+    assert np.array_equal(window.skeleton.q, pose)
+    assert window.state == "recording"
+    window.checkboxes["tip_trail"].setChecked(False)
+    assert window.canvas.trails == []
+
+
+def test_each_take_records_its_overlay_settings_and_visible_sources(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Every saved log states the overlay settings, the color policy, and which saved takes were shown."""
+    window = _window(tmp_path, show_past_trails=True)
+    _recorded_take(window)
+    assert window.save_and_next()
+    first = StateLog.load(tmp_path / "take_001.sklog.npz").extra["display"]
+    assert first["show_past_trails"] is True
+    assert first["past_trails_shown_during_take"] is True
+    assert first["history_takes"] == []
+    assert first["visible_source_takes"] == []
+    assert first["visible_source_files"] == []
+    assert {"current_color", "current_alpha", "current_width_px", "past_color", "past_alpha", "past_width_px"} <= set(
+        first["policy"]
+    )
+
+    _recorded_take(window)
+    assert window.save_and_next()
+    second = StateLog.load(tmp_path / "take_002.sklog.npz").extra["display"]
+    assert second["history_takes"] == [1]
+    assert second["visible_source_takes"] == [1]
+    assert second["visible_source_files"] == ["take_001.sklog.npz"]
+
+    window.checkboxes["past_trails"].setChecked(False)  # hidden for the whole third take
+    _recorded_take(window)
+    assert window.save_and_next()
+    third = StateLog.load(tmp_path / "take_003.sklog.npz").extra["display"]
+    assert third["show_past_trails"] is False
+    assert third["past_trails_shown_during_take"] is False
+    assert third["history_takes"] == [1, 2]
+    assert third["visible_source_takes"] == []
+
+
+def test_fresh_session_starts_without_history(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Files already on disk only advance the numbering; they are never shown as past trails."""
+    (tmp_path / "take_002.sklog.npz").write_bytes(b"practice")
+    window = _window(tmp_path, show_past_trails=True, show_tip_trail=True)
+    assert window.take_number == 3  # noqa: PLR2004
+    assert window.saved_trails() == ()
+    assert window.canvas.trails == []
+
+
+def test_trails_are_drawn_and_can_be_hidden(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Showing the trail changes the rendered pixels; hiding it restores the plain arm."""
+    window = _window(tmp_path)
+    window.resize(640, 480)
+    window.show()
+    _recorded_take(window, ticks=40)
+    plain = window.canvas.grab().toImage()
+    window.checkboxes["tip_trail"].setChecked(True)
+    with_trail = window.canvas.grab().toImage()
+    window.checkboxes["tip_trail"].setChecked(False)
+    hidden_again = window.canvas.grab().toImage()
+    assert with_trail != plain
+    assert hidden_again == plain

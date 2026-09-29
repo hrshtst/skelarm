@@ -295,3 +295,29 @@ def test_left_drag_solves_ik(qapp) -> None:  # noqa: ANN001, ARG001
 
     tip = canvas.skeleton.links[-1]
     assert np.array([tip.xe, tip.ye]) == pytest.approx(np.array(target), abs=1e-3)
+
+
+def test_trail_overlays_are_drawn_solid_and_toggleable(qapp) -> None:  # noqa: ANN001, ARG001
+    """Trail overlays change the rendered pixels, hide with ``show_trails``, and need two points to draw."""
+    from PyQt6.QtGui import QColor
+
+    from skelarm.canvas import SkelarmCanvas, TrailOverlay
+
+    skeleton = Skeleton(
+        [
+            LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+            LinkProp(length=0.8, m=0.8, i=0.05, rgx=0.4, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+        ]
+    )
+    canvas = SkelarmCanvas(skeleton)
+    canvas.resize(400, 300)
+    canvas.show()
+    plain = canvas.grab().toImage()
+    points = np.array([[0.0, 0.0], [0.5, 0.5], [1.0, 0.2]])
+    canvas.trails = [TrailOverlay(points, QColor(200, 30, 120, 230), 2.0)]
+    assert canvas.grab().toImage() != plain
+    canvas.show_trails = False
+    assert canvas.grab().toImage() == plain
+    canvas.show_trails = True
+    canvas.trails = [TrailOverlay(points[:1], QColor(200, 30, 120, 230), 2.0)]  # a lone point is not a path
+    assert canvas.grab().toImage() == plain

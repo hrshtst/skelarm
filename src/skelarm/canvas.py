@@ -8,10 +8,11 @@ from __future__ import annotations
 import functools
 import itertools
 import math
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QPointF, QSignalBlocker, Qt, pyqtSignal
-from PyQt6.QtGui import QBrush, QColor, QMouseEvent, QPainter, QPaintEvent, QPen
+from PyQt6.QtGui import QBrush, QColor, QMouseEvent, QPainter, QPaintEvent, QPen, QPolygonF
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -107,6 +108,25 @@ def _fit_scale(reach: float, width: int, height: int) -> float:
     return half / reach
 
 
+@dataclass(frozen=True, eq=False)
+class TrailOverlay:
+    """A solid world-space polyline drawn over the arm (e.g. a recorded tip path).
+
+    Parameters
+    ----------
+    points : NDArray[np.float64]
+        Vertices of shape ``(n, 2)`` in meters; fewer than two draw nothing.
+    color : QColor
+        Line color; its alpha channel sets the transparency (faint trails use a low alpha).
+    width_px : float, optional
+        Line width in pixels.
+    """
+
+    points: NDArray[np.float64]
+    color: QColor
+    width_px: float = 2.0
+
+
 class SkelarmCanvas(QWidget):
     """A widget to draw the robot arm skeleton."""
 
@@ -146,6 +166,10 @@ class SkelarmCanvas(QWidget):
         self.show_overlay_path = True
         self.overlay_targets: list[tuple[NDArray[np.float64], QColor, float | None, bool]] = []
         self.show_overlay_targets = True
+        # Solid trail overlays (e.g. recorded tip paths), drawn in list order beneath the
+        # reference path and the target markers; toggleable as a group.
+        self.trails: list[TrailOverlay] = []
+        self.show_trails = True
         # Set background color to white
         self.setAutoFillBackground(True)
         p = self.palette()
@@ -282,8 +306,25 @@ class SkelarmCanvas(QWidget):
         for start, end in itertools.pairwise(screen):
             painter.drawLine(start, end)
 
+    def _draw_trail(self, painter: QPainter, trail: TrailOverlay, cx: float, cy: float) -> None:
+        """Draw one trail overlay as a solid polyline in its own color, alpha, and width."""
+        if len(trail.points) < 2:  # noqa: PLR2004 — need at least a segment to draw
+            return
+        pen = QPen(trail.color)
+        pen.setStyle(Qt.PenStyle.SolidLine)
+        pen.setWidthF(trail.width_px)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.setBrush(QBrush())
+        screen = [self._world_to_screen(float(p[0]), float(p[1]), cx, cy) for p in trail.points]
+        painter.drawPolyline(QPolygonF(screen))
+
     def _draw_task_overlays(self, painter: QPainter, cx: float, cy: float) -> None:
-        """Draw the optional reference path and task target markers (each toggleable)."""
+        """Draw the trail overlays, the optional reference path, and the task target markers (each toggleable)."""
+        if self.show_trails:
+            for trail in self.trails:
+                self._draw_trail(painter, trail, cx, cy)
         if self.overlay_path is not None and self.show_overlay_path:
             self._draw_path(painter, self.overlay_path, cx, cy, self.overlay_path_color)
         if self.show_overlay_targets:
