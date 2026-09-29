@@ -5,15 +5,66 @@ Author a joint trajectory by demonstration, then have a controller track it.
 ## Teach by demonstration
 
 Grab the robot's tip with the left mouse button and drag it to teach a motion,
-recorded to a `*.sklog.npz` log. Recording starts on the first grab and stops at
-the max duration (or the **Finish** button, shortcut `F`), sampling at the
-configured rate; `--plot` shows a plot of the recorded motion afterward:
+recorded to a `*.sklog.npz` log. Press **Space** to start a take from the reset
+posture, guide the tip, then press **S** to save (or **Shift+S** to save and
+prepare the next take); `--plot` shows a plot of the last visible take after the
+window closes:
 
 ```bash
 uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml                 # ik mode (default)
 uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --mode dynamics  # force + forward dynamics
-uv run python tools/player.py teach.sklog.npz                                            # replay the recording
+uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --output reach.sklog.npz --multi-take
+uv run python tools/player.py reach_001.sklog.npz                                        # replay a take
 ```
+
+### Controls
+
+| Key | Action | Result |
+| --- | --- | --- |
+| Space | Start | Start a take from the ready (reset) posture; the reset state is logged at `t = 0` and the still pre-roll is recorded until you move. A repeated or held Space changes nothing. |
+| S | Save | Stop and save the take, keeping it visible; no reset. |
+| Shift+S | Save and next take | Save, then reset posture, velocity, drag state, log, and clock, and wait for Space. An already-saved take is not written again. |
+| R | Reset | Discard an *unsaved* take (no file, no take number consumed); a saved take keeps its file. Reset and wait for Space. **S then R** equals **Shift+S**. |
+| Q | Close | Warn when unsaved samples exist: *Save and close* / *Discard and close* / *Cancel* (default; dismissing the dialog cancels). Empty or saved takes close silently, writing nothing. |
+
+Each key has a matching button with the shortcut in its label; the shortcuts
+work with the focus on the drawing canvas and never auto-repeat. There is no
+Finish action any more: a `--duration` cap stops **and saves** the take but
+leaves the window open, and `--start-on-grab` restores the legacy start on the
+first grab. Saving never opens a dialog or a plot.
+
+### Outputs
+
+`--output` names one exact file; a second take of the same session is then
+refused rather than overwriting it. A name without the `.npz` suffix gets it
+appended, as NumPy would, so the file that is checked is the file that is
+written. With `--multi-take` the name is the base of
+numbered takes (`reach.sklog.npz` → `reach_001.sklog.npz`, `reach_002.sklog.npz`,
+…); numbering continues after any file of that base already present. An existing
+file is never overwritten: the save is refused, reported in the status area and
+on the terminal, and the take stays for a retry. Each take is written to a
+temporary file beside its target and published only once complete, by a hard
+link that refuses an existing file, so a failed write leaves nothing behind; a
+file system without hard links refuses the save and keeps the take for a retry
+elsewhere. A take holding nothing beyond the `t = 0` frame is
+never written and consumes no number. File names enumerate
+attempts; whether a take qualifies for an experiment is decided offline.
+
+### Acquisition clock
+
+The recorder runs one timer tick per sample period, so `--sample-rate` must give
+a whole number of milliseconds (100, 50, 25, 20, 10 Hz, …). Every tick performs
+exactly one pose update (one IK solve toward the current cursor, or the dynamics
+substeps) and records exactly one sample. The sample's `time` is the actual
+elapsed time since the take started, read from the wall clock when the tick's
+pose update begins, so a late timer tick shows up as a longer interval rather
+than being hidden; the nominal tick clock `k × period` is kept beside it as the
+`nominal_time` channel. No sample is ever duplicated or invented, and the time
+spent in the unsaved-take warning is excluded from both clocks. The realized tick
+spacing of each take (mean, maximum, and the count of ticks slower than 1.5 × the
+period) is also summarized under `[extra.acquisition]` in the log, so the achieved
+rate can be verified after a session. The display repaints at most every 20 ms,
+independently of sampling.
 
 <video controls loop muted playsinline width="640" src="../../assets/teach_mouse.mp4"></video>
 
@@ -29,9 +80,11 @@ Two modes turn the task-space teaching into joint angles:
   `--no-joint-limits` to drop the dynamics hard stop).
 
 `--sample-rate` and `--duration` configure the logger (a `--duration` of `0` or
-less drops the time cap and records until **Finish** / close); `--initial` / `--pose`
-set the start pose, and an optional `[task]` in the config draws a target. The
-log records the per-joint angles and the tip path.
+less drops the time cap and records until you save); `--initial` / `--pose`
+set the start pose, which is also the reset posture of every take, and an
+optional `[task]` in the config draws a target. The log records the per-joint
+angles and the tip path (plus `dq`, the tip force, and the friction in
+`dynamics` mode).
 
 ## Track the recording
 

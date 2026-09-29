@@ -31,7 +31,7 @@ def bind_quit_key(window: QWidget) -> QShortcut:
     """Bind ``Q`` to close ``window``, returning the created shortcut.
 
     Closing goes through the normal ``close()`` path, so ``closeEvent``
-    handlers (e.g. the trajectory recorder's save-on-close) still run.
+    handlers (e.g. the trajectory recorder's unsaved-take warning) still run.
     """
     shortcut = QShortcut(QKeySequence("Q"), window)
     shortcut.activated.connect(window.close)

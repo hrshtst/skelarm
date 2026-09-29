@@ -4,42 +4,94 @@
 """
 Interactive joint-trajectory recorder for skelarm.
 
-Teach a motion by grabbing the robot's tip with the mouse and dragging it; the
-recorded joint trajectory (and tip path) is saved as a ``.sklog.npz`` state log that
-replays with ``tools/player.py``. The user teaches in task space ``(x, y)``; two
-modes turn that into per-joint angles:
+Teach a motion by grabbing the robot's tip with the mouse and dragging it; each take is
+saved as a ``.sklog.npz`` state log that replays with ``tools/player.py``. The user teaches
+in task space ``(x, y)``; two modes turn that into per-joint angles:
 
-  - ``ik``       : solve inverse kinematics each refresh so the tip tracks the cursor.
+  - ``ik``       : solve inverse kinematics each tick so the tip tracks the cursor.
   - ``dynamics`` : apply a spring force at the tip and integrate forward dynamics
                    (with viscous friction), like ``tools/dynamics_simulator.py``.
 
-Recording starts when you first grab the tip (``t=0``) and stops at the max duration,
-the **Finish** button, or window close; a zero or negative ``--duration`` drops the
-cap and records until **Finish** / close. The logger samples at the configured rate,
-independent of the GUI/sim update rate. An optional ``[task]`` target is drawn, and
-``--plot`` shows a plot of the recorded motion afterward.
+Controls are window-wide keyboard shortcuts mirrored by buttons:
+
+  - **Space** starts a take from the ready (reset) posture: the reset state is logged at
+    ``t = 0`` and the stationary pre-roll is recorded until you move the tip. Pressing
+    Space again (or holding it) during a take changes nothing. ``--start-on-grab``
+    restores the legacy behavior of starting on the first grab instead.
+  - **S** saves the take and keeps it visible: recording stops, nothing is reset.
+  - **Shift+S** saves and prepares the next take: after a successful save the posture,
+    velocity, drag state, log, and clock are reset and recording waits for Space. An
+    already-saved take is not written again.
+  - **R** resets: an *unsaved* take is discarded (its samples are dropped, no file is
+    written, no take number is consumed); a saved take keeps its file. Either way the
+    arm returns to the reset posture at rest with a fresh log, waiting for Space.
+    **S then R** is the same as **Shift+S**: both go through the one save and the one
+    reset operation.
+  - **Q** (and the window's close button) closes; when unsaved samples exist a modal
+    warning offers *Save and close*, *Discard and close*, and *Cancel* (the default;
+    dismissing the dialog also cancels). Sampling pauses while the warning is open and
+    Cancel resumes the take exactly where it was. An empty or already-saved take closes
+    without a warning and without writing another file.
+
+Acquisition clock: the recorder runs one timer tick per sample period, so
+``--sample-rate`` must give a whole number of milliseconds (100, 50, 25, 20, 10 Hz, ...).
+Every tick performs exactly one pose update (one IK solve toward the current cursor, or
+the dynamics substeps) and records exactly one sample. The sample's ``time`` is the
+actual elapsed time since the take started, read from the wall clock when the tick's
+pose update begins, so a late timer tick shows up as a longer interval instead of being
+hidden; the nominal tick clock ``k * period`` is kept beside it as the ``nominal_time``
+channel. No sample is ever duplicated or invented, and the time spent in the
+unsaved-take warning is excluded from both clocks. The realized tick spacing (mean,
+maximum, late-tick count) is also summarized in the log's ``[extra.acquisition]``
+table. The display repaints at most every 20 ms, independently of sampling.
+
+Outputs: ``--output`` names one exact file (the second take of a session is then refused
+rather than overwriting it); a name without the ``.npz`` suffix gets it appended, as
+NumPy would, so the file that is checked is the file that is written. With
+``--multi-take`` the name is the base of numbered files, ``reach.sklog.npz`` ->
+``reach_001.sklog.npz``, ``reach_002.sklog.npz``, ...; numbering continues after any file
+of that base already present, and an existing file is never overwritten: the save is
+refused, reported, and the take stays for a retry. Each take is written to a temporary
+file beside its target and published only once complete, by a hard link that refuses an
+existing file; a failed write leaves nothing behind, and a file system without hard
+links refuses the save and keeps the take. A take with no samples beyond ``t = 0`` is never written and consumes
+no number. Saving opens no dialog and no plot; ``--plot`` plots the last visible take
+after the window closes.
 
 Usage::
 
     uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml
     uv run python tools/trajectory_recorder.py robot.toml --mode dynamics --sample-rate 100
-    uv run python tools/trajectory_recorder.py robot.toml --duration 15 --output run.sklog.npz
+    uv run python tools/trajectory_recorder.py robot.toml --output reach.sklog.npz --multi-take
     uv run python tools/trajectory_recorder.py robot.toml --duration 0 --plot   # no cap; plot afterward
-    uv run python tools/player.py teach.sklog.npz   # replay the recorded trajectory
+    uv run python tools/player.py reach_001.sklog.npz   # replay a recorded take
 """
 
 from __future__ import annotations
 
 import argparse
+import os
+import re
 import sys
+import time as wall_clock
 import tomllib
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
-from PyQt6.QtCore import QTimer
-from PyQt6.QtGui import QCloseEvent, QColor, QKeySequence
-from PyQt6.QtWidgets import QApplication, QHBoxLayout, QLabel, QMainWindow, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QCloseEvent, QColor, QKeySequence, QShortcut
+from PyQt6.QtWidgets import (
+    QApplication,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from skelarm import (
     Skeleton,
@@ -54,26 +106,162 @@ from skelarm import (
 from skelarm.simulator import SimulatorCanvas
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from numpy.typing import NDArray
 
-_TIMER_MS = 20  # GUI refresh / update period (ms)
+_DISPLAY_MS = 20  # repaint period (ms); sampling follows the tick, not the display
 _PANEL_WIDTH_PX = 300  # fixed side-panel width so its content can't resize it
-_SUBSTEPS = 4  # dynamics-mode physics substeps per refresh tick
+_SUBSTEPS = 4  # dynamics-mode physics substeps per tick
 _DRAG_STIFFNESS = 30.0  # N/m for the mouse drag (dynamics mode)
 _FRICTION = 0.2  # joint viscous friction (dynamics mode; "some by default")
-_SAMPLE_RATE = 50.0  # logger sampling rate (Hz)
+_SAMPLE_RATE = 50.0  # logger sampling rate (Hz); one timer tick per sample
 _DURATION = 10.0  # max recording duration (s); zero or negative means no cap
+_LATE_TICK_FACTOR = 1.5  # a wall-clock tick slower than this multiple of the period counts as late
+_LOG_SUFFIX = ".sklog.npz"
+_MIN_SAMPLES = 2  # a take holding only the t = 0 frame is empty
+_TICK_TOLERANCE_MS = 1e-9
+
+
+class CloseChoice(Enum):
+    """The answer to the unsaved-take warning shown when closing."""
+
+    CANCEL = "cancel"
+    SAVE = "save"
+    DISCARD = "discard"
+
+
+def _split_log_name(output: Path) -> tuple[str, str]:
+    """Split ``reach.sklog.npz`` into ``("reach", ".sklog.npz")`` (other suffixes keep theirs)."""
+    name = output.name
+    if name.endswith(_LOG_SUFFIX):
+        return name[: -len(_LOG_SUFFIX)], _LOG_SUFFIX
+    return output.stem, output.suffix
+
+
+def normalized_output(output: Path) -> Path:
+    """Return the file NumPy will actually write for ``output``: ``.npz`` is appended unless already present."""
+    return output if output.suffix == ".npz" else output.with_name(output.name + ".npz")
+
+
+def numbered_output(output: Path, number: int) -> Path:
+    """Return the numbered take file for ``output`` used as a base, e.g. ``reach_001.sklog.npz``."""
+    base, suffix = _split_log_name(output)
+    return output.with_name(f"{base}_{number:03d}{suffix}")
+
+
+def _highest_existing_take(output: Path) -> int:
+    """Return the highest take number already present beside ``output`` (0 when there is none)."""
+    base, suffix = _split_log_name(output)
+    pattern = re.compile(rf"^{re.escape(base)}_(\d+){re.escape(suffix)}$")
+    highest = 0
+    for candidate in output.parent.glob(f"{base}_*{suffix}"):
+        match = pattern.match(candidate.name)
+        if match is not None:
+            highest = max(highest, int(match.group(1)))
+    return highest
+
+
+def tick_period_ms(sample_rate: float) -> int:
+    """Return the timer period for ``sample_rate`` in whole milliseconds.
+
+    Raises
+    ------
+    ValueError
+        If the rate is not positive or its period is not a whole number of milliseconds.
+    """
+    if sample_rate <= 0:
+        msg = f"sample rate must be positive, got {sample_rate:g}"
+        raise ValueError(msg)
+    period_ms = 1000.0 / sample_rate
+    rounded = round(period_ms)
+    if rounded < 1 or abs(period_ms - rounded) > _TICK_TOLERANCE_MS:
+        msg = (
+            f"sample rate {sample_rate:g} Hz gives a {period_ms:.4g} ms period; the timer tick must be a "
+            "whole number of milliseconds (for example 100, 50, 25, 20, or 10 Hz)"
+        )
+        raise ValueError(msg)
+    return int(rounded)
+
+
+class _TickTiming:
+    """Realized wall-clock spacing of the recorded ticks of one take."""
+
+    def __init__(self, period_s: float) -> None:
+        self._period_s = period_s
+        self.count = 0
+        self.total_s = 0.0
+        self.max_s = 0.0
+        self.late = 0
+        self._last: float | None = None
+
+    def start(self, now: float) -> None:
+        """Begin a take at wall-clock reading ``now``: the next tick is measured against it."""
+        self.count = 0
+        self.total_s = 0.0
+        self.max_s = 0.0
+        self.late = 0
+        self._last = now
+
+    def resume(self, now: float) -> None:
+        """Continue after a pause: the next tick is measured against ``now``, not across the pause."""
+        self._last = now
+
+    def mark(self, now: float) -> None:
+        """Account one recorded tick at wall-clock reading ``now``."""
+        if self._last is not None:
+            elapsed = now - self._last
+            self.count += 1
+            self.total_s += elapsed
+            self.max_s = max(self.max_s, elapsed)
+            if elapsed > _LATE_TICK_FACTOR * self._period_s:
+                self.late += 1
+        self._last = now
+
+    def as_meta(self) -> dict[str, float | int]:
+        """Return the statistics as plain TOML-friendly values."""
+        mean = self.total_s / self.count if self.count else 0.0
+        return {
+            "ticks": self.count,
+            "wall_mean_tick_s": mean,
+            "wall_max_tick_s": self.max_s,
+            "late_ticks": self.late,
+            "late_tick_factor": _LATE_TICK_FACTOR,
+        }
 
 
 class RecorderWindow(QMainWindow):
-    """Teach and record a joint trajectory by dragging the robot's tip.
+    """Teach and record joint-trajectory takes by dragging the robot's tip.
 
-    Recording auto-starts on the first grab and samples at ``sample_rate`` Hz until
-    ``duration`` seconds elapse, the **Finish** button is pressed, or the window is
-    closed; a zero or negative ``duration`` removes the time cap. In ``ik`` mode the
-    tip tracks the cursor via inverse kinematics each refresh; in ``dynamics`` mode
-    the drag applies a tip force integrated under forward dynamics with viscous
-    friction.
+    The window is a small state machine: ``ready`` (at the reset posture, waiting for
+    Space), ``recording`` (one sample per timer tick), and ``stopped`` (a take is
+    visible, saved or not). :meth:`save_take` and :meth:`reset_take` are the only save
+    and reset operations; Shift+S, the duration cap, and *Save and close* reuse them.
+
+    Parameters
+    ----------
+    skeleton : Skeleton
+        The arm to teach; its posture at construction is the reset posture.
+    mode : {"ik", "dynamics"}, optional
+        How the cursor drives the joints.
+    sample_rate : float, optional
+        Samples per second; its period must be a whole number of milliseconds.
+    duration : float, optional
+        Recording cap in seconds; zero or negative removes the cap.
+    output : str or Path, optional
+        Exact output file, or the base of numbered files with ``multi_take``.
+    multi_take : bool, optional
+        Number the outputs (``base_001.sklog.npz``, ...) instead of using ``output`` as is.
+    start_on_grab : bool, optional
+        Start recording on the first grab instead of on Space / the Start button.
+    unsaved_prompt : callable, optional
+        Replaces the modal unsaved-take warning (tests inject a stub); it must return
+        a :class:`CloseChoice`.
+    run_timer : bool, optional
+        Drive :meth:`tick` from a live timer (tests drive it by hand).
+    clock : callable, optional
+        Monotonic wall-clock reading in seconds (``time.perf_counter`` by default;
+        tests inject a fake one).
     """
 
     def __init__(
@@ -84,24 +272,39 @@ class RecorderWindow(QMainWindow):
         sample_rate: float = _SAMPLE_RATE,
         duration: float = _DURATION,
         output: str | Path = "teach.sklog.npz",
+        multi_take: bool = False,
+        start_on_grab: bool = False,
         method: str = "lm_sugihara",
         stiffness: float = _DRAG_STIFFNESS,
         friction: float = _FRICTION,
         task: Task | None = None,
         show_com: bool = False,
         enforce_limits: bool = True,
+        unsaved_prompt: Callable[[], CloseChoice] | None = None,
+        run_timer: bool = True,
+        clock: Callable[[], float] = wall_clock.perf_counter,
     ) -> None:
         """Build the recorder window."""
         super().__init__()
         self.skeleton = skeleton
         self._mode = mode
-        self._sample_dt = 1.0 / sample_rate
-        self._duration = duration if duration > 0 else None  # None: record until Finish / close
-        self._output = Path(output)
+        self.tick_ms = tick_period_ms(sample_rate)
+        self._tick_dt = self.tick_ms / 1000.0
+        self._display_every = max(1, round(_DISPLAY_MS / self.tick_ms))
+        self._duration = duration if duration > 0 else None  # None: record until saved
+        self._output = normalized_output(Path(output))
+        if self._output != Path(output):
+            print(f"output resolved to {self._output} (NumPy appends .npz)")
+        self._multi_take = multi_take
+        self._start_on_grab = start_on_grab
         self._method = method
         self._stiffness = stiffness
         self._friction = friction
         self._task = task
+        self._unsaved_prompt: Callable[[], CloseChoice] = unsaved_prompt or self._ask_unsaved
+        self._run_timer = run_timer
+        self._clock = clock
+        self._t0 = 0.0  # wall-clock reading at the start of the take (shifted past dialog pauses)
         # When limits are not enforced in the dynamics, the hard stop is disabled and
         # joint limits apply only to the kinematic (IK) path, which always clamps.
         self._lower = (
@@ -110,17 +313,23 @@ class RecorderWindow(QMainWindow):
         self._upper = (
             np.array([link.prop.qmax for link in skeleton.links[1:]], dtype=np.float64) if enforce_limits else None
         )
+        self._reset_q = skeleton.q.copy()
 
-        self.time = 0.0
-        self._recording = False
-        self._finished = False
+        self._state = "ready"
         self._saved = False
-        self._next_sample = 0.0
+        self._closed = False
+        self._takes_saved = 0
+        self._take_number = _highest_existing_take(self._output) + 1 if multi_take else 1
+        self._last_saved_path: Path | None = None
+        self.time = 0.0
+        self._ticks = 0
         self.log = self._new_log()
+        self._timing = _TickTiming(self._tick_dt)
 
         self.canvas = SimulatorCanvas(skeleton)
         self.canvas.show_com = show_com
         self.canvas.show_drag_arrow = mode == "dynamics"  # no force cue for the kinematic IK drag
+        self.canvas.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         reach = sum(link.prop.length for link in skeleton.links)
         self.canvas.grab_radius = max(0.12 * reach, 0.05)  # grab near the tip
         if task is not None and task.target is not None:
@@ -131,6 +340,7 @@ class RecorderWindow(QMainWindow):
         self.setWindowTitle("Skelarm Trajectory Recorder")
         self.resize(1024, 768)
         self.quit_shortcut = bind_quit_key(self)
+        self.quit_shortcut.setAutoRepeat(False)
         central = QWidget()
         self.setCentralWidget(central)
         layout = QHBoxLayout(central)
@@ -140,35 +350,102 @@ class RecorderWindow(QMainWindow):
         panel.setFixedWidth(_PANEL_WIDTH_PX)  # keep a constant width regardless of the status text
         controls = QVBoxLayout(panel)
         self.controls_panel = panel  # exposed for sizing (fixed width) and tests
-        controls.addWidget(QLabel(f"<b>Trajectory recorder</b> — {mode} mode"))
-        hint = QLabel("Grab the tip (left-drag) to teach a motion. Recording starts on the first grab.")
+        controls.addWidget(QLabel(f"<b>Trajectory recorder</b> — {mode} mode, {sample_rate:g} Hz"))
+        hint = QLabel(
+            "Space starts a take from the reset posture (the still pre-roll is recorded). "
+            "Drag the tip (left-drag) to teach. S saves and keeps the take visible; "
+            "Shift+S saves and prepares the next take; R resets, discarding only an unsaved take; "
+            "Q closes."
+            if not start_on_grab
+            else "Recording starts on the first grab (--start-on-grab). Drag the tip (left-drag) to teach. "
+            "S saves; Shift+S saves and prepares the next take; R resets, discarding only an unsaved take; "
+            "Q closes."
+        )
         hint.setWordWrap(True)
         controls.addWidget(hint)
-        self.status_label = QLabel("waiting for the first grab…")
+        self.status_label = QLabel()
         self.status_label.setWordWrap(True)
         controls.addWidget(self.status_label)
-        self.finish_button = QPushButton("Finish")
-        self.finish_button.setIcon(make_icon("mdi6.check"))
-        self.finish_button.setShortcut(QKeySequence("F"))
-        self.finish_button.setToolTip("Finish (F)")
-        self.finish_button.clicked.connect(self._finish)
-        controls.addWidget(self.finish_button)
+
+        self.buttons: dict[str, QPushButton] = {}
+        self.shortcuts: dict[str, QShortcut] = {}
+        actions: tuple[tuple[str, str, str, str, Callable[[], object]], ...] = (
+            ("start", "Start", "Space", "mdi6.record-circle-outline", self.start),
+            ("save", "Save", "S", "mdi6.content-save", self.save_take),
+            ("save_next", "Save and next take", "Shift+S", "mdi6.content-save-move", self.save_and_next),
+            ("reset", "Reset", "R", "mdi6.restart", self.reset_take),
+        )
+        for name, label, key, icon, slot in actions:
+            button = QPushButton(f"{label} ({key})")
+            button.setIcon(make_icon(icon))
+            button.setToolTip(f"{label} ({key})")
+            # Buttons never take focus, so Space cannot be swallowed as a button click and
+            # every shortcut keeps working with the focus on the drawing canvas.
+            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            button.clicked.connect(slot)
+            controls.addWidget(button)
+            self.buttons[name] = button
+            shortcut = QShortcut(QKeySequence(key), self)
+            shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+            shortcut.setAutoRepeat(False)  # holding a key must not repeat the action
+            shortcut.activated.connect(slot)
+            self.shortcuts[name] = shortcut
         controls.addStretch()
         layout.addWidget(panel, stretch=1)
 
         self._timer = QTimer(self)
+        self._timer.setTimerType(Qt.TimerType.PreciseTimer)
         self._timer.timeout.connect(self.tick)
-        self._timer.start(_TIMER_MS)
+        if run_timer:
+            self._timer.start(self.tick_ms)
+        if multi_take and self._take_number > 1:
+            print(f"continuing after existing take {self._take_number - 1:03d}: next output is {self.output_path}")
+        self._refresh()
+
+    # ------------------------------------------------------------------ state ---
+
+    @property
+    def state(self) -> str:
+        """``"ready"``, ``"recording"``, or ``"stopped"`` (a take is visible, saved or not)."""
+        return self._state
 
     @property
     def saved(self) -> bool:
-        """Whether a recording was saved to the output path."""
+        """Whether the visible take has been saved."""
         return self._saved
 
     @property
-    def finished(self) -> bool:
-        """Whether recording has stopped (max duration, Finish, or close)."""
-        return self._finished
+    def closed(self) -> bool:
+        """Whether the window accepted a close."""
+        return self._closed
+
+    @property
+    def takes_saved(self) -> int:
+        """How many takes this session has written."""
+        return self._takes_saved
+
+    @property
+    def take_number(self) -> int:
+        """The number of the take being recorded, or of the next one once it is saved."""
+        return self._take_number
+
+    @property
+    def last_saved_path(self) -> Path | None:
+        """Where the most recent take was written, if any."""
+        return self._last_saved_path
+
+    @property
+    def output_path(self) -> Path:
+        """The file the next save would write."""
+        return numbered_output(self._output, self._take_number) if self._multi_take else self._output
+
+    def _take_is_empty(self) -> bool:
+        return self._state == "ready" or len(self.log) < _MIN_SAMPLES
+
+    def _has_unsaved_take(self) -> bool:
+        return not self._take_is_empty() and not self._saved
+
+    # -------------------------------------------------------------- recording ---
 
     def _new_log(self) -> StateLog:
         """Start a fresh state log with the channels for the active mode."""
@@ -176,6 +453,7 @@ class RecorderWindow(QMainWindow):
         channel_meta: dict[str, dict[str, object]] = {
             "q": {"unit": "rad", "label": "joint angle", "columns": joints},
             "tip": {"unit": "m", "label": "tip position", "columns": ["x", "y"]},
+            "nominal_time": {"unit": "s", "label": "nominal tick clock (tick index x period)"},
         }
         if self._mode == "dynamics":
             channel_meta["dq"] = {"unit": "rad/s", "label": "joint velocity", "columns": joints}
@@ -183,62 +461,71 @@ class RecorderWindow(QMainWindow):
             channel_meta["friction"] = {"unit": "N*m*s/rad", "label": "viscous friction"}
         return StateLog(self.skeleton, producer="trajectory_recorder", channel_meta=channel_meta)
 
-    def tick(self) -> None:
-        """Advance one refresh tick, sampling and rendering as needed."""
-        if self._finished:
+    def start(self) -> None:
+        """Start a take from the ready state: log the reset state at ``t = 0`` and keep sampling.
+
+        Ignored unless the recorder is ready, so a repeated or held Space never restarts
+        the clock or adds a take.
+        """
+        if self._state != "ready":
             return
-        if not self._recording:
-            if self.canvas.drag_point is None:
-                return  # idle until the first grab
-            self._begin()
+        now = self._clock()
+        self._state = "recording"
+        self._saved = False
+        self.time = 0.0
+        self._ticks = 0
+        self._t0 = now
+        self.log = self._new_log()
+        self._record(0.0, 0.0)
+        self._timing.start(now)
+        print(f"take {self._take_number:03d}: recording started")
+        self._refresh()
+
+    def tick(self) -> None:
+        """Advance one tick: one pose update, one sample, and a throttled repaint."""
+        if self._state != "recording":
+            if self._start_on_grab and self._state == "ready" and self.canvas.drag_point is not None:
+                self.start()
+            else:
+                return
+        now = self._clock()  # the sample's acquisition time: when this tick's pose update begins
+        self._timing.mark(now)
         if self._mode == "ik":
             self._step_ik()
         else:
             self._step_dynamics()
-        self._refresh()
-        if self._duration is not None and self.time >= self._duration:
-            self._finish()
-
-    def _begin(self) -> None:
-        """Start recording at the current pose (t = 0)."""
-        self._recording = True
-        self.time = 0.0
-        self.log = self._new_log()
-        self._record(0.0)
-        self._next_sample = self._sample_dt
+        self._ticks += 1
+        self.time = now - self._t0
+        self._record(self.time, self._ticks * self._tick_dt)
+        if self._ticks % self._display_every == 0:
+            self._refresh()
+        if self._duration is not None and self.time >= self._duration - _TICK_TOLERANCE_MS:
+            self._stop()
+            self.save_take()
 
     def _step_ik(self) -> None:
-        """Track the cursor with IK at the refresh rate, then sample."""
+        """One IK solve toward the current cursor (the pose update of this tick)."""
         target = self.canvas.drag_point
         if target is not None:
             compute_inverse_kinematics(
                 self.skeleton, np.asarray(target, dtype=np.float64), method=self._method, q0=self.skeleton.q
             )
-        self.time += _TIMER_MS / 1000.0
-        self._collect()
 
     def _step_dynamics(self) -> None:
-        """Integrate forward dynamics under the tip force, sampling each substep."""
-        dt = _TIMER_MS / 1000.0 / _SUBSTEPS
+        """Integrate forward dynamics under the tip force over this tick's substeps."""
+        dt = self._tick_dt / _SUBSTEPS
         for _ in range(_SUBSTEPS):
             tau = compute_jacobian(self.skeleton).T @ self.canvas.external_force(self._stiffness)
             tau = tau - self._friction * self.skeleton.dq
             integrate_with_limits(self.skeleton, tau, dt, self._lower, self._upper)
-            self.time += dt
-            self._collect()
 
-    def _collect(self) -> None:
-        """Record a frame for each sample boundary reached since the last one."""
-        while self._next_sample <= self.time + 1e-9:
-            self._record(self._next_sample)
-            self._next_sample += self._sample_dt
-
-    def _record(self, t: float) -> None:
-        """Append one frame at time ``t``: joint angles, tip, and (dynamics) dq / force."""
+    def _record(self, t: float, nominal: float) -> None:
+        """Append one frame at elapsed time ``t`` (nominal tick time ``nominal``): joint angles, tip, and more."""
         tip = self.skeleton.links[-1]
         channels: dict[str, NDArray[np.float64]] = {
             "q": self.skeleton.q,
             "tip": np.array([tip.xe, tip.ye], dtype=np.float64),
+            "nominal_time": np.asarray(nominal, dtype=np.float64),
         }
         if self._mode == "dynamics":
             channels["dq"] = self.skeleton.dq
@@ -246,32 +533,204 @@ class RecorderWindow(QMainWindow):
             channels["friction"] = np.asarray(self._friction, dtype=np.float64)
         self.log.record(t, **channels)
 
-    def _refresh(self) -> None:
-        """Repaint the arm and update the status readout."""
-        self.canvas.update_skeleton()
-        cap = "" if self._duration is None else f" / {self._duration:.1f}"
-        self.status_label.setText(f"recording…  t = {self.time:.2f}{cap} s,  {len(self.log)} samples")
+    def _stop(self) -> None:
+        """Stop sampling; the take stays visible."""
+        if self._state == "recording":
+            self._state = "stopped"
+            self._refresh()
 
-    def _stop_and_save(self) -> None:
-        """Stop recording and save the log (idempotent)."""
-        if self._finished:
-            return
-        self._finished = True
-        self._timer.stop()
-        if self._recording and len(self.log) > 1:
-            self.log.save(self._output)
-            self._saved = True
-            print(f"wrote {len(self.log)} samples to {self._output}")
+    def _acquisition_meta(self) -> dict[str, object]:
+        """Describe the acquisition clock and the realized tick timing of this take."""
+        return {
+            "clock": "wall-clock",
+            "time_channel": "seconds since the take started, read when each tick's pose update begins; "
+            "dialog pauses excluded",
+            "nominal_time_channel": "tick index x tick_period_s",
+            "mode": self._mode,
+            "tick_period_s": self._tick_dt,
+            "sample_period_s": self._tick_dt,
+            "pose_updates_per_sample": 1,
+            "display_period_s": self._display_every * self._tick_dt,
+            **self._timing.as_meta(),
+        }
 
-    def _finish(self) -> None:
-        """Finish recording (Finish button / max duration) and close the window."""
-        self._stop_and_save()
-        self.close()
+    # ------------------------------------------------------- save and reset ---
+
+    def save_take(self) -> bool:
+        """Stop and save the visible take, keeping it visible; the one save operation.
+
+        Returns ``True`` when the take is saved afterwards (also when it already was),
+        ``False`` when there is nothing to save or the write failed. A failed write, a
+        file already present under the output name included, leaves the take unsaved
+        and intact for a retry and never touches the existing bytes.
+        """
+        if self._take_is_empty():
+            self._set_status("nothing to save: no take recorded (press Space to start one)")
+            return False
+        self._stop()
+        if self._saved:
+            self._set_status(f"take {self._take_number - 1:03d} is already saved to {self._last_saved_path}")
+            return True
+        path = self.output_path
+        if path.exists():
+            self._report_save_failure(f"not saved: {path} already exists (the take is kept; move that file, then save)")
+            return False
+        self.log.extra["acquisition"] = self._acquisition_meta()
+        try:
+            self._write_take(path)
+        except OSError as exc:
+            self._report_save_failure(f"not saved: {exc} (the take is kept for a retry)")
+            return False
+        self._saved = True
+        self._last_saved_path = path
+        self._takes_saved += 1
+        number = self._take_number
+        if self._multi_take:
+            self._take_number += 1
+        print(f"saved take {number:03d} ({len(self.log)} samples) to {path}")
+        self._refresh()
+        return True
+
+    def _write_take(self, path: Path) -> None:
+        """Write the log to ``path`` through a temporary file, publishing it only once complete.
+
+        The temporary lives beside the target and is hard-linked into place, which fails
+        atomically if ``path`` appeared meanwhile. A file system without hard links gets
+        no rename fallback (a rename could replace a file published in between): the
+        save is refused and the take kept. Any failure leaves neither ``path`` nor the
+        temporary behind.
+
+        Raises
+        ------
+        OSError
+            If writing or publishing fails (``FileExistsError`` when ``path`` exists).
+        """
+        temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}.npz")  # keep .npz so NumPy adds nothing
+        try:
+            self.log.save(temporary)
+            try:
+                os.link(temporary, path)
+            except FileExistsError:
+                raise
+            except OSError as exc:
+                msg = (
+                    f"cannot publish {path} atomically on this file system ({exc.strerror or exc}); "
+                    "save to a location that supports hard links"
+                )
+                raise OSError(msg) from exc
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    def save_and_next(self) -> bool:
+        """Save the take, then reset for the next one; the reset happens only after a save.
+
+        An empty take is not written and just resets; an already-saved take advances
+        without being written again. Returns whether the take was saved.
+        """
+        if self._take_is_empty():
+            self.reset_take()
+            return False
+        if not self.save_take():
+            return False
+        self.reset_take()
+        return True
+
+    def reset_take(self) -> None:
+        """Return to the reset posture at rest with a fresh log and clock; the one reset operation.
+
+        An unsaved take is discarded (no file, no take number consumed); a saved take keeps
+        its file. Pressing R while already ready changes nothing but the readout.
+        """
+        if self._has_unsaved_take():
+            print(f"discarded unsaved take {self._take_number:03d} ({len(self.log)} samples)")
+        self.skeleton.q = self._reset_q.copy()
+        self.skeleton.dq = np.zeros(self.skeleton.num_joints, dtype=np.float64)
+        self.canvas.drag_point = None
+        self.log = self._new_log()
+        self.time = 0.0
+        self._ticks = 0
+        self._state = "ready"
+        self._saved = False
+        self._refresh()
+
+    def _report_save_failure(self, message: str) -> None:
+        print(message, file=sys.stderr)
+        self._set_status(message)
+
+    # ----------------------------------------------------------------- close ---
+
+    def _ask_unsaved(self) -> CloseChoice:
+        """Show the modal unsaved-take warning; Cancel is the default and the escape answer."""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Unsaved take")
+        box.setText(f"Take {self._take_number:03d} has {len(self.log)} unsaved samples.")
+        save = box.addButton("Save and close", QMessageBox.ButtonRole.AcceptRole)
+        discard = box.addButton("Discard and close", QMessageBox.ButtonRole.DestructiveRole)
+        cancel = box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(cancel)
+        box.setEscapeButton(cancel)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is save:
+            return CloseChoice.SAVE
+        if clicked is discard:
+            return CloseChoice.DISCARD
+        return CloseChoice.CANCEL
 
     def closeEvent(self, a0: QCloseEvent | None) -> None:  # noqa: N802
-        """Save the recording when the window is closed."""
-        self._stop_and_save()
+        """Close, warning first when unsaved samples exist; never write a saved take again."""
+        if a0 is None:
+            return
+        if self._has_unsaved_take():
+            self._timer.stop()  # no sampling while the warning is open
+            pause_start = self._clock()
+            choice = self._unsaved_prompt()
+            if choice is CloseChoice.DISCARD:
+                print(f"discarded unsaved take {self._take_number:03d} ({len(self.log)} samples)")
+            elif choice is not CloseChoice.SAVE or not self.save_take():
+                self._resume_after_pause(pause_start)  # cancel: continue exactly where the take was
+                a0.ignore()
+                return
+        self._timer.stop()
+        self._closed = True
+        a0.accept()
         super().closeEvent(a0)
+
+    def _resume_after_pause(self, pause_start: float) -> None:
+        """Continue a take after a dialog: the pause enters neither the timestamps nor the tick statistics."""
+        now = self._clock()
+        if self._state == "recording":
+            self._t0 += now - pause_start
+            self._timing.resume(now)
+        if self._run_timer:
+            self._timer.start(self.tick_ms)
+
+    # --------------------------------------------------------------- display ---
+
+    def _refresh(self) -> None:
+        """Repaint the arm and update the status readout and button states."""
+        self.canvas.update_skeleton()
+        self._set_status(self._status_text())
+
+    def _set_status(self, text: str) -> None:
+        self.status_label.setText(text)
+        empty = self._take_is_empty()
+        self.buttons["start"].setEnabled(self._state == "ready")
+        self.buttons["save"].setEnabled(not empty and not self._saved)
+        self.buttons["save_next"].setEnabled(not empty)
+
+    def _status_text(self) -> str:
+        if self._state == "ready":
+            how = "grab the tip" if self._start_on_grab else "press Space"
+            return f"READY — take {self._take_number:03d} → {self.output_path.name}; {how} to start"
+        if self._state == "recording":
+            cap = "" if self._duration is None else f" / {self._duration:.1f}"
+            return f"RECORDING take {self._take_number:03d}  t = {self.time:.2f}{cap} s,  {len(self.log)} samples"
+        if self._saved:
+            number = self._take_number - 1 if self._multi_take else self._take_number
+            return f"SAVED take {number:03d} → {self._last_saved_path}"
+        return f"STOPPED (unsaved) take {self._take_number:03d}, {len(self.log)} samples — S saves, R discards"
 
     def show_plot(self) -> None:
         """Plot the taught tip path, final pose, and joint angles (blocking)."""
@@ -299,22 +758,49 @@ class RecorderWindow(QMainWindow):
         plt.show()
 
 
+def _sample_rate_argument(text: str) -> float:
+    """Parse ``--sample-rate``, rejecting rates whose period is not a whole number of milliseconds."""
+    rate = float(text)
+    try:
+        tick_period_ms(rate)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+    return rate
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the command-line argument parser for the tool."""
-    parser = argparse.ArgumentParser(description="Interactively teach and record a joint trajectory.")
+    parser = argparse.ArgumentParser(description="Interactively teach and record joint-trajectory takes.")
     parser.add_argument("config", type=Path, help="path to a robot TOML config (optional [initial] / [task])")
     parser.add_argument("--mode", choices=("ik", "dynamics"), default="ik", help="teaching mode (default: ik)")
     parser.add_argument(
-        "--output", type=Path, default=Path("teach.sklog.npz"), help="output .sklog.npz (default: teach.sklog.npz)"
+        "--output",
+        type=Path,
+        default=Path("teach.sklog.npz"),
+        help="output .sklog.npz, or the base of numbered files with --multi-take (default: teach.sklog.npz)",
     )
     parser.add_argument(
-        "--sample-rate", type=float, default=_SAMPLE_RATE, help="logger sampling rate in Hz (default: 50)"
+        "--multi-take",
+        action="store_true",
+        help="number the outputs (reach.sklog.npz -> reach_001.sklog.npz, ...) instead of using --output as is",
+    )
+    parser.add_argument(
+        "--start-on-grab",
+        action="store_true",
+        help="start recording on the first grab instead of on Space / Start",
+    )
+    parser.add_argument(
+        "--sample-rate",
+        type=_sample_rate_argument,
+        default=_SAMPLE_RATE,
+        help="logger sampling rate in Hz; one timer tick per sample, so the period must be whole ms (default: 50)",
     )
     parser.add_argument(
         "--duration",
         type=float,
         default=_DURATION,
-        help="max recording duration in seconds; zero or negative records until Finish / close (default: 10)",
+        help="max recording duration in seconds, reached takes stop and save but stay open; "
+        "zero or negative records until saved (default: 10)",
     )
     parser.add_argument("--method", default="lm_sugihara", help="IK solver method (ik mode; default: lm_sugihara)")
     parser.add_argument(
@@ -329,7 +815,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--task", type=Path, default=None, help="TOML file whose [task] target is drawn")
     parser.add_argument("--show-com", action="store_true", help="overlay each link's center of mass")
-    parser.add_argument("--plot", action="store_true", help="plot the recorded trajectory after recording")
+    parser.add_argument("--plot", action="store_true", help="plot the last visible take after the window closes")
     parser.add_argument(
         "--no-joint-limits",
         action="store_true",
@@ -386,7 +872,7 @@ def load_setup(args: argparse.Namespace) -> tuple[Skeleton, Task | None]:
 
 
 def main() -> None:
-    """Parse arguments, run the recorder, and plot the result when asked."""
+    """Parse arguments, run the recorder, and plot the last visible take when asked."""
     parser = build_parser()
     args = parser.parse_args()
     try:
@@ -401,6 +887,8 @@ def main() -> None:
         sample_rate=args.sample_rate,
         duration=args.duration,
         output=args.output,
+        multi_take=args.multi_take,
+        start_on_grab=args.start_on_grab,
         method=args.method,
         stiffness=args.stiffness,
         friction=args.friction,
@@ -409,6 +897,7 @@ def main() -> None:
         enforce_limits=not args.no_joint_limits,
     )
     window.show()
+    window.canvas.setFocus()
     app.exec()
 
     if window.saved and args.plot:
