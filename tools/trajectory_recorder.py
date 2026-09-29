@@ -33,19 +33,19 @@ Controls are window-wide keyboard shortcuts mirrored by buttons:
     Cancel resumes the take exactly where it was. An empty or already-saved take closes
     without a warning and without writing another file.
 
-Acquisition clock: the recorder runs one timer tick per sample period, so
-``--sample-rate`` must give a whole number of milliseconds (100, 50, 25, 20, 10 Hz, ...).
-Every tick performs exactly one pose update (one IK solve toward the current cursor, or
-the dynamics substeps) and records exactly one sample. Starting a take restarts the
-timer, so the first sample follows the ``t = 0`` frame by one full period (with
-``--start-on-grab`` the tick that sees the grab only logs ``t = 0``). The sample's ``time`` is the
-actual elapsed time since the take started, read from the wall clock when the tick's
-pose update begins, so a late timer tick shows up as a longer interval instead of being
-hidden; the nominal tick clock ``k * period`` is kept beside it as the ``nominal_time``
-channel. No sample is ever duplicated or invented, and the time spent in the
-unsaved-take warning is excluded from both clocks. The realized tick spacing (mean,
-maximum, late-tick count) is also summarized in the log's ``[extra.acquisition]``
-table. The display repaints at most every 20 ms, independently of sampling.
+Acquisition clock: ``--sample-rate`` is a best-effort request. The recorder runs one
+timer tick per sample period (rounded to whole milliseconds), and every tick performs
+one pose update (one IK solve toward the current cursor, or the dynamics substeps) and
+records one sample. The sample's ``time`` is the real elapsed time since the take
+started, so a late tick shows up as a longer interval and a replay follows the motion as
+it was performed, even when the requested rate is more than the machine can keep up
+with. Dynamics mode simulates that same elapsed time, in fixed substeps capped at a few
+periods after a stall. Starting a take restarts the timer, so the first sample follows
+the ``t = 0`` frame by one full period (with ``--start-on-grab`` the tick that sees the
+grab only logs ``t = 0``); the time spent in the unsaved-take warning is excluded. Each
+saved log records the requested and achieved rates under ``[extra.acquisition]``, and
+the save message prints them. The display repaints at most every 20 ms, independently
+of sampling.
 
 Trails: ``--show-tip-trail`` draws the current take's tip path from the logged (FK) tip
 samples, never the cursor path; ``--show-past-trails`` keeps the tip paths of the takes
@@ -135,15 +135,15 @@ if TYPE_CHECKING:
 
 _DISPLAY_MS = 20  # repaint period (ms); sampling follows the tick, not the display
 _PANEL_WIDTH_PX = 300  # fixed side-panel width so its content can't resize it
-_SUBSTEPS = 4  # dynamics-mode physics substeps per tick
+_SUBSTEPS = 4  # dynamics-mode physics substeps per sample period
+_MAX_CATCH_UP_PERIODS = 3  # after a stall, simulate at most this many periods in one tick
 _DRAG_STIFFNESS = 30.0  # N/m for the mouse drag (dynamics mode)
 _FRICTION = 0.2  # joint viscous friction (dynamics mode; "some by default")
-_SAMPLE_RATE = 50.0  # logger sampling rate (Hz); one timer tick per sample
+_SAMPLE_RATE = 50.0  # requested logger sampling rate (Hz), best effort; one timer tick per sample
 _DURATION = 10.0  # max recording duration (s); zero or negative means no cap
-_LATE_TICK_FACTOR = 1.5  # a wall-clock tick slower than this multiple of the period counts as late
 _LOG_SUFFIX = ".sklog.npz"
 _MIN_SAMPLES = 2  # a take holding only the t = 0 frame is empty
-_TICK_TOLERANCE_MS = 1e-9
+_TIME_TOLERANCE_S = 1e-9
 _CURRENT_TRAIL_COLOR = QColor(200, 30, 120, 230)  # magenta, clearly visible over the blue arm
 _CURRENT_TRAIL_WIDTH_PX = 2.0
 _PAST_TRAIL_COLOR = QColor(70, 90, 160, 55)  # faint, transparent slate blue behind the current take
@@ -216,71 +216,19 @@ def _publish_by_reservation(temporary: Path, path: Path) -> None:
 
 
 def tick_period_ms(sample_rate: float) -> int:
-    """Return the timer period for ``sample_rate`` in whole milliseconds.
+    """Return the timer period for ``sample_rate`` rounded to whole milliseconds (at least 1 ms).
+
+    The rate is a best-effort request: the achieved rate is whatever the machine sustains.
 
     Raises
     ------
     ValueError
-        If the rate is not positive or its period is not a whole number of milliseconds.
+        If the rate is not positive.
     """
     if sample_rate <= 0:
         msg = f"sample rate must be positive, got {sample_rate:g}"
         raise ValueError(msg)
-    period_ms = 1000.0 / sample_rate
-    rounded = round(period_ms)
-    if rounded < 1 or abs(period_ms - rounded) > _TICK_TOLERANCE_MS:
-        msg = (
-            f"sample rate {sample_rate:g} Hz gives a {period_ms:.4g} ms period; the timer tick must be a "
-            "whole number of milliseconds (for example 100, 50, 25, 20, or 10 Hz)"
-        )
-        raise ValueError(msg)
-    return int(rounded)
-
-
-class _TickTiming:
-    """Realized wall-clock spacing of the recorded ticks of one take."""
-
-    def __init__(self, period_s: float) -> None:
-        self._period_s = period_s
-        self.count = 0
-        self.total_s = 0.0
-        self.max_s = 0.0
-        self.late = 0
-        self._last: float | None = None
-
-    def start(self, now: float) -> None:
-        """Begin a take at wall-clock reading ``now``: the next tick is measured against it."""
-        self.count = 0
-        self.total_s = 0.0
-        self.max_s = 0.0
-        self.late = 0
-        self._last = now
-
-    def resume(self, now: float) -> None:
-        """Continue after a pause: the next tick is measured against ``now``, not across the pause."""
-        self._last = now
-
-    def mark(self, now: float) -> None:
-        """Account one recorded tick at wall-clock reading ``now``."""
-        if self._last is not None:
-            elapsed = now - self._last
-            self.count += 1
-            self.total_s += elapsed
-            self.max_s = max(self.max_s, elapsed)
-            if elapsed > _LATE_TICK_FACTOR * self._period_s:
-                self.late += 1
-        self._last = now
-
-    def as_meta(self) -> dict[str, float | int]:
-        """Return the statistics as plain TOML-friendly values."""
-        mean = self.total_s / self.count if self.count else 0.0
-        return {
-            "ticks": self.count,
-            "wall_mean_tick_s": mean,
-            "wall_max_tick_s": self.max_s,
-            "late_ticks": self.late,
-            "late_tick_factor": _LATE_TICK_FACTOR,
-        }
+    return max(1, round(1000.0 / sample_rate))
 
 
 class RecorderWindow(QMainWindow):
@@ -298,7 +246,7 @@ class RecorderWindow(QMainWindow):
     mode : {"ik", "dynamics"}, optional
         How the cursor drives the joints.
     sample_rate : float, optional
-        Samples per second; its period must be a whole number of milliseconds.
+        Requested samples per second, a best effort; the timer period is rounded to whole milliseconds.
     duration : float, optional
         Recording cap in seconds; zero or negative removes the cap.
     output : str or Path, optional
@@ -353,6 +301,7 @@ class RecorderWindow(QMainWindow):
         self.skeleton = skeleton
         self._mode = mode
         self.tick_ms = tick_period_ms(sample_rate)
+        self._sample_rate = sample_rate
         self._tick_dt = self.tick_ms / 1000.0
         self._display_every = max(1, round(_DISPLAY_MS / self.tick_ms))
         if past_trail_history not in _PAST_TRAIL_HISTORIES:
@@ -392,7 +341,6 @@ class RecorderWindow(QMainWindow):
         self.time = 0.0
         self._ticks = 0
         self.log = self._new_log()
-        self._timing = _TickTiming(self._tick_dt)
         self._history: list[SavedTrail] = []  # saved takes of this session only, in save order
         self._history_at_start: tuple[int, ...] = ()
         self._drawn_at_start: tuple[SavedTrail, ...] = ()  # the saved takes the overlay draws for this take
@@ -571,7 +519,6 @@ class RecorderWindow(QMainWindow):
         channel_meta: dict[str, dict[str, object]] = {
             "q": {"unit": "rad", "label": "joint angle", "columns": joints},
             "tip": {"unit": "m", "label": "tip position", "columns": ["x", "y"]},
-            "nominal_time": {"unit": "s", "label": "nominal tick clock (tick index x period)"},
         }
         if self._mode == "dynamics":
             channel_meta["dq"] = {"unit": "rad/s", "label": "joint velocity", "columns": joints}
@@ -594,8 +541,7 @@ class RecorderWindow(QMainWindow):
         self._ticks = 0
         self._t0 = now
         self.log = self._new_log()
-        self._record(0.0, 0.0)
-        self._timing.start(now)
+        self._record(0.0)
         if self._run_timer:
             self._timer.start(self.tick_ms)  # restart the period: the first sample follows t = 0 by a full period
         self._history_at_start = tuple(trail.take for trail in self._history)
@@ -610,18 +556,17 @@ class RecorderWindow(QMainWindow):
             if self._start_on_grab and self._state == "ready" and self.canvas.drag_point is not None:
                 self.start()  # this tick only logs t = 0; the first pose update and sample are the next tick's
             return
-        now = self._clock()  # the sample's acquisition time: when this tick's pose update begins
-        self._timing.mark(now)
+        t = self._clock() - self._t0  # the sample's time: real elapsed time when this tick's pose update begins
         if self._mode == "ik":
             self._step_ik()
         else:
-            self._step_dynamics()
+            self._step_dynamics(t - self.time)
         self._ticks += 1
-        self.time = now - self._t0
-        self._record(self.time, self._ticks * self._tick_dt)
+        self.time = t
+        self._record(t)
         if self._ticks % self._display_every == 0:
             self._refresh()
-        if self._duration is not None and self.time >= self._duration - _TICK_TOLERANCE_MS:
+        if self._duration is not None and self.time >= self._duration - _TIME_TOLERANCE_S:
             self._stop()
             self.save_take()
 
@@ -633,21 +578,25 @@ class RecorderWindow(QMainWindow):
                 self.skeleton, np.asarray(target, dtype=np.float64), method=self._method, q0=self.skeleton.q
             )
 
-    def _step_dynamics(self) -> None:
-        """Integrate forward dynamics under the tip force over this tick's substeps."""
+    def _step_dynamics(self, elapsed: float) -> None:
+        """Integrate forward dynamics under the tip force over the ``elapsed`` real time since the last sample.
+
+        The substeps keep a fixed size (a fraction of the sample period); their count follows
+        ``elapsed`` but is capped after a stall, so catching up can never snowball.
+        """
         dt = self._tick_dt / _SUBSTEPS
-        for _ in range(_SUBSTEPS):
+        steps = min(max(1, round(elapsed / dt)), _MAX_CATCH_UP_PERIODS * _SUBSTEPS)
+        for _ in range(steps):
             tau = compute_jacobian(self.skeleton).T @ self.canvas.external_force(self._stiffness)
             tau = tau - self._friction * self.skeleton.dq
             integrate_with_limits(self.skeleton, tau, dt, self._lower, self._upper)
 
-    def _record(self, t: float, nominal: float) -> None:
-        """Append one frame at elapsed time ``t`` (nominal tick time ``nominal``): joint angles, tip, and more."""
+    def _record(self, t: float) -> None:
+        """Append one frame at elapsed time ``t``: joint angles, tip, and (dynamics) dq, force, friction."""
         tip = self.skeleton.links[-1]
         channels: dict[str, NDArray[np.float64]] = {
             "q": self.skeleton.q,
             "tip": np.array([tip.xe, tip.ye], dtype=np.float64),
-            "nominal_time": np.asarray(nominal, dtype=np.float64),
         }
         if self._mode == "dynamics":
             channels["dq"] = self.skeleton.dq
@@ -661,20 +610,14 @@ class RecorderWindow(QMainWindow):
             self._state = "stopped"
             self._refresh()
 
+    def _achieved_rate(self) -> float:
+        """Return the samples per second this take actually achieved (0 for a take without duration)."""
+        duration = float(self.log.times[-1]) if len(self.log) else 0.0
+        return (len(self.log) - 1) / duration if duration > 0 else 0.0
+
     def _acquisition_meta(self) -> dict[str, object]:
-        """Describe the acquisition clock and the realized tick timing of this take."""
-        return {
-            "clock": "wall-clock",
-            "time_channel": "seconds since the take started, read when each tick's pose update begins; "
-            "dialog pauses excluded",
-            "nominal_time_channel": "tick index x tick_period_s",
-            "mode": self._mode,
-            "tick_period_s": self._tick_dt,
-            "sample_period_s": self._tick_dt,
-            "pose_updates_per_sample": 1,
-            "display_period_s": self._display_every * self._tick_dt,
-            **self._timing.as_meta(),
-        }
+        """Record the requested and the achieved sampling rate of this take."""
+        return {"requested_rate_hz": self._sample_rate, "achieved_rate_hz": self._achieved_rate()}
 
     def _display_meta(self) -> dict[str, object]:
         """Describe the overlays of this take: settings, display history, color policy, and the saved takes drawn."""
@@ -734,7 +677,10 @@ class RecorderWindow(QMainWindow):
         self._history.append(SavedTrail(number, path, self.log.channel("tip").copy()))
         if self._multi_take:
             self._take_number += 1
-        print(f"saved take {number:03d} ({len(self.log)} samples) to {path}")
+        print(
+            f"saved take {number:03d} ({len(self.log)} samples, "
+            f"{self._achieved_rate():.1f} Hz of {self._sample_rate:g} Hz requested) to {path}"
+        )
         self._refresh()
         return True
 
@@ -842,11 +788,9 @@ class RecorderWindow(QMainWindow):
         super().closeEvent(a0)
 
     def _resume_after_pause(self, pause_start: float) -> None:
-        """Continue a take after a dialog: the pause enters neither the timestamps nor the tick statistics."""
-        now = self._clock()
+        """Continue a take after a dialog: the pause enters neither the timestamps nor the simulated time."""
         if self._state == "recording":
-            self._t0 += now - pause_start
-            self._timing.resume(now)
+            self._t0 += self._clock() - pause_start
         if self._run_timer:
             self._timer.start(self.tick_ms)
 
@@ -920,7 +864,7 @@ class RecorderWindow(QMainWindow):
 
 
 def _sample_rate_argument(text: str) -> float:
-    """Parse ``--sample-rate``, rejecting rates whose period is not a whole number of milliseconds."""
+    """Parse ``--sample-rate``, a best-effort request that must be positive."""
     rate = float(text)
     try:
         tick_period_ms(rate)
@@ -969,7 +913,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--sample-rate",
         type=_sample_rate_argument,
         default=_SAMPLE_RATE,
-        help="logger sampling rate in Hz; one timer tick per sample, so the period must be whole ms (default: 50)",
+        help="requested logger sampling rate in Hz, a best effort; one timer tick per sample (default: 50)",
     )
     parser.add_argument(
         "--duration",

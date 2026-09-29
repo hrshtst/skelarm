@@ -84,21 +84,19 @@ take of a session or when the faint overlay stayed hidden).
 
 ### Acquisition clock
 
-The recorder runs one timer tick per sample period, so `--sample-rate` must give
-a whole number of milliseconds (100, 50, 25, 20, 10 Hz, …). Every tick performs
-exactly one pose update (one IK solve toward the current cursor, or the dynamics
-substeps) and records exactly one sample. Starting a take restarts the timer, so
-the first sample follows the `t = 0` frame by one full period (with
-`--start-on-grab`, the tick that sees the grab only logs `t = 0`). The sample's
-`time` is the actual elapsed time since the take started, read from the wall
-clock when the tick's pose update begins, so a late timer tick shows up as a
-longer interval rather than being hidden; the nominal tick clock `k × period` is
-kept beside it as the `nominal_time` channel. No sample is ever duplicated or invented, and the time
-spent in the unsaved-take warning is excluded from both clocks. The realized tick
-spacing of each take (mean, maximum, and the count of ticks slower than 1.5 × the
-period) is also summarized under `[extra.acquisition]` in the log, so the achieved
-rate can be verified after a session. The display repaints at most every 20 ms,
-independently of sampling.
+`--sample-rate` is a best-effort request. The recorder runs one timer tick per
+sample period (rounded to whole milliseconds), and every tick performs one pose
+update (one IK solve toward the current cursor, or the dynamics substeps) and
+records one sample. The sample's `time` is the real elapsed time since the take
+started, so a late tick shows up as a longer interval and a replay follows the
+motion as you performed it, even when you request more than the machine can
+keep up with. Dynamics mode simulates that same elapsed time in fixed
+substeps, capped at a few periods after a stall. Starting a take restarts the
+timer, so the first sample follows the `t = 0` frame by one full period (with
+`--start-on-grab`, the tick that sees the grab only logs `t = 0`); the time
+spent in the unsaved-take warning is excluded. Each saved log records the requested and achieved rates under
+`[extra.acquisition]`, and the save message prints them. The display repaints
+at most every 20 ms, independently of sampling.
 
 <video controls loop muted playsinline width="640" src="../../assets/teach_mouse.mp4"></video>
 

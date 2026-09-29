@@ -39,7 +39,7 @@ catalogue; each tool's workflow has its own guide.
 | `--method NAME` | inspector, recorder (`ik` mode) | Numerical IK method. |
 | `--speed` / `--fps` / `--export PATH` | player | Playback speed, export frame rate, headless video/GIF export. |
 | `--panel` | player | Composite a simulator-style side panel (time, sliders, parameter readouts) into the `--export` frames. |
-| `--sample-rate HZ` | recorder | Teaching logger sampling rate. |
+| `--sample-rate HZ` | recorder | Requested teaching logger sampling rate (best effort; the achieved rate is reported on save). |
 | `--plot` | dynamics, recorder | Plot the tip trajectory / recorded motion when the window closes (off by default). |
 
 ## Keyboard shortcuts

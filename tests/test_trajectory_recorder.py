@@ -35,6 +35,8 @@ from tools.trajectory_recorder import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from numpy.typing import NDArray
+
 pytestmark = pytest.mark.integration
 
 _FOUR_DOF = Path(__file__).resolve().parents[1] / "examples" / "four_dof_robot.toml"
@@ -239,14 +241,16 @@ def test_numbered_output_keeps_the_double_suffix() -> None:
 # ----------------------------------------------------------------------------------------------
 
 
-def test_sample_rate_must_give_a_whole_millisecond_tick(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
-    """The timer tick equals the sample period, so the period must be a whole number of ms."""
+def test_any_positive_sample_rate_is_accepted_as_best_effort(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The requested rate sets the timer period rounded to whole milliseconds (at least 1 ms); only <= 0 is refused."""
     assert _window(tmp_path, sample_rate=100.0).tick_ms == 10  # noqa: PLR2004
-    assert _window(tmp_path, sample_rate=50.0).tick_ms == 20  # noqa: PLR2004
-    with pytest.raises(ValueError, match="millisecond"):
-        _window(tmp_path, sample_rate=60.0)
+    assert _window(tmp_path, sample_rate=60.0).tick_ms == 17  # noqa: PLR2004
+    assert _window(tmp_path, sample_rate=5000.0).tick_ms == 1
+    assert build_parser().parse_args([str(_FOUR_DOF), "--sample-rate", "60"]).sample_rate == 60.0  # noqa: PLR2004
+    with pytest.raises(ValueError, match="positive"):
+        _window(tmp_path, sample_rate=0.0)
     with pytest.raises(SystemExit):
-        build_parser().parse_args([str(_FOUR_DOF), "--sample-rate", "60"])
+        build_parser().parse_args([str(_FOUR_DOF), "--sample-rate", "-5"])
 
 
 def test_one_pose_update_per_sample(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
@@ -272,22 +276,21 @@ def test_display_refresh_is_throttled_independently_of_sampling(qapp, tmp_path: 
     assert len(repaints) == 4  # noqa: PLR2004
 
 
-def test_acquisition_metadata_records_the_clock_and_tick_timing(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
-    """Every saved take declares the nominal tick clock and the realized wall-clock tick spacing."""
-    window = _window(tmp_path)
-    _recorded_take(window, ticks=25)
+def test_saved_take_reports_the_requested_and_achieved_rate(qapp, tmp_path: Path, capsys) -> None:  # noqa: ANN001, ARG001
+    """A take whose ticks run slower than requested says so, in the log and on the terminal."""
+    window = _window(tmp_path)  # 100 Hz requested
+    window.start()
+    for _ in range(20):  # every tick arrives 20 ms after the previous one: 50 Hz achieved
+        _clock(window).advance(0.02)
+        window.tick()
     assert window.save_take()
     meta = StateLog.load(_saved_path(window)).extra["acquisition"]
-    assert meta["clock"] == "wall-clock"
-    assert meta["tick_period_s"] == pytest.approx(0.01)
-    assert meta["pose_updates_per_sample"] == 1
-    assert meta["ticks"] == len(window.log) - 1
-    assert meta["wall_max_tick_s"] >= meta["wall_mean_tick_s"] >= 0.0
-    assert meta["late_ticks"] >= 0
+    assert meta == {"requested_rate_hz": pytest.approx(100.0), "achieved_rate_hz": pytest.approx(50.0)}
+    assert "50.0 Hz of 100 Hz requested" in capsys.readouterr().out
 
 
 def test_sample_times_are_the_actual_elapsed_time(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
-    """A delayed tick is recorded as a longer interval; the nominal tick clock is kept as its own channel."""
+    """A delayed tick is recorded as a longer interval, so a replay follows the real motion."""
     window = _window(tmp_path)
     window.start()
     _move(window, 5)
@@ -296,16 +299,12 @@ def test_sample_times_are_the_actual_elapsed_time(qapp, tmp_path: Path) -> None:
     _move(window, 5)
     times = window.log.times
     assert np.allclose(np.diff(times), [0.01] * 5 + [0.2] + [0.01] * 5)
-    assert np.allclose(np.diff(window.log.channel("nominal_time")), 0.01)
     assert window.time == pytest.approx(0.3)
-    assert window.save_take()
-    meta = StateLog.load(_saved_path(window)).extra["acquisition"]
-    assert meta["late_ticks"] == 1
-    assert meta["wall_max_tick_s"] == pytest.approx(0.2)
+    assert set(window.log.channel_names) == {"q", "tip"}
 
 
 def test_cancelled_close_dialog_is_excluded_from_timing(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
-    """The time spent in the unsaved-take warning enters neither the timestamps nor the tick statistics."""
+    """The time spent in the unsaved-take warning does not enter the timestamps."""
 
     def cancel_after_ten_seconds() -> CloseChoice:
         _clock(window).advance(10.0)
@@ -317,10 +316,6 @@ def test_cancelled_close_dialog_is_excluded_from_timing(qapp, tmp_path: Path) ->
     _move(window, 5)
     assert np.allclose(np.diff(window.log.times), 0.01)
     assert window.time == pytest.approx(0.2)
-    assert window.save_take()
-    meta = StateLog.load(_saved_path(window)).extra["acquisition"]
-    assert meta["late_ticks"] == 0
-    assert meta["wall_max_tick_s"] == pytest.approx(0.01)
 
 
 def test_output_without_npz_suffix_is_written_where_it_is_checked(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
@@ -504,7 +499,6 @@ def test_grab_tick_only_starts_the_take(qapp, tmp_path: Path) -> None:  # noqa: 
     assert np.allclose(window.skeleton.q, reset_q)  # no IK step toward the cursor yet
     _move(window, 4)
     assert np.allclose(np.diff(window.log.times), 0.01)  # no near-coincident first pair
-    assert np.allclose(np.diff(window.log.channel("nominal_time")), 0.01)
 
 
 def test_start_restarts_the_tick_timer(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
@@ -879,7 +873,7 @@ def test_ik_mode_records_q_and_tip_and_replays(qapp, tmp_path: Path) -> None:  #
     _move(window, 200)
     assert window.saved
     assert out.exists()
-    assert set(window.log.channel_names) == {"q", "tip", "nominal_time"}
+    assert set(window.log.channel_names) == {"q", "tip"}
     assert len(window.log) == 51  # noqa: PLR2004  # t = 0 plus 50 samples up to the 1 s cap
     PlaybackWindow(StateLog.load(out))  # replayable in the player
 
@@ -895,6 +889,46 @@ def test_dynamics_mode_records_force_and_replays(qapp, tmp_path: Path) -> None: 
     assert {"q", "tip", "dq", "ext_force"} <= set(window.log.channel_names)
     assert len(window.log) == 41  # noqa: PLR2004
     PlaybackWindow(StateLog.load(out))
+
+
+def test_dynamics_mode_simulates_the_elapsed_time(qapp, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001, ARG001
+    """The physics covers the real time since the previous sample in fixed substeps, capped after a stall.
+
+    So ``dq`` agrees with the logged times, a stall cannot snowball into ever longer catch-up work,
+    and a cancelled close dialog is not simulated.
+    """
+    from skelarm import integrate_with_limits
+
+    steps: list[float] = []
+
+    def counting(
+        skeleton: Skeleton,
+        tau: NDArray[np.float64],
+        dt: float,
+        lower: NDArray[np.float64] | None,
+        upper: NDArray[np.float64] | None,
+    ) -> None:
+        steps.append(dt)
+        integrate_with_limits(skeleton, tau, dt, lower, upper)
+
+    def cancel_after_ten_seconds() -> CloseChoice:
+        _clock(window).advance(10.0)
+        return CloseChoice.CANCEL
+
+    monkeypatch.setattr("tools.trajectory_recorder.integrate_with_limits", counting)
+    window = _window(tmp_path, mode="dynamics", unsaved_prompt=cancel_after_ten_seconds)  # 100 Hz: 2.5 ms substeps
+    window.start()
+    for elapsed, substeps in ((0.01, 4), (0.02, 8), (0.2, 12)):  # on time, one period late, a stall (capped)
+        steps.clear()
+        _clock(window).advance(elapsed)
+        window.tick()
+        assert len(steps) == substeps
+        assert np.allclose(steps, 0.0025)
+    assert not window.close()
+    steps.clear()
+    _clock(window).advance(0.01)
+    window.tick()
+    assert len(steps) == 4  # noqa: PLR2004  # the ten seconds in the dialog are not simulated
 
 
 def test_dynamics_mode_records_the_friction_channel(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
