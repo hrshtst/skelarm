@@ -42,13 +42,14 @@ refused rather than overwriting it. A name without the `.npz` suffix gets it
 appended, as NumPy would, so the file that is checked is the file that is
 written. With `--multi-take` the name is the base of
 numbered takes (`reach.sklog.npz` → `reach_001.sklog.npz`, `reach_002.sklog.npz`,
-…); numbering continues after any file of that base already present. An existing
-file is never overwritten: the save is refused, reported in the status area and
-on the terminal, and the take stays for a retry. Each take is written straight
-to its name, and a failed write removes the partial file. A take holding nothing
-beyond the `t = 0` frame is never written and consumes no number. File names
-enumerate attempts; whether a take qualifies for an experiment is decided
-offline.
+…); numbering continues after any file of that base already present, and a
+number taken meanwhile (e.g. by another session) is skipped, never overwritten.
+In single-file mode an existing file is never overwritten either: the save is
+refused, reported in the status area and on the terminal, and the take stays for
+a retry. Each take is written straight to its name, and a failed write removes
+the partial file. A take holding nothing beyond the `t = 0` frame is never
+written and consumes no number. File names enumerate attempts; whether a take
+qualifies for an experiment is decided offline.
 
 ### Trails
 

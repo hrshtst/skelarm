@@ -359,6 +359,11 @@ def test_partial_write_failure_leaves_no_file_and_allows_retry(qapp, tmp_path: P
     assert len(StateLog.load(window.output_path.with_name("take_001.sklog.npz"))) == 13  # noqa: PLR2004
 
 
+def _disk_full(_self: StateLog, _path: str | Path) -> None:
+    """Stand in for ``StateLog.save`` when the disk is full."""
+    raise OSError("disk full")  # noqa: EM101, TRY003
+
+
 def _unsupported_link(_src: str | Path, _dst: str | Path) -> None:
     """Stand in for ``os.link`` on a file system without hard links (FAT/exFAT, some network mounts)."""
     import errno
@@ -642,9 +647,26 @@ def test_already_saved_message_names_the_saved_take(qapp, tmp_path: Path) -> Non
     assert "take 001 is already saved" in numbered.status_label.text()
 
 
-def test_collision_is_refused_before_writing(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
-    """A file appearing under the next name makes the save fail, byte for byte untouched, and retryable."""
+def test_multi_take_collision_moves_on_to_the_next_free_number(qapp, tmp_path: Path, capsys) -> None:  # noqa: ANN001, ARG001
+    """Files appearing under the next numbers mid-session are skipped, never overwritten, and never block saving."""
     window = _window(tmp_path)
+    _recorded_take(window)
+    (tmp_path / "take_001.sklog.npz").write_bytes(b"another session's take")
+    (tmp_path / "take_002.sklog.npz").write_bytes(b"and another")
+    assert window.save_take()
+    assert window.last_saved_path == tmp_path / "take_003.sklog.npz"
+    assert (tmp_path / "take_001.sklog.npz").read_bytes() == b"another session's take"
+    assert (tmp_path / "take_002.sklog.npz").read_bytes() == b"and another"
+    assert window.take_number == 4  # noqa: PLR2004
+    assert [trail.take for trail in window.saved_trails()] == [3]
+    out = capsys.readouterr().out
+    assert "take_001.sklog.npz exists" in out
+    assert "saved take 003" in out
+
+
+def test_single_file_collision_is_refused_before_writing(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """In single-file mode an existing output makes the save fail, byte for byte untouched, and retryable."""
+    window = _window(tmp_path, output=tmp_path / "exact.sklog.npz", multi_take=False)
     _recorded_take(window)
     target = window.output_path
     target.write_bytes(b"someone else's take")
@@ -790,7 +812,7 @@ def test_save_and_close_uses_the_same_save_path(qapp, tmp_path: Path) -> None:  
 def test_save_and_close_failure_keeps_the_window(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
     """A failing save during close leaves the window and the unsaved take available for retry."""
     prompt = _Prompt(CloseChoice.SAVE)
-    window = _window(tmp_path, unsaved_prompt=prompt)
+    window = _window(tmp_path, unsaved_prompt=prompt, multi_take=False)
     _recorded_take(window)
     window.output_path.write_bytes(b"collision")
     assert not window.close()
@@ -963,7 +985,7 @@ def test_current_trail_is_the_logged_tip_path(qapp, tmp_path: Path) -> None:  # 
     assert hidden.canvas.trails == []  # but not drawn unless asked
 
 
-def test_only_saved_takes_enter_the_history_without_duplicates(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+def test_only_saved_takes_enter_the_history_without_duplicates(qapp, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001, ARG001
     """History gains one entry per successful save, never for discarded, failed, or re-saved takes."""
     window = _window(tmp_path, show_past_trails=True)
     _recorded_take(window)
@@ -971,10 +993,10 @@ def test_only_saved_takes_enter_the_history_without_duplicates(qapp, tmp_path: P
     assert window.saved_trails() == ()
 
     _recorded_take(window)
-    window.output_path.write_bytes(b"collision")
+    monkeypatch.setattr(StateLog, "save", _disk_full)
     assert not window.save_take()  # failed: nothing enters the history
     assert window.saved_trails() == ()
-    window.output_path.unlink()
+    monkeypatch.undo()
     assert window.save_take()
     (first,) = window.saved_trails()
     assert first.take == 1
@@ -1139,19 +1161,18 @@ def test_last_history_after_s_then_r_equals_shift_s(qapp, tmp_path: Path) -> Non
         assert [np.array_equal(t.points, window.saved_trails()[-1].points) for t in window.canvas.trails] == [True]
 
 
-def test_last_history_failed_save_does_not_change_the_visible_source(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
-    """A refused save adds nothing to draw: the last successfully saved take stays the visible source."""
+def test_last_history_failed_save_does_not_change_the_visible_source(qapp, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001, ARG001
+    """A failed save adds nothing to draw: the last successfully saved take stays the visible source."""
     window = _window(tmp_path, show_past_trails=True, past_trail_history="last")
     _save_takes(window, 20, 25)
     last_saved = window.saved_trails()[-1]
     _recorded_take(window, ticks=30)
-    collision = window.output_path
-    collision.write_bytes(b"someone else's take")
+    monkeypatch.setattr(StateLog, "save", _disk_full)
     assert not window.save_take()
     assert [trail.take for trail in window.saved_trails()] == [1, 2]
     assert [np.array_equal(t.points, last_saved.points) for t in window.canvas.trails] == [True]
-    window.reset_take()  # discard the take whose save was refused
-    collision.unlink()
+    window.reset_take()  # discard the take whose save failed
+    monkeypatch.undo()
 
     _recorded_take(window, ticks=30)
     assert window.save_take()

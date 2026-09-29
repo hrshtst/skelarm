@@ -63,8 +63,8 @@ rather than overwriting it); a name without the ``.npz`` suffix gets it appended
 NumPy would, so the file that is checked is the file that is written. With
 ``--multi-take`` the name is the base of numbered files, ``reach.sklog.npz`` ->
 ``reach_001.sklog.npz``, ``reach_002.sklog.npz``, ...; numbering continues after any file
-of that base already present, and an existing file is never overwritten: the save is
-refused, reported, and the take stays for a retry. Each take is written straight to its
+of that base already present, and a number taken meanwhile (e.g. by another session) is
+skipped, never overwritten. Each take is written straight to its
 name, and a failed write removes the partial file. A take with no samples beyond
 ``t = 0`` is never written and consumes no number. Saving opens no dialog and no plot;
 ``--plot`` plots the last visible take after the window closes.
@@ -608,7 +608,12 @@ class RecorderWindow(QMainWindow):
             self._set_status(f"take {self._saved_take_number():03d} is already saved to {self._last_saved_path}")
             return True
         path = self.output_path
-        if path.exists():
+        if self._multi_take:
+            while path.exists():  # another session took this number meanwhile: never overwrite, move on
+                print(f"{path.name} exists; moving on to take {self._take_number + 1:03d}")
+                self._take_number += 1
+                path = self.output_path
+        elif path.exists():
             self._report_save_failure(f"not saved: {path} already exists (the take is kept; move that file, then save)")
             return False
         self.log.extra["acquisition"] = self._acquisition_meta()
