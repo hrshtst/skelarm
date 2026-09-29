@@ -85,11 +85,13 @@ take of a session or when the faint overlay stayed hidden).
 The recorder runs one timer tick per sample period, so `--sample-rate` must give
 a whole number of milliseconds (100, 50, 25, 20, 10 Hz, …). Every tick performs
 exactly one pose update (one IK solve toward the current cursor, or the dynamics
-substeps) and records exactly one sample. The sample's `time` is the actual
-elapsed time since the take started, read from the wall clock when the tick's
-pose update begins, so a late timer tick shows up as a longer interval rather
-than being hidden; the nominal tick clock `k × period` is kept beside it as the
-`nominal_time` channel. No sample is ever duplicated or invented, and the time
+substeps) and records exactly one sample. Starting a take restarts the timer, so
+the first sample follows the `t = 0` frame by one full period (with
+`--start-on-grab`, the tick that sees the grab only logs `t = 0`). The sample's
+`time` is the actual elapsed time since the take started, read from the wall
+clock when the tick's pose update begins, so a late timer tick shows up as a
+longer interval rather than being hidden; the nominal tick clock `k × period` is
+kept beside it as the `nominal_time` channel. No sample is ever duplicated or invented, and the time
 spent in the unsaved-take warning is excluded from both clocks. The realized tick
 spacing of each take (mean, maximum, and the count of ticks slower than 1.5 × the
 period) is also summarized under `[extra.acquisition]` in the log, so the achieved

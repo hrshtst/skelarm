@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 import weakref
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -461,7 +462,34 @@ def test_start_on_grab_mode_is_optional(qapp, tmp_path: Path) -> None:  # noqa: 
     window = _window(tmp_path, start_on_grab=True)
     _move(window, 5)
     assert window.state == "recording"
-    assert len(window.log) == 6  # noqa: PLR2004
+    assert len(window.log) == 5  # noqa: PLR2004  # t = 0 at the grab tick, then one sample per later tick
+
+
+def test_grab_tick_only_starts_the_take(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The tick that sees the first grab logs the reset state at t = 0; the first pose update is the next tick's."""
+    window = _window(tmp_path, start_on_grab=True)
+    reset_q = window.skeleton.q.copy()
+    _move(window, 1)
+    assert window.state == "recording"
+    assert len(window.log) == 1
+    assert np.allclose(window.skeleton.q, reset_q)  # no IK step toward the cursor yet
+    _move(window, 4)
+    assert np.allclose(np.diff(window.log.times), 0.01)  # no near-coincident first pair
+    assert np.allclose(np.diff(window.log.channel("nominal_time")), 0.01)
+
+
+def test_start_restarts_the_tick_timer(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Starting a take restarts the tick timer, so the first sample follows t = 0 by one full period."""
+    from PyQt6.QtCore import QTimer
+
+    window = _window(tmp_path, sample_rate=1.0, run_timer=True)  # a one-second period
+    (timer,) = window.findChildren(QTimer)
+    time.sleep(0.3)  # the free-running timer is now well into its period
+    window.start()
+    try:
+        assert timer.remainingTime() > 0.9 * window.tick_ms
+    finally:
+        timer.stop()
 
 
 # ----------------------------------------------------------------------------------------------

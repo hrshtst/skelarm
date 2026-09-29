@@ -36,7 +36,9 @@ Controls are window-wide keyboard shortcuts mirrored by buttons:
 Acquisition clock: the recorder runs one timer tick per sample period, so
 ``--sample-rate`` must give a whole number of milliseconds (100, 50, 25, 20, 10 Hz, ...).
 Every tick performs exactly one pose update (one IK solve toward the current cursor, or
-the dynamics substeps) and records exactly one sample. The sample's ``time`` is the
+the dynamics substeps) and records exactly one sample. Starting a take restarts the
+timer, so the first sample follows the ``t = 0`` frame by one full period (with
+``--start-on-grab`` the tick that sees the grab only logs ``t = 0``). The sample's ``time`` is the
 actual elapsed time since the take started, read from the wall clock when the tick's
 pose update begins, so a late timer tick shows up as a longer interval instead of being
 hidden; the nominal tick clock ``k * period`` is kept beside it as the ``nominal_time``
@@ -571,6 +573,8 @@ class RecorderWindow(QMainWindow):
         self.log = self._new_log()
         self._record(0.0, 0.0)
         self._timing.start(now)
+        if self._run_timer:
+            self._timer.start(self.tick_ms)  # restart the period: the first sample follows t = 0 by a full period
         self._history_at_start = tuple(trail.take for trail in self._history)
         self._drawn_at_start = self._drawn_history()
         self._past_shown_during_take = self.show_past_trails
@@ -581,9 +585,8 @@ class RecorderWindow(QMainWindow):
         """Advance one tick: one pose update, one sample, and a throttled repaint."""
         if self._state != "recording":
             if self._start_on_grab and self._state == "ready" and self.canvas.drag_point is not None:
-                self.start()
-            else:
-                return
+                self.start()  # this tick only logs t = 0; the first pose update and sample are the next tick's
+            return
         now = self._clock()  # the sample's acquisition time: when this tick's pose update begins
         self._timing.mark(now)
         if self._mode == "ik":
