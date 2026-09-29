@@ -364,18 +364,36 @@ def test_partial_write_failure_leaves_no_file_and_allows_retry(qapp, tmp_path: P
     assert len(StateLog.load(window.output_path.with_name("take_001.sklog.npz"))) == 13  # noqa: PLR2004
 
 
-def test_unsupported_hard_link_refuses_the_save_and_never_overwrites(qapp, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001, ARG001
-    """Without atomic publication the save is refused and kept for retry; a competing file is never replaced."""
+def _unsupported_link(_src: str | Path, _dst: str | Path) -> None:
+    """Stand in for ``os.link`` on a file system without hard links (FAT/exFAT, some network mounts)."""
     import errno
-    import os
 
+    raise OSError(errno.EPERM, "Operation not permitted")
+
+
+def test_unsupported_hard_link_saves_through_a_reserved_name(qapp, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001, ARG001
+    """Without hard links the take is still saved, complete, and nothing but the target is left behind."""
+    window = _window(tmp_path)
+    _recorded_take(window, ticks=12)
+    target = window.output_path
+    monkeypatch.setattr(os, "link", _unsupported_link)
+    assert window.save_take()
+    assert window.saved
+    assert window.last_saved_path == target
+    assert sorted(p.name for p in tmp_path.iterdir()) == [target.name]  # no temporary or reservation left
+    assert len(StateLog.load(target)) == 13  # noqa: PLR2004
+    assert [trail.take for trail in window.saved_trails()] == [1]
+
+
+def test_unsupported_hard_link_never_overwrites_a_competing_file(qapp, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001, ARG001
+    """A file published under the name before the fallback reserves it is never replaced; the take is kept."""
     window = _window(tmp_path)
     _recorded_take(window, ticks=12)
     target = window.output_path
 
-    def unsupported_link_with_competitor(_src: str | Path, dst: str | Path) -> None:
+    def unsupported_link_with_competitor(src: str | Path, dst: str | Path) -> None:
         Path(dst).write_bytes(b"another recorder's take")  # published between the check and the fallback
-        raise OSError(errno.EPERM, "Operation not permitted")
+        _unsupported_link(src, dst)
 
     monkeypatch.setattr(os, "link", unsupported_link_with_competitor)
     assert not window.save_take()
@@ -384,17 +402,28 @@ def test_unsupported_hard_link_refuses_the_save_and_never_overwrites(qapp, tmp_p
     assert window.state == "stopped"
     assert not window.saved
     assert "not saved" in window.status_label.text()
-    target.unlink()
 
-    def unsupported_link(_src: str | Path, _dst: str | Path) -> None:
-        raise OSError(errno.EPERM, "Operation not permitted")
 
-    monkeypatch.setattr(os, "link", unsupported_link)
+def test_failed_fallback_publication_leaves_nothing_and_allows_retry(qapp, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001, ARG001
+    """If replacing the reserved name fails, neither the reservation nor the temporary stays; a retry saves."""
+    window = _window(tmp_path)
+    _recorded_take(window, ticks=12)
+    target = window.output_path
+    replace = os.replace
+
+    def failing_replace(_src: str | Path, _dst: str | Path) -> None:
+        raise OSError("I/O error")  # noqa: EM101, TRY003
+
+    monkeypatch.setattr(os, "link", _unsupported_link)
+    monkeypatch.setattr(os, "replace", failing_replace)
     assert not window.save_take()
     assert list(tmp_path.iterdir()) == []
-    monkeypatch.undo()
+    assert not window.saved
+    assert "not saved" in window.status_label.text()
+    monkeypatch.setattr(os, "replace", replace)
     assert window.save_take()
     assert sorted(p.name for p in tmp_path.iterdir()) == [target.name]
+    assert len(StateLog.load(target)) == 13  # noqa: PLR2004
 
 
 # ----------------------------------------------------------------------------------------------

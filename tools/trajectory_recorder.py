@@ -68,8 +68,10 @@ NumPy would, so the file that is checked is the file that is written. With
 of that base already present, and an existing file is never overwritten: the save is
 refused, reported, and the take stays for a retry. Each take is written to a temporary
 file beside its target and published only once complete, by a hard link that refuses an
-existing file; a failed write leaves nothing behind, and a file system without hard
-links refuses the save and keeps the take. A take with no samples beyond ``t = 0`` is never written and consumes
+existing file; a file system without hard links (FAT/exFAT, some network mounts) instead
+reserves the name by creating it exclusively, which refuses an existing file just the
+same, and replaces that empty reservation with the complete take. A failed write leaves
+nothing behind. A take with no samples beyond ``t = 0`` is never written and consumes
 no number. Saving opens no dialog and no plot; ``--plot`` plots the last visible take
 after the window closes.
 
@@ -194,6 +196,22 @@ def _highest_existing_take(output: Path) -> int:
         if match is not None:
             highest = max(highest, int(match.group(1)))
     return highest
+
+
+def _publish_by_reservation(temporary: Path, path: Path) -> None:
+    """Publish ``temporary`` as ``path`` without a hard link, never replacing another writer's file.
+
+    The name is first reserved by creating an empty ``path`` exclusively, which fails
+    with ``FileExistsError`` if ``path`` exists; the temporary then atomically replaces
+    that reservation, so ``path`` holds either nothing or the complete take. If the
+    replacement fails, the reservation is removed.
+    """
+    os.close(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+    try:
+        temporary.replace(path)
+    except OSError:
+        path.unlink(missing_ok=True)
+        raise
 
 
 def tick_period_ms(sample_rate: float) -> int:
@@ -719,9 +737,10 @@ class RecorderWindow(QMainWindow):
         """Write the log to ``path`` through a temporary file, publishing it only once complete.
 
         The temporary lives beside the target and is hard-linked into place, which fails
-        atomically if ``path`` appeared meanwhile. A file system without hard links gets
-        no rename fallback (a rename could replace a file published in between): the
-        save is refused and the take kept. Any failure leaves neither ``path`` nor the
+        atomically if ``path`` appeared meanwhile. A file system without hard links
+        (FAT/exFAT, some network mounts) publishes by reserving the name exclusively and
+        replacing the reservation instead (:func:`_publish_by_reservation`), which refuses
+        an existing ``path`` just the same. Any failure leaves neither ``path`` nor the
         temporary behind.
 
         Raises
@@ -736,12 +755,8 @@ class RecorderWindow(QMainWindow):
                 os.link(temporary, path)
             except FileExistsError:
                 raise
-            except OSError as exc:
-                msg = (
-                    f"cannot publish {path} atomically on this file system ({exc.strerror or exc}); "
-                    "save to a location that supports hard links"
-                )
-                raise OSError(msg) from exc
+            except OSError:
+                _publish_by_reservation(temporary, path)
         finally:
             temporary.unlink(missing_ok=True)
 

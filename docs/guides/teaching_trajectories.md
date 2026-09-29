@@ -46,10 +46,12 @@ numbered takes (`reach.sklog.npz` → `reach_001.sklog.npz`, `reach_002.sklog.np
 file is never overwritten: the save is refused, reported in the status area and
 on the terminal, and the take stays for a retry. Each take is written to a
 temporary file beside its target and published only once complete, by a hard
-link that refuses an existing file, so a failed write leaves nothing behind; a
-file system without hard links refuses the save and keeps the take for a retry
-elsewhere. A take holding nothing beyond the `t = 0` frame is
-never written and consumes no number. File names enumerate
+link that refuses an existing file, so a failed write leaves nothing behind. On a
+file system without hard links (FAT/exFAT, some network mounts) the recorder
+instead reserves the name by creating it exclusively, which refuses an existing
+file just the same, and replaces that empty reservation with the complete take.
+A take holding nothing beyond the `t = 0` frame is never written and consumes no
+number. File names enumerate
 attempts; whether a take qualifies for an experiment is decided offline.
 
 ### Trails
