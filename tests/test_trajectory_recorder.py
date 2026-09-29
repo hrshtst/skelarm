@@ -556,15 +556,23 @@ def test_shift_s_saves_and_prepares_the_next_take(qapp, tmp_path: Path) -> None:
 
 
 def test_plain_s_and_shift_s_are_distinct(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
-    """One keypress invokes exactly one of Save and Save-and-next."""
+    """One keypress fires exactly one of Save and Save-and-next: S only Save, Shift+S only Save-and-next."""
     from PyQt6.QtCore import Qt
 
     window = _window(tmp_path)
+    fired: list[str] = []
+    for name in ("save", "save_next"):
+        window.shortcuts[name].activated.connect(lambda name=name: fired.append(name))
     _recorded_take(window)
     _press(window, Qt.Key.Key_S)
+    assert fired == ["save"]
     assert window.state == "stopped"  # plain S did not reset
-    assert window.shortcuts["save"].key().toString() == "S"
-    assert window.shortcuts["save_next"].key().toString() == "Shift+S"
+    window.reset_take()
+    _recorded_take(window)
+    _press(window, Qt.Key.Key_S, Qt.KeyboardModifier.ShiftModifier)
+    assert fired == ["save", "save_next"]
+    assert window.state == "ready"  # Shift+S saved and reset
+    assert window.takes_saved == 2  # noqa: PLR2004
 
 
 def test_s_then_r_equals_shift_s(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
