@@ -44,8 +44,8 @@ periods after a stall. Starting a take restarts the timer, so the first sample f
 the ``t = 0`` frame by one full period (with ``--start-on-grab`` the tick that sees the
 grab only logs ``t = 0``); the time spent in the unsaved-take warning is excluded. Each
 saved log records the requested and achieved rates under ``[extra.acquisition]``, and
-the save message prints them. The display repaints at most every 20 ms, independently
-of sampling.
+the save message prints them. The display repaints about every 20 ms, independently of
+sampling.
 
 Trails: ``--show-tip-trail`` draws the current take's tip path from the logged (FK) tip
 samples, never the cursor path; ``--show-past-trails`` keeps the tip paths of the takes
@@ -126,7 +126,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
-_DISPLAY_MS = 20  # repaint period (ms); sampling follows the tick, not the display
+_DISPLAY_MS = 20  # target repaint period (ms), rounded to whole ticks; sampling follows the tick, not the display
 _PANEL_WIDTH_PX = 300  # fixed side-panel width so its content can't resize it
 _SUBSTEPS = 4  # dynamics-mode physics substeps per sample period
 _MAX_CATCH_UP_PERIODS = 3  # after a stall, simulate at most this many periods in one tick

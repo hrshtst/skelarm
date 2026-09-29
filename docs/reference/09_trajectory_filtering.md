@@ -183,3 +183,8 @@ control grid:
   `SampledTaskReference`, which `ik_joint_reference` converts to a joint reference.
 - **Joint-space** (`joint_trajectory_tracking`): the smoothed angle series and its
   spline derivatives form a `SampledJointReference` directly (no inverse kinematics).
+
+The filters assume evenly spaced samples. A recorder log is nearly even, but its
+timestamps are the real elapsed times, so a late timer tick shows up as a longer
+gap. The series is therefore smoothed as if evenly spaced at its mean sample
+interval, and the spline is then fitted against the recorded timestamps.

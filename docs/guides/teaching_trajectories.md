@@ -86,9 +86,9 @@ keep up with. Dynamics mode simulates that same elapsed time in fixed
 substeps, capped at a few periods after a stall. Starting a take restarts the
 timer, so the first sample follows the `t = 0` frame by one full period (with
 `--start-on-grab`, the tick that sees the grab only logs `t = 0`); the time
-spent in the unsaved-take warning is excluded. Each saved log records the requested and achieved rates under
-`[extra.acquisition]`, and the save message prints them. The display repaints
-at most every 20 ms, independently of sampling.
+spent in the unsaved-take warning is excluded. Each saved log records the
+requested and achieved rates under `[extra.acquisition]`, and the save message
+prints them. The display repaints about every 20 ms, independently of sampling.
 
 <video controls loop muted playsinline width="640" src="../../assets/teach_mouse.mp4"></video>
 
