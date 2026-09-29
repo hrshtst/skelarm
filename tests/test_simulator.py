@@ -57,6 +57,24 @@ def _press(canvas, target: tuple[float, float]) -> None:  # noqa: ANN001
     )
 
 
+def _move_held(canvas, target: tuple[float, float]) -> None:  # noqa: ANN001
+    """Dispatch a mouse move with the left button held to the pixel mapping back to ``target`` (world)."""
+    from PyQt6.QtCore import QEvent, QPointF, Qt
+    from PyQt6.QtGui import QMouseEvent
+
+    px = canvas.width() / 2 + target[0] * canvas.scale_factor
+    py = canvas.height() / 2 - target[1] * canvas.scale_factor
+    canvas.mouseMoveEvent(
+        QMouseEvent(
+            QEvent.Type.MouseMove,
+            QPointF(px, py),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+    )
+
+
 def test_external_force_is_zero_without_drag(qapp) -> None:  # noqa: ANN001, ARG001
     """With no active drag the tip force is exactly zero."""
     sim = _simulator()
@@ -90,6 +108,36 @@ def test_grab_radius_allows_a_near_press(qapp) -> None:  # noqa: ANN001, ARG001
     tip = sim.skeleton.links[-1]
     _press(sim.canvas, (tip.xe + 0.02, tip.ye))
     assert sim.canvas.drag_point is not None
+
+
+def test_held_move_after_a_far_press_starts_no_drag(qapp) -> None:  # noqa: ANN001, ARG001
+    """A press outside the grab radius grabs nothing, so moving with the button still held drags nothing."""
+    sim = _simulator()
+    sim.canvas.grab_radius = 0.1
+    tip = sim.skeleton.links[-1]
+    _press(sim.canvas, (tip.xe + 0.5, tip.ye))
+    _move_held(sim.canvas, (tip.xe + 0.02, tip.ye))
+    assert sim.canvas.drag_point is None
+
+
+def test_held_move_updates_an_active_drag(qapp) -> None:  # noqa: ANN001, ARG001
+    """After a press that grabbed, moving with the button held moves the drag point along."""
+    sim = _simulator()
+    sim.canvas.grab_radius = 0.1
+    tip = sim.skeleton.links[-1]
+    _press(sim.canvas, (tip.xe + 0.02, tip.ye))
+    _move_held(sim.canvas, (tip.xe + 0.3, tip.ye + 0.1))
+    assert sim.canvas.drag_point == pytest.approx((tip.xe + 0.3, tip.ye + 0.1), abs=1e-2)
+
+
+def test_cleared_drag_is_not_revived_by_a_held_move(qapp) -> None:  # noqa: ANN001, ARG001
+    """A drag cleared by the program (e.g. a reset) stays cleared until the next press, even with the button held."""
+    sim = _simulator()
+    tip = sim.skeleton.links[-1]
+    _press(sim.canvas, (tip.xe, tip.ye))
+    sim.canvas.drag_point = None
+    _move_held(sim.canvas, (tip.xe + 0.2, tip.ye))
+    assert sim.canvas.drag_point is None
 
 
 def test_drag_point_is_settable(qapp) -> None:  # noqa: ANN001, ARG001

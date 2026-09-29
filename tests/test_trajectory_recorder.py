@@ -459,6 +459,31 @@ def test_start_on_grab_mode_is_optional(qapp, tmp_path: Path) -> None:  # noqa: 
     assert len(window.log) == 5  # noqa: PLR2004  # t = 0 at the grab tick, then one sample per later tick
 
 
+def test_start_on_grab_ignores_a_button_held_through_a_reset(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """After R clears the drag, moving with the button still held neither drags nor starts the next take."""
+    from PyQt6.QtCore import QEvent, QPointF, Qt
+    from PyQt6.QtGui import QMouseEvent
+
+    window = _window(tmp_path, start_on_grab=True)
+    canvas = window.canvas
+    canvas.resize(400, 400)
+    tip = window.skeleton.links[-1]
+
+    def mouse(kind: QEvent.Type, button: Qt.MouseButton, target: tuple[float, float]) -> QMouseEvent:
+        px = canvas.width() / 2 + target[0] * canvas.scale_factor
+        py = canvas.height() / 2 - target[1] * canvas.scale_factor
+        return QMouseEvent(kind, QPointF(px, py), button, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+
+    canvas.mousePressEvent(mouse(QEvent.Type.MouseButtonPress, Qt.MouseButton.LeftButton, (tip.xe, tip.ye)))
+    _tick(window, 5)
+    assert window.state == "recording"
+    window.reset_take()
+    canvas.mouseMoveEvent(mouse(QEvent.Type.MouseMove, Qt.MouseButton.NoButton, (tip.xe + 0.1, tip.ye)))
+    _tick(window, 5)
+    assert canvas.drag_point is None
+    assert window.state == "ready"
+
+
 def test_grab_tick_only_starts_the_take(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
     """The tick that sees the first grab logs the reset state at t = 0; the first pose update is the next tick's."""
     window = _window(tmp_path, start_on_grab=True)

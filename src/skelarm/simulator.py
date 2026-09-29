@@ -109,8 +109,12 @@ class SimulatorCanvas(SkelarmCanvas):
             self.update()
 
     def mouseMoveEvent(self, a0: QMouseEvent | None) -> None:  # noqa: N802
-        """Update the force target while dragging with the left button held."""
-        if a0 is not None and a0.buttons() & Qt.MouseButton.LeftButton:
+        """Move the force target along while a drag is active (begun by a press that grabbed).
+
+        A move alone never starts a drag: a press outside ``grab_radius`` grabs nothing,
+        and a drag cleared by the program stays cleared until the next press.
+        """
+        if a0 is not None and self._drag_world is not None and a0.buttons() & Qt.MouseButton.LeftButton:
             self._drag_world = self._world_from_screen(a0.position())
             self.update()
 
