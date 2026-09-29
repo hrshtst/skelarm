@@ -37,6 +37,8 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
+    from skelarm.canvas import TrailOverlay
+
 pytestmark = pytest.mark.integration
 
 _FOUR_DOF = Path(__file__).resolve().parents[1] / "examples" / "four_dof_robot.toml"
@@ -152,6 +154,11 @@ def _recorded_take(window: RecorderWindow, ticks: int = 30) -> None:
     """Start a take and drag through it (leaves the window recording)."""
     window.start()
     _move(window, ticks)
+
+
+def _drawn(window: RecorderWindow) -> list[TrailOverlay]:
+    """Return every trail the canvas draws, in drawing order: the cached saved trails, then the live ones."""
+    return [*window.canvas.static_trails, *window.canvas.trails]
 
 
 def _saved_path(window: RecorderWindow) -> Path:
@@ -1007,15 +1014,15 @@ def test_current_trail_is_the_logged_tip_path(qapp, tmp_path: Path) -> None:  # 
     _recorded_take(window, ticks=20)
     tip = window.log.channel("tip")
     assert np.array_equal(window.current_trail(), tip)
-    assert len(window.canvas.trails) == 1
-    assert np.array_equal(window.canvas.trails[0].points, tip)
-    assert window.canvas.trails[0].color.alpha() > 200  # noqa: PLR2004  # the current take is drawn clearly
+    assert len(_drawn(window)) == 1
+    assert np.array_equal(_drawn(window)[0].points, tip)
+    assert _drawn(window)[0].color.alpha() > 200  # noqa: PLR2004  # the current take is drawn clearly
 
     hidden = _window(tmp_path / "hidden")
     hidden.output_path.parent.mkdir()
     _recorded_take(hidden, ticks=20)
     assert np.array_equal(hidden.current_trail(), hidden.log.channel("tip"))  # always derivable
-    assert hidden.canvas.trails == []  # but not drawn unless asked
+    assert _drawn(hidden) == []  # but not drawn unless asked
 
 
 def test_only_saved_takes_enter_the_history_without_duplicates(qapp, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001, ARG001
@@ -1058,8 +1065,8 @@ def test_s_then_r_and_shift_s_leave_identical_history(qapp, tmp_path: Path) -> N
     for window in (a, b):
         (trail,) = window.saved_trails()
         assert trail.take == 1
-        assert len(window.canvas.trails) == 1  # the faint saved trail; no current trail while ready
-        assert window.canvas.trails[0].color.alpha() < 100  # noqa: PLR2004  # faint
+        assert len(_drawn(window)) == 1  # the faint saved trail; no current trail while ready
+        assert _drawn(window)[0].color.alpha() < 100  # noqa: PLR2004  # faint
     assert np.array_equal(a.saved_trails()[0].points, b.saved_trails()[0].points)
 
 
@@ -1069,12 +1076,12 @@ def test_reset_clears_only_the_unsaved_trail(qapp, tmp_path: Path) -> None:  # n
     _recorded_take(window)
     assert window.save_take()
     window.reset_take()
-    assert [np.array_equal(t.points, window.saved_trails()[0].points) for t in window.canvas.trails] == [True]
+    assert [np.array_equal(t.points, window.saved_trails()[0].points) for t in _drawn(window)] == [True]
     _recorded_take(window, ticks=10)
-    assert len(window.canvas.trails) == 2  # noqa: PLR2004  # past (behind) then current (in front)
-    assert window.canvas.trails[0].color.alpha() < window.canvas.trails[1].color.alpha()
+    assert len(_drawn(window)) == 2  # noqa: PLR2004  # past (behind) then current (in front)
+    assert _drawn(window)[0].color.alpha() < _drawn(window)[1].color.alpha()
     window.reset_take()
-    assert len(window.canvas.trails) == 1
+    assert len(_drawn(window)) == 1
     assert len(window.saved_trails()) == 1
 
 
@@ -1092,14 +1099,14 @@ def test_display_toggles_never_change_logs_or_pose(qapp, tmp_path: Path) -> None
         box.setChecked(True)
         box.setChecked(False)
         box.setChecked(True)
-    assert len(window.canvas.trails) == 1  # tip trail on, no history yet
+    assert len(_drawn(window)) == 1  # tip trail on, no history yet
     assert np.array_equal(window.log.channel("q"), q)
     assert np.array_equal(window.log.channel("tip"), tip)
     assert np.array_equal(window.log.times, times)
     assert np.array_equal(window.skeleton.q, pose)
     assert window.state == "recording"
     window.checkboxes["tip_trail"].setChecked(False)
-    assert window.canvas.trails == []
+    assert _drawn(window) == []
 
 
 def test_saved_takes_carry_no_display_metadata(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
@@ -1110,13 +1117,28 @@ def test_saved_takes_carry_no_display_metadata(qapp, tmp_path: Path) -> None:  #
         assert "display" not in StateLog.load(tmp_path / f"take_{number:03d}.sklog.npz").extra
 
 
+def test_saved_trails_reach_the_canvas_only_when_they_change(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The faint saved trails are handed over once per change (save, toggle), so the canvas can cache them."""
+    window = _window(tmp_path, show_tip_trail=True, show_past_trails=True)
+    _save_takes(window, 20)
+    static = window.canvas.static_trails
+    assert len(static) == 1
+    _recorded_take(window, ticks=16)
+    assert window.canvas.static_trails is static  # recording never rebuilds the saved trails
+    assert len(window.canvas.trails) == 1  # only the current trail changes from repaint to repaint
+    assert window.save_take()
+    assert len(window.canvas.static_trails) == 2  # noqa: PLR2004
+    window.checkboxes["past_trails"].setChecked(False)
+    assert window.canvas.static_trails == []
+
+
 def test_fresh_session_starts_without_history(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
     """Files already on disk only advance the numbering; they are never shown as past trails."""
     (tmp_path / "take_002.sklog.npz").write_bytes(b"practice")
     window = _window(tmp_path, show_past_trails=True, show_tip_trail=True)
     assert window.take_number == 3  # noqa: PLR2004
     assert window.saved_trails() == ()
-    assert window.canvas.trails == []
+    assert _drawn(window) == []
 
 
 def test_trails_are_drawn_and_can_be_hidden(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
@@ -1171,11 +1193,11 @@ def test_last_history_draws_only_the_latest_saved_trail(qapp, tmp_path: Path) ->
     assert sorted(path.name for path in tmp_path.glob("*.npz")) == [f"take_{n:03d}.sklog.npz" for n in (1, 2, 3)]
     latest = window.saved_trails()[-1]
     assert np.array_equal(latest.points, StateLog.load(latest.path).channel("tip"))
-    assert [np.array_equal(t.points, latest.points) for t in window.canvas.trails] == [True]  # ready: past only
+    assert [np.array_equal(t.points, latest.points) for t in _drawn(window)] == [True]  # ready: past only
 
     _recorded_take(window, ticks=16)  # an even count: the display refreshes every second tick at 100 Hz
-    assert len(window.canvas.trails) == 2  # noqa: PLR2004  # one past trail plus the current trail
-    past, current = window.canvas.trails
+    assert len(_drawn(window)) == 2  # noqa: PLR2004  # one past trail plus the current trail
+    past, current = _drawn(window)
     assert np.array_equal(past.points, latest.points)
     assert np.array_equal(current.points, window.log.channel("tip"))
     assert past.color.alpha() < current.color.alpha()  # faint behind, clear in front
@@ -1191,7 +1213,7 @@ def test_last_history_after_s_then_r_equals_shift_s(qapp, tmp_path: Path) -> Non
     for window in (a, b):
         assert window.state == "ready"
         assert [trail.take for trail in window.saved_trails()] == [1, 2, 3]
-        assert [np.array_equal(t.points, window.saved_trails()[-1].points) for t in window.canvas.trails] == [True]
+        assert [np.array_equal(t.points, window.saved_trails()[-1].points) for t in _drawn(window)] == [True]
 
 
 def test_last_history_failed_save_does_not_change_the_visible_source(qapp, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001, ARG001
@@ -1203,7 +1225,7 @@ def test_last_history_failed_save_does_not_change_the_visible_source(qapp, tmp_p
     monkeypatch.setattr(StateLog, "save", _disk_full)
     assert not window.save_take()
     assert [trail.take for trail in window.saved_trails()] == [1, 2]
-    assert [np.array_equal(t.points, last_saved.points) for t in window.canvas.trails] == [True]
+    assert [np.array_equal(t.points, last_saved.points) for t in _drawn(window)] == [True]
     window.reset_take()  # discard the take whose save failed
     monkeypatch.undo()
 
@@ -1218,10 +1240,10 @@ def test_last_history_reset_of_an_unsaved_take_keeps_the_last_saved_trail(qapp, 
     _save_takes(window, 20, 25)
     last_saved = window.saved_trails()[-1]
     _recorded_take(window, ticks=30)
-    assert len(window.canvas.trails) == 2  # noqa: PLR2004  # the last saved trail and the unsaved current trail
+    assert len(_drawn(window)) == 2  # noqa: PLR2004  # the last saved trail and the unsaved current trail
     for _ in range(2):  # the second R, while ready, changes nothing
         window.reset_take()
-        assert [np.array_equal(t.points, last_saved.points) for t in window.canvas.trails] == [True]
+        assert [np.array_equal(t.points, last_saved.points) for t in _drawn(window)] == [True]
     assert [trail.take for trail in window.saved_trails()] == [1, 2]
     assert not (tmp_path / "take_003.sklog.npz").exists()
 
@@ -1238,8 +1260,8 @@ def test_last_history_toggles_never_change_logs(qapp, tmp_path: Path) -> None:  
         box.setChecked(True)
         box.setChecked(False)
         box.setChecked(True)
-    assert len(window.canvas.trails) == 2  # noqa: PLR2004
-    past, current = window.canvas.trails
+    assert len(_drawn(window)) == 2  # noqa: PLR2004
+    past, current = _drawn(window)
     assert np.array_equal(past.points, window.saved_trails()[-1].points)
     assert np.array_equal(current.points, tip)
     assert np.array_equal(window.log.channel("q"), q)
@@ -1258,7 +1280,7 @@ def test_all_history_still_draws_every_saved_trail(qapp, tmp_path: Path) -> None
     window = _window(tmp_path, show_tip_trail=True, show_past_trails=True)
     _save_takes(window, 20, 25, 30)
     _recorded_take(window, ticks=16)  # an even count: the display refreshes every second tick at 100 Hz
-    *past, current = window.canvas.trails
+    *past, current = _drawn(window)
     assert len(past) == 3  # noqa: PLR2004
     assert all(np.array_equal(p.points, s.points) for p, s in zip(past, window.saved_trails(), strict=True))
     assert np.array_equal(current.points, window.log.channel("tip"))

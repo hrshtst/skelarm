@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QPointF, QSignalBlocker, Qt, pyqtSignal
-from PyQt6.QtGui import QBrush, QColor, QMouseEvent, QPainter, QPaintEvent, QPen, QPolygonF
+from PyQt6.QtGui import QBrush, QColor, QImage, QMouseEvent, QPainter, QPaintEvent, QPen, QPolygonF
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -167,9 +167,16 @@ class SkelarmCanvas(QWidget):
         self.overlay_targets: list[tuple[NDArray[np.float64], QColor, float | None, bool]] = []
         self.show_overlay_targets = True
         # Solid trail overlays (e.g. recorded tip paths), drawn in list order beneath the
-        # reference path and the target markers; toggleable as a group.
+        # reference path and the target markers; toggleable as a group. ``static_trails``
+        # never change between repaints (e.g. saved takes): they are drawn once into a cached
+        # image, redrawn only when the list is replaced or the view changes, and lie beneath
+        # ``trails``, which are drawn afresh on every repaint (e.g. a growing current path).
+        self.static_trails: list[TrailOverlay] = []
         self.trails: list[TrailOverlay] = []
         self.show_trails = True
+        self._static_layer: QImage | None = None
+        self._static_layer_source: list[TrailOverlay] | None = None  # kept alive so its identity stays unique
+        self._static_layer_key: tuple[int, int, int, float, float] | None = None
         # Set background color to white
         self.setAutoFillBackground(True)
         p = self.palette()
@@ -320,9 +327,35 @@ class SkelarmCanvas(QWidget):
         screen = [self._world_to_screen(float(p[0]), float(p[1]), cx, cy) for p in trail.points]
         painter.drawPolyline(QPolygonF(screen))
 
+    def _draw_static_trails(self, painter: QPainter, cx: float, cy: float) -> None:
+        """Paste the cached image of ``static_trails``, redrawing it only when they or the view changed."""
+        if not self.static_trails:
+            return
+        ratio = self.devicePixelRatioF()
+        key = (len(self.static_trails), self.width(), self.height(), self.scale_factor, ratio)
+        layer = self._static_layer
+        if layer is None or self._static_layer_source is not self.static_trails or self._static_layer_key != key:
+            layer = self._render_static_layer(cx, cy, ratio)
+            self._static_layer, self._static_layer_source, self._static_layer_key = layer, self.static_trails, key
+        painter.drawImage(QPointF(0.0, 0.0), layer)
+
+    def _render_static_layer(self, cx: float, cy: float, ratio: float) -> QImage:
+        """Draw ``static_trails`` into a transparent image the size of the widget (at the device pixel ratio)."""
+        width, height = round(self.width() * ratio), round(self.height() * ratio)
+        layer = QImage(width, height, QImage.Format.Format_ARGB32_Premultiplied)
+        layer.setDevicePixelRatio(ratio)
+        layer.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(layer)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        for trail in self.static_trails:
+            self._draw_trail(painter, trail, cx, cy)
+        painter.end()
+        return layer
+
     def _draw_task_overlays(self, painter: QPainter, cx: float, cy: float) -> None:
         """Draw the trail overlays, the optional reference path, and the task target markers (each toggleable)."""
         if self.show_trails:
+            self._draw_static_trails(painter, cx, cy)
             for trail in self.trails:
                 self._draw_trail(painter, trail, cx, cy)
         if self.overlay_path is not None and self.show_overlay_path:

@@ -297,6 +297,91 @@ def test_left_drag_solves_ik(qapp) -> None:  # noqa: ANN001, ARG001
     assert np.array([tip.xe, tip.ye]) == pytest.approx(np.array(target), abs=1e-3)
 
 
+def _trail_canvas():  # noqa: ANN202  # SkelarmCanvas (lazy PyQt import)
+    """Return a shown 400x300 canvas of a two-link arm, ready to grab."""
+    from skelarm.canvas import SkelarmCanvas
+
+    skeleton = Skeleton(
+        [
+            LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+            LinkProp(length=0.8, m=0.8, i=0.05, rgx=0.4, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+        ]
+    )
+    canvas = SkelarmCanvas(skeleton)
+    canvas.resize(400, 300)
+    canvas.show()
+    return canvas
+
+
+def test_static_trails_look_like_trails_and_hide_with_them(qapp) -> None:  # noqa: ANN001, ARG001
+    """A static trail renders like the same live trail and is hidden by ``show_trails`` too."""
+    from PyQt6.QtGui import QColor
+
+    from skelarm.canvas import TrailOverlay
+
+    canvas = _trail_canvas()
+    plain = canvas.grab().toImage()
+    overlay = TrailOverlay(np.array([[0.0, 0.0], [0.5, 0.5], [1.0, 0.2]]), QColor(70, 90, 160, 55), 2.0)
+    canvas.trails = [overlay]
+    live = canvas.grab().toImage()
+    canvas.trails = []
+    canvas.static_trails = [overlay]
+    cached = canvas.grab().toImage()
+    assert cached != plain
+    assert _max_channel_difference(cached, live) <= 2  # noqa: PLR2004  # compositing may round differently
+    canvas.show_trails = False
+    assert canvas.grab().toImage() == plain
+
+
+def _max_channel_difference(a, b) -> int:  # noqa: ANN001  # two same-sized QImages
+    """Return the largest per-channel difference between two images."""
+    from PyQt6.QtGui import QImage
+
+    def pixels(image) -> np.ndarray:  # noqa: ANN001
+        image = image.convertToFormat(QImage.Format.Format_RGBA8888)
+        data = image.constBits()
+        data.setsize(image.sizeInBytes())
+        return np.frombuffer(data, dtype=np.uint8).astype(np.int16)
+
+    return int(np.max(np.abs(pixels(a) - pixels(b))))
+
+
+def test_static_trails_are_drawn_once_and_reused(qapp, monkeypatch) -> None:  # noqa: ANN001, ARG001
+    """Static trails are rasterized once; repaints reuse the image until the list is replaced or the view changes."""
+    from PyQt6.QtGui import QColor
+
+    from skelarm.canvas import SkelarmCanvas, TrailOverlay
+
+    drawn: list[TrailOverlay] = []
+    original = SkelarmCanvas._draw_trail  # noqa: SLF001  # count the per-trail drawing work
+
+    def counting(self: SkelarmCanvas, painter: object, trail: TrailOverlay, cx: float, cy: float) -> None:
+        drawn.append(trail)
+        original(self, painter, trail, cx, cy)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(SkelarmCanvas, "_draw_trail", counting)
+    canvas = _trail_canvas()
+    points = np.array([[0.0, 0.0], [0.5, 0.5], [1.0, 0.2]])
+    saved = [TrailOverlay(points, QColor(70, 90, 160, 55)), TrailOverlay(points * 0.5, QColor(70, 90, 160, 55))]
+    canvas.static_trails = saved
+    canvas.grab()
+    assert len(drawn) == 2  # noqa: PLR2004
+    canvas.grab()
+    canvas.grab()
+    assert len(drawn) == 2  # noqa: PLR2004  # reused, not redrawn
+    canvas.static_trails = [*saved]  # replaced by a new list
+    canvas.grab()
+    assert len(drawn) == 4  # noqa: PLR2004
+    canvas.resize(500, 300)  # the view changed
+    canvas.grab()
+    assert len(drawn) == 6  # noqa: PLR2004
+    current = TrailOverlay(points, QColor(200, 30, 120, 230))
+    canvas.trails = [current]  # live trails are drawn on every repaint
+    canvas.grab()
+    canvas.grab()
+    assert drawn[6:] == [current, current]
+
+
 def test_trail_overlays_are_drawn_solid_and_toggleable(qapp) -> None:  # noqa: ANN001, ARG001
     """Trail overlays change the rendered pixels, hide with ``show_trails``, and need two points to draw."""
     from PyQt6.QtGui import QColor

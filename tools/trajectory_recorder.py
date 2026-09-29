@@ -627,6 +627,7 @@ class RecorderWindow(QMainWindow):
         self._takes_saved += 1
         number = self._take_number
         self._history.append(SavedTrail(number, path, self.log.channel("tip").copy()))
+        self._refresh_saved_trails()
         if self._multi_take:
             self._take_number += 1
         print(
@@ -737,18 +738,20 @@ class RecorderWindow(QMainWindow):
 
     def _on_overlay_toggled(self, _checked: bool) -> None:  # noqa: FBT001
         """Redraw after a checkbox change; the overlays never touch the log or the robot."""
+        self._refresh_saved_trails()
         self._refresh_trails()
         self.canvas.update_skeleton()
 
+    def _refresh_saved_trails(self) -> None:
+        """Hand the canvas the faint saved trails (by display history); it caches them until the next change."""
+        past = self._drawn_history() if self.show_past_trails else ()
+        self.canvas.static_trails = [TrailOverlay(t.points, _PAST_TRAIL_COLOR, _PAST_TRAIL_WIDTH_PX) for t in past]
+
     def _refresh_trails(self) -> None:
-        """Rebuild the canvas overlays: faint saved trails (by display history) behind, the current trail in front."""
-        trails: list[TrailOverlay] = []
-        if self.show_past_trails:
-            past = self._drawn_history()
-            trails.extend(TrailOverlay(t.points, _PAST_TRAIL_COLOR, _PAST_TRAIL_WIDTH_PX) for t in past)
-        if self.show_tip_trail and len(self.log) >= _MIN_SAMPLES:
-            trails.append(TrailOverlay(self.current_trail(), _CURRENT_TRAIL_COLOR, _CURRENT_TRAIL_WIDTH_PX))
-        self.canvas.trails = trails
+        """Rebuild the current trail, drawn in front of the saved ones on every repaint."""
+        show = self.show_tip_trail and len(self.log) >= _MIN_SAMPLES
+        current = TrailOverlay(self.current_trail(), _CURRENT_TRAIL_COLOR, _CURRENT_TRAIL_WIDTH_PX) if show else None
+        self.canvas.trails = [current] if current is not None else []
 
     def _refresh(self) -> None:
         """Repaint the arm with its overlays and update the status readout and button states."""
