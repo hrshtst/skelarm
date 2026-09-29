@@ -66,14 +66,10 @@ NumPy would, so the file that is checked is the file that is written. With
 ``--multi-take`` the name is the base of numbered files, ``reach.sklog.npz`` ->
 ``reach_001.sklog.npz``, ``reach_002.sklog.npz``, ...; numbering continues after any file
 of that base already present, and an existing file is never overwritten: the save is
-refused, reported, and the take stays for a retry. Each take is written to a temporary
-file beside its target and published only once complete, by a hard link that refuses an
-existing file; a file system without hard links (FAT/exFAT, some network mounts) instead
-reserves the name by creating it exclusively, which refuses an existing file just the
-same, and replaces that empty reservation with the complete take. A failed write leaves
-nothing behind. A take with no samples beyond ``t = 0`` is never written and consumes
-no number. Saving opens no dialog and no plot; ``--plot`` plots the last visible take
-after the window closes.
+refused, reported, and the take stays for a retry. Each take is written straight to its
+name, and a failed write removes the partial file. A take with no samples beyond
+``t = 0`` is never written and consumes no number. Saving opens no dialog and no plot;
+``--plot`` plots the last visible take after the window closes.
 
 Usage::
 
@@ -90,7 +86,6 @@ from __future__ import annotations
 
 import argparse
 import glob
-import os
 import re
 import sys
 import time as wall_clock
@@ -197,22 +192,6 @@ def _highest_existing_take(output: Path) -> int:
         if match is not None:
             highest = max(highest, int(match.group(1)))
     return highest
-
-
-def _publish_by_reservation(temporary: Path, path: Path) -> None:
-    """Publish ``temporary`` as ``path`` without a hard link, never replacing another writer's file.
-
-    The name is first reserved by creating an empty ``path`` exclusively, which fails
-    with ``FileExistsError`` if ``path`` exists; the temporary then atomically replaces
-    that reservation, so ``path`` holds either nothing or the complete take. If the
-    replacement fails, the reservation is removed.
-    """
-    os.close(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
-    try:
-        temporary.replace(path)
-    except OSError:
-        path.unlink(missing_ok=True)
-        raise
 
 
 def tick_period_ms(sample_rate: float) -> int:
@@ -685,31 +664,18 @@ class RecorderWindow(QMainWindow):
         return True
 
     def _write_take(self, path: Path) -> None:
-        """Write the log to ``path`` through a temporary file, publishing it only once complete.
-
-        The temporary lives beside the target and is hard-linked into place, which fails
-        atomically if ``path`` appeared meanwhile. A file system without hard links
-        (FAT/exFAT, some network mounts) publishes by reserving the name exclusively and
-        replacing the reservation instead (:func:`_publish_by_reservation`), which refuses
-        an existing ``path`` just the same. Any failure leaves neither ``path`` nor the
-        temporary behind.
+        """Write the log straight to ``path``, removing the partial file if the write fails.
 
         Raises
         ------
         OSError
-            If writing or publishing fails (``FileExistsError`` when ``path`` exists).
+            If writing fails.
         """
-        temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}.npz")  # keep .npz so NumPy adds nothing
         try:
-            self.log.save(temporary)
-            try:
-                os.link(temporary, path)
-            except FileExistsError:
-                raise
-            except OSError:
-                _publish_by_reservation(temporary, path)
-        finally:
-            temporary.unlink(missing_ok=True)
+            self.log.save(path)
+        except OSError:
+            path.unlink(missing_ok=True)
+            raise
 
     def save_and_next(self) -> bool:
         """Save the take, then reset for the next one; the reset happens only after a save.
