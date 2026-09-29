@@ -89,6 +89,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import glob
 import os
 import re
 import sys
@@ -191,7 +192,7 @@ def _highest_existing_take(output: Path) -> int:
     base, suffix = _split_log_name(output)
     pattern = re.compile(rf"^{re.escape(base)}_(\d+){re.escape(suffix)}$")
     highest = 0
-    for candidate in output.parent.glob(f"{base}_*{suffix}"):
+    for candidate in output.parent.glob(f"{glob.escape(base)}_*{glob.escape(suffix)}"):  # match the name literally
         match = pattern.match(candidate.name)
         if match is not None:
             highest = max(highest, int(match.group(1)))
@@ -558,6 +559,10 @@ class RecorderWindow(QMainWindow):
     def _has_unsaved_take(self) -> bool:
         return not self._take_is_empty() and not self._saved
 
+    def _saved_take_number(self) -> int:
+        """Return the number of the visible saved take: multi-take numbering has already moved past it."""
+        return self._take_number - 1 if self._multi_take else self._take_number
+
     # -------------------------------------------------------------- recording ---
 
     def _new_log(self) -> StateLog:
@@ -709,7 +714,7 @@ class RecorderWindow(QMainWindow):
             return False
         self._stop()
         if self._saved:
-            self._set_status(f"take {self._take_number - 1:03d} is already saved to {self._last_saved_path}")
+            self._set_status(f"take {self._saved_take_number():03d} is already saved to {self._last_saved_path}")
             return True
         path = self.output_path
         if path.exists():
@@ -885,8 +890,7 @@ class RecorderWindow(QMainWindow):
             cap = "" if self._duration is None else f" / {self._duration:.1f}"
             return f"RECORDING take {self._take_number:03d}  t = {self.time:.2f}{cap} s,  {len(self.log)} samples"
         if self._saved:
-            number = self._take_number - 1 if self._multi_take else self._take_number
-            return f"SAVED take {number:03d} → {self._last_saved_path}"
+            return f"SAVED take {self._saved_take_number():03d} → {self._last_saved_path}"
         return f"STOPPED (unsaved) take {self._take_number:03d}, {len(self.log)} samples — S saves, R discards"
 
     def show_plot(self) -> None:

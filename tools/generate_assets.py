@@ -241,11 +241,14 @@ recorded drag force, friction, and target switches; your cursor is not shown).
    arm retarget. Export… the log as
    -> docs/assets/multi_target_switch.sklog.npz  (becomes multi_target_switch.gif + .mp4)
 
-4. Teaching a trajectory   uv run python tools/trajectory_recorder.py \\
+4. Teaching a trajectory   rm -f docs/assets/teach.sklog.npz
+                           uv run python tools/trajectory_recorder.py \\
                                examples/reach_four_dof_robot.toml --output docs/assets/teach.sklog.npz
-   Do: the purple target is the goal — press Space to start the take, grab
-   the tip and demonstrate a smooth motion toward it, then press S to save
-   and Q to close. Re-running this script then generates
+   Do: the recorder never overwrites a file, so remove the committed log first
+   (git restore brings it back if you abandon the take). The purple target is
+   the goal — press Space to start the take, grab the tip and demonstrate a
+   smooth motion toward it, then press S to save and Q to close. Re-running
+   this script then generates
    trajectory_tracking.sklog.npz / trajectory_tracking.gif on the same robot,
    with the target marker kept in the replay.
 

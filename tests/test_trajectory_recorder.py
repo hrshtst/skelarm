@@ -656,6 +656,33 @@ def test_numbering_continues_after_existing_takes(qapp, tmp_path: Path) -> None:
     assert existing.read_bytes() == b"keep me"
 
 
+def test_numbering_continues_after_existing_takes_of_a_base_with_glob_characters(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """A base such as ``run[1]`` is matched literally, not as a glob pattern, so its takes are found."""
+    existing = tmp_path / "run[1]_004.sklog.npz"
+    existing.write_bytes(b"keep me")
+    window = _window(tmp_path, output=tmp_path / "run[1].sklog.npz")
+    assert window.take_number == 5  # noqa: PLR2004
+    _recorded_take(window)
+    assert window.save_take()
+    assert window.last_saved_path == tmp_path / "run[1]_005.sklog.npz"
+    assert existing.read_bytes() == b"keep me"
+
+
+def test_already_saved_message_names_the_saved_take(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Saving a saved take again reports that take's number, in single-file and multi-take mode alike."""
+    single = _window(tmp_path, output=tmp_path / "exact.sklog.npz", multi_take=False)
+    _recorded_take(single)
+    assert single.save_take()
+    assert single.save_take()
+    assert "take 001 is already saved" in single.status_label.text()
+
+    numbered = _window(tmp_path)
+    _recorded_take(numbered)
+    assert numbered.save_take()
+    assert numbered.save_take()
+    assert "take 001 is already saved" in numbered.status_label.text()
+
+
 def test_collision_is_refused_before_writing(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
     """A file appearing under the next name makes the save fail, byte for byte untouched, and retryable."""
     window = _window(tmp_path)
