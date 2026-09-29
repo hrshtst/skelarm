@@ -1047,36 +1047,12 @@ def test_display_toggles_never_change_logs_or_pose(qapp, tmp_path: Path) -> None
     assert window.canvas.trails == []
 
 
-def test_each_take_records_its_overlay_settings_and_visible_sources(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
-    """Every saved log states the overlay settings, the color policy, and which saved takes were shown."""
-    window = _window(tmp_path, show_past_trails=True)
-    _recorded_take(window)
-    assert window.save_and_next()
-    first = StateLog.load(tmp_path / "take_001.sklog.npz").extra["display"]
-    assert first["show_past_trails"] is True
-    assert first["past_trails_shown_during_take"] is True
-    assert first["history_takes"] == []
-    assert first["visible_source_takes"] == []
-    assert first["visible_source_files"] == []
-    assert {"current_color", "current_alpha", "current_width_px", "past_color", "past_alpha", "past_width_px"} <= set(
-        first["policy"]
-    )
-
-    _recorded_take(window)
-    assert window.save_and_next()
-    second = StateLog.load(tmp_path / "take_002.sklog.npz").extra["display"]
-    assert second["history_takes"] == [1]
-    assert second["visible_source_takes"] == [1]
-    assert second["visible_source_files"] == ["take_001.sklog.npz"]
-
-    window.checkboxes["past_trails"].setChecked(False)  # hidden for the whole third take
-    _recorded_take(window)
-    assert window.save_and_next()
-    third = StateLog.load(tmp_path / "take_003.sklog.npz").extra["display"]
-    assert third["show_past_trails"] is False
-    assert third["past_trails_shown_during_take"] is False
-    assert third["history_takes"] == [1, 2]
-    assert third["visible_source_takes"] == []
+def test_saved_takes_carry_no_display_metadata(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The overlays are a drawing aid only: a saved log holds the samples, not what was on screen."""
+    window = _window(tmp_path, show_tip_trail=True, show_past_trails=True)
+    _save_takes(window, 20, 20)
+    for number in (1, 2):
+        assert "display" not in StateLog.load(tmp_path / f"take_{number:03d}.sklog.npz").extra
 
 
 def test_fresh_session_starts_without_history(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
@@ -1119,11 +1095,6 @@ def _save_takes(window: RecorderWindow, *ticks: int, save_then_reset: bool = Fal
             assert window.save_and_next()
 
 
-def _display(path: Path) -> dict[str, object]:
-    """Return the ``[extra.display]`` table of a saved take."""
-    return StateLog.load(path).extra["display"]
-
-
 def test_past_trail_history_option_defaults_to_all(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
     """The display history is ``all`` unless ``last`` is requested; any other value is rejected."""
     parser = build_parser()
@@ -1155,21 +1126,13 @@ def test_last_history_draws_only_the_latest_saved_trail(qapp, tmp_path: Path) ->
     assert past.color.alpha() < current.color.alpha()  # faint behind, clear in front
 
 
-def test_last_history_visible_source_after_s_then_r_equals_shift_s(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
-    """Each take records the last saved take as its only visible source, identically for S then R and Shift+S."""
+def test_last_history_after_s_then_r_equals_shift_s(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """S then R and Shift+S leave the same history, with only the last saved take drawn."""
     a = _window(tmp_path / "a", show_past_trails=True, past_trail_history="last")
     b = _window(tmp_path / "b", show_past_trails=True, past_trail_history="last")
     for window, save_then_reset in ((a, True), (b, False)):
         window.output_path.parent.mkdir()
         _save_takes(window, 20, 20, 20, save_then_reset=save_then_reset)
-    for number, history, visible in ((1, [], []), (2, [1], [1]), (3, [1, 2], [2])):
-        name = f"take_{number:03d}.sklog.npz"
-        display = _display(tmp_path / "a" / name)
-        assert display == _display(tmp_path / "b" / name)
-        assert display["past_trail_history"] == "last"
-        assert display["history_takes"] == history
-        assert display["visible_source_takes"] == visible
-        assert display["visible_source_files"] == [f"take_{n:03d}.sklog.npz" for n in visible]
     for window in (a, b):
         assert window.state == "ready"
         assert [trail.take for trail in window.saved_trails()] == [1, 2, 3]
@@ -1192,10 +1155,7 @@ def test_last_history_failed_save_does_not_change_the_visible_source(qapp, tmp_p
 
     _recorded_take(window, ticks=30)
     assert window.save_take()
-    display = _display(tmp_path / "take_003.sklog.npz")
-    assert display["history_takes"] == [1, 2]
-    assert display["visible_source_takes"] == [2]
-    assert display["visible_source_files"] == ["take_002.sklog.npz"]
+    assert [trail.take for trail in window.saved_trails()] == [1, 2, 3]
 
 
 def test_last_history_reset_of_an_unsaved_take_keeps_the_last_saved_trail(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
@@ -1213,7 +1173,7 @@ def test_last_history_reset_of_an_unsaved_take_keeps_the_last_saved_trail(qapp, 
 
 
 def test_last_history_toggles_never_change_logs(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
-    """In ``last`` mode the checkboxes only change the drawing; a trail shown mid-take is recorded as visible."""
+    """In ``last`` mode the checkboxes only change the drawing, never the samples or the saved log."""
     window = _window(tmp_path, past_trail_history="last")
     _save_takes(window, 20, 25)
     _recorded_take(window, ticks=25)  # both overlays hidden when the take starts
@@ -1237,13 +1197,10 @@ def test_last_history_toggles_never_change_logs(qapp, tmp_path: Path) -> None:  
     assert window.save_take()
     saved = StateLog.load(tmp_path / "take_003.sklog.npz")
     assert np.array_equal(saved.channel("q"), q)
-    display = saved.extra["display"]
-    assert display["past_trails_shown_during_take"] is True
-    assert display["visible_source_takes"] == [2]
 
 
 def test_all_history_still_draws_every_saved_trail(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
-    """The default ``all`` mode draws every saved take behind the current trail and records its mode."""
+    """The default ``all`` mode draws every saved take behind the current trail."""
     window = _window(tmp_path, show_tip_trail=True, show_past_trails=True)
     _save_takes(window, 20, 25, 30)
     _recorded_take(window, ticks=16)  # an even count: the display refreshes every second tick at 100 Hz
@@ -1251,9 +1208,3 @@ def test_all_history_still_draws_every_saved_trail(qapp, tmp_path: Path) -> None
     assert len(past) == 3  # noqa: PLR2004
     assert all(np.array_equal(p.points, s.points) for p, s in zip(past, window.saved_trails(), strict=True))
     assert np.array_equal(current.points, window.log.channel("tip"))
-    assert window.save_take()
-    display = _display(tmp_path / "take_004.sklog.npz")
-    assert display["past_trail_history"] == "all"
-    assert display["history_takes"] == [1, 2, 3]
-    assert display["visible_source_takes"] == [1, 2, 3]
-    assert display["visible_source_files"] == [f"take_{n:03d}.sklog.npz" for n in (1, 2, 3)]

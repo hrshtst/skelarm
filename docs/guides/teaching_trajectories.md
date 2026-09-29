@@ -70,13 +70,8 @@ Only saved takes enter the history, once each: **S** then **R** and
 **Shift+S** leave the same history, **R** drops an unsaved trail together with
 its take, and pressing **R** while already ready changes nothing. A new session
 always starts with an empty history, whatever files already exist on disk, so a
-practice session leaves no traces in a later one. Each saved log records under
-`[extra.display]` the overlay settings, the display-history mode
-(`past_trail_history`), the color/opacity policy, the takes in the history
-(`history_takes`), and the saved takes that were actually drawn while that take
-was recorded (`visible_source_takes` / `visible_source_files`: every earlier
-saved take with `all`, at most the last one with `last`, and none for the first
-take of a session or when the faint overlay stayed hidden).
+practice session leaves no traces in a later one. The overlays are a drawing aid
+only and never enter the saved log.
 
 ### Acquisition clock
 

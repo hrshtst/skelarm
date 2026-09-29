@@ -55,10 +55,8 @@ the faint overlay to the most recently saved take (``all``, the default, draws e
 saved take); the history, the saved files, and the samples are the same either way.
 Only saved takes enter the history (once each: S then R and Shift+S agree), R drops an
 unsaved trail with its take, and a new session always starts with an empty history,
-whatever files exist on disk. The overlay settings, the display-history mode, the color
-policy, the takes in the history, and the saved takes actually drawn while a take was
-recorded are stored under ``[extra.display]`` of its log. The overlays never move the
-robot or change the logged samples.
+whatever files exist on disk. The overlays are a drawing aid only: they never move the
+robot, change the logged samples, or enter the saved log.
 
 Outputs: ``--output`` names one exact file (the second take of a session is then refused
 rather than overwriting it); a name without the ``.npz`` suffix gets it appended, as
@@ -321,9 +319,6 @@ class RecorderWindow(QMainWindow):
         self._ticks = 0
         self.log = self._new_log()
         self._history: list[SavedTrail] = []  # saved takes of this session only, in save order
-        self._history_at_start: tuple[int, ...] = ()
-        self._drawn_at_start: tuple[SavedTrail, ...] = ()  # the saved takes the overlay draws for this take
-        self._past_shown_during_take = False
 
         self.canvas = SimulatorCanvas(skeleton)
         self.canvas.show_com = show_com
@@ -523,9 +518,6 @@ class RecorderWindow(QMainWindow):
         self._record(0.0)
         if self._run_timer:
             self._timer.start(self.tick_ms)  # restart the period: the first sample follows t = 0 by a full period
-        self._history_at_start = tuple(trail.take for trail in self._history)
-        self._drawn_at_start = self._drawn_history()
-        self._past_shown_during_take = self.show_past_trails
         print(f"take {self._take_number:03d}: recording started")
         self._refresh()
 
@@ -598,29 +590,6 @@ class RecorderWindow(QMainWindow):
         """Record the requested and the achieved sampling rate of this take."""
         return {"requested_rate_hz": self._sample_rate, "achieved_rate_hz": self._achieved_rate()}
 
-    def _display_meta(self) -> dict[str, object]:
-        """Describe the overlays of this take: settings, display history, color policy, and the saved takes drawn."""
-        visible = self._drawn_at_start if self._past_shown_during_take else ()
-        return {
-            "show_tip_trail": self.show_tip_trail,
-            "show_past_trails": self.show_past_trails,
-            "past_trail_history": self._past_trail_history,
-            "past_trails_shown_during_take": self._past_shown_during_take,
-            "history_takes": list(self._history_at_start),
-            "visible_source_takes": [trail.take for trail in visible],
-            "visible_source_files": [trail.path.name for trail in visible],
-            "policy": {
-                "current_color": _CURRENT_TRAIL_COLOR.name(),
-                "current_alpha": _CURRENT_TRAIL_COLOR.alpha(),
-                "current_width_px": _CURRENT_TRAIL_WIDTH_PX,
-                "past_color": _PAST_TRAIL_COLOR.name(),
-                "past_alpha": _PAST_TRAIL_COLOR.alpha(),
-                "past_width_px": _PAST_TRAIL_WIDTH_PX,
-                "order": "saved trails behind the current trail",
-                "source": "logged tip samples (forward kinematics), not the cursor",
-            },
-        }
-
     # ------------------------------------------------------- save and reset ---
 
     def save_take(self) -> bool:
@@ -643,7 +612,6 @@ class RecorderWindow(QMainWindow):
             self._report_save_failure(f"not saved: {path} already exists (the take is kept; move that file, then save)")
             return False
         self.log.extra["acquisition"] = self._acquisition_meta()
-        self.log.extra["display"] = self._display_meta()
         try:
             self._write_take(path)
         except OSError as exc:
@@ -764,8 +732,6 @@ class RecorderWindow(QMainWindow):
 
     def _on_overlay_toggled(self, _checked: bool) -> None:  # noqa: FBT001
         """Redraw after a checkbox change; the overlays never touch the log or the robot."""
-        if self.show_past_trails and self._state == "recording":
-            self._past_shown_during_take = True
         self._refresh_trails()
         self.canvas.update_skeleton()
 
