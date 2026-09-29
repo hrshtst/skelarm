@@ -15,6 +15,7 @@ uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml         
 uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --mode dynamics  # force + forward dynamics
 uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --output reach.sklog.npz --multi-take
 uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --multi-take --show-tip-trail --show-past-trails
+uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --multi-take --show-tip-trail --show-past-trails --past-trail-history last
 uv run python tools/player.py reach_001.sklog.npz                                        # replay a take
 ```
 
@@ -61,14 +62,23 @@ current one, so later takes can follow earlier ones. Both overlays are also
 checkboxes in the side panel and can be hidden independently; toggling them
 never moves the robot or changes a logged sample.
 
+`--past-trail-history` chooses which saved takes the faint overlay draws: `all`
+(the default) draws every take saved in this session, `last` only the most
+recently saved one, so a session shows at most one faint trail behind the
+current one. Only the drawing differs: every take is still saved to its file and
+enters the session history the same way in both modes.
+
 Only saved takes enter the history, once each: **S** then **R** and
 **Shift+S** leave the same history, **R** drops an unsaved trail together with
 its take, and pressing **R** while already ready changes nothing. A new session
 always starts with an empty history, whatever files already exist on disk, so a
 practice session leaves no traces in a later one. Each saved log records under
-`[extra.display]` the overlay settings, the color/opacity policy, the takes in
-the history, and the saved takes that were actually visible while that take was
-recorded (the first take of a session naturally lists none).
+`[extra.display]` the overlay settings, the display-history mode
+(`past_trail_history`), the color/opacity policy, the takes in the history
+(`history_takes`), and the saved takes that were actually drawn while that take
+was recorded (`visible_source_takes` / `visible_source_files`: every earlier
+saved take with `all`, at most the last one with `last`, and none for the first
+take of a session or when the faint overlay stayed hidden).
 
 ### Acquisition clock
 

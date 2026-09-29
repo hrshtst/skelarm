@@ -31,6 +31,7 @@ catalogue; each tool's workflow has its own guide.
 | `--save PATH` | scenario tools | Headless run (no GUI); write the log directly. |
 | `--duration S` | scenario tools (with `--save`), recorder | Override the task's simulated duration / cap the recording length (recorder: a reached cap stops and saves the take but keeps the window open; `0` or negative records until you save). |
 | `--show-tip-trail` / `--show-past-trails` | recorder | Draw the current take's logged tip path / the faint tip paths of the takes saved in this session (also checkboxes in the panel). |
+| `--past-trail-history {all,last}` | recorder | Which saved takes the faint overlay draws: every take saved in this session (`all`, default) or only the most recently saved one (`last`); saved files and the history are unchanged. |
 | `--multi-take` / `--start-on-grab` | recorder | Number the outputs from the `--output` base / start recording on the first grab instead of Space. |
 | `--output PATH` | recorder, `export_config.py` (`-o`) | Output file path (`teach.sklog.npz` / the log path with `.toml` by default). |
 | `--stiffness N` | dynamics, scenario tools, recorder | Spring constant (N/m) of the mouse drag force. |

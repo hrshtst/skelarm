@@ -48,12 +48,15 @@ table. The display repaints at most every 20 ms, independently of sampling.
 Trails: ``--show-tip-trail`` draws the current take's tip path from the logged (FK) tip
 samples, never the cursor path; ``--show-past-trails`` keeps the tip paths of the takes
 saved in this session as faint transparent lines behind the current one. Both are
-checkboxes too and can be hidden independently. Only saved takes enter the history
-(once each: S then R and Shift+S agree), R drops an unsaved trail with its take, and a
-new session always starts with an empty history, whatever files exist on disk. The
-overlay settings, the color policy, the takes in the history, and the saved takes that
-were visible while a take was recorded are stored under ``[extra.display]`` of its log.
-The overlays never move the robot or change the logged samples.
+checkboxes too and can be hidden independently. ``--past-trail-history last`` limits
+the faint overlay to the most recently saved take (``all``, the default, draws every
+saved take); the history, the saved files, and the samples are the same either way.
+Only saved takes enter the history (once each: S then R and Shift+S agree), R drops an
+unsaved trail with its take, and a new session always starts with an empty history,
+whatever files exist on disk. The overlay settings, the display-history mode, the color
+policy, the takes in the history, and the saved takes actually drawn while a take was
+recorded are stored under ``[extra.display]`` of its log. The overlays never move the
+robot or change the logged samples.
 
 Outputs: ``--output`` names one exact file (the second take of a session is then refused
 rather than overwriting it); a name without the ``.npz`` suffix gets it appended, as
@@ -74,6 +77,7 @@ Usage::
     uv run python tools/trajectory_recorder.py robot.toml --mode dynamics --sample-rate 100
     uv run python tools/trajectory_recorder.py robot.toml --output reach.sklog.npz --multi-take
     uv run python tools/trajectory_recorder.py robot.toml --multi-take --show-tip-trail --show-past-trails
+    uv run python tools/trajectory_recorder.py robot.toml --multi-take --show-past-trails --past-trail-history last
     uv run python tools/trajectory_recorder.py robot.toml --duration 0 --plot   # no cap; plot afterward
     uv run python tools/player.py reach_001.sklog.npz   # replay a recorded take
 """
@@ -89,7 +93,7 @@ import tomllib
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from PyQt6.QtCore import Qt, QTimer
@@ -139,6 +143,7 @@ _CURRENT_TRAIL_COLOR = QColor(200, 30, 120, 230)  # magenta, clearly visible ove
 _CURRENT_TRAIL_WIDTH_PX = 2.0
 _PAST_TRAIL_COLOR = QColor(70, 90, 160, 55)  # faint, transparent slate blue behind the current take
 _PAST_TRAIL_WIDTH_PX = 2.0
+_PAST_TRAIL_HISTORIES = ("all", "last")  # draw every saved take of the session, or only the most recent one
 
 
 class CloseChoice(Enum):
@@ -285,6 +290,10 @@ class RecorderWindow(QMainWindow):
         Draw the current take's logged tip path while recording.
     show_past_trails : bool, optional
         Draw the tip paths of the takes saved in this session as faint lines.
+    past_trail_history : {"all", "last"}, optional
+        Which saved takes the faint overlay draws: every take saved in this session
+        (``"all"``) or only the most recently saved one (``"last"``). The session
+        history, the saved files, and the logged samples are the same either way.
     unsaved_prompt : callable, optional
         Replaces the modal unsaved-take warning (tests inject a stub); it must return
         a :class:`CloseChoice`.
@@ -307,6 +316,7 @@ class RecorderWindow(QMainWindow):
         start_on_grab: bool = False,
         show_tip_trail: bool = False,
         show_past_trails: bool = False,
+        past_trail_history: Literal["all", "last"] = "all",
         method: str = "lm_sugihara",
         stiffness: float = _DRAG_STIFFNESS,
         friction: float = _FRICTION,
@@ -324,6 +334,10 @@ class RecorderWindow(QMainWindow):
         self.tick_ms = tick_period_ms(sample_rate)
         self._tick_dt = self.tick_ms / 1000.0
         self._display_every = max(1, round(_DISPLAY_MS / self.tick_ms))
+        if past_trail_history not in _PAST_TRAIL_HISTORIES:
+            msg = f"past_trail_history must be one of {', '.join(_PAST_TRAIL_HISTORIES)}, got {past_trail_history!r}"
+            raise ValueError(msg)
+        self._past_trail_history: Literal["all", "last"] = past_trail_history
         self._duration = duration if duration > 0 else None  # None: record until saved
         self._output = normalized_output(Path(output))
         if self._output != Path(output):
@@ -360,6 +374,7 @@ class RecorderWindow(QMainWindow):
         self._timing = _TickTiming(self._tick_dt)
         self._history: list[SavedTrail] = []  # saved takes of this session only, in save order
         self._history_at_start: tuple[int, ...] = ()
+        self._drawn_at_start: tuple[SavedTrail, ...] = ()  # the saved takes the overlay draws for this take
         self._past_shown_during_take = False
 
         self.canvas = SimulatorCanvas(skeleton)
@@ -491,6 +506,11 @@ class RecorderWindow(QMainWindow):
         """Whether the saved takes' tip paths are drawn faintly."""
         return self.checkboxes["past_trails"].isChecked()
 
+    @property
+    def past_trail_history(self) -> Literal["all", "last"]:
+        """Which saved takes the faint overlay draws: ``"all"`` of this session, or only the ``"last"`` one."""
+        return self._past_trail_history
+
     def current_trail(self) -> NDArray[np.float64]:
         """Return the logged tip positions of the visible take, shape ``(n, 2)`` (the drawn trail's geometry)."""
         if len(self.log) == 0:
@@ -499,6 +519,12 @@ class RecorderWindow(QMainWindow):
 
     def saved_trails(self) -> tuple[SavedTrail, ...]:
         """Return the takes saved in this session, in save order (the past-trail history)."""
+        return tuple(self._history)
+
+    def _drawn_history(self) -> tuple[SavedTrail, ...]:
+        """Return the saved takes the faint overlay draws: the whole history, or only its most recent take."""
+        if self._past_trail_history == "last":
+            return tuple(self._history[-1:])
         return tuple(self._history)
 
     @property
@@ -546,6 +572,7 @@ class RecorderWindow(QMainWindow):
         self._record(0.0, 0.0)
         self._timing.start(now)
         self._history_at_start = tuple(trail.take for trail in self._history)
+        self._drawn_at_start = self._drawn_history()
         self._past_shown_during_take = self.show_past_trails
         print(f"take {self._take_number:03d}: recording started")
         self._refresh()
@@ -624,16 +651,16 @@ class RecorderWindow(QMainWindow):
         }
 
     def _display_meta(self) -> dict[str, object]:
-        """Describe the overlays of this take: settings, color policy, and the saved takes shown."""
-        visible = list(self._history_at_start) if self._past_shown_during_take else []
-        files = [trail.path.name for trail in self._history if trail.take in visible]
+        """Describe the overlays of this take: settings, display history, color policy, and the saved takes drawn."""
+        visible = self._drawn_at_start if self._past_shown_during_take else ()
         return {
             "show_tip_trail": self.show_tip_trail,
             "show_past_trails": self.show_past_trails,
+            "past_trail_history": self._past_trail_history,
             "past_trails_shown_during_take": self._past_shown_during_take,
             "history_takes": list(self._history_at_start),
-            "visible_source_takes": visible,
-            "visible_source_files": files,
+            "visible_source_takes": [trail.take for trail in visible],
+            "visible_source_files": [trail.path.name for trail in visible],
             "policy": {
                 "current_color": _CURRENT_TRAIL_COLOR.name(),
                 "current_alpha": _CURRENT_TRAIL_COLOR.alpha(),
@@ -810,10 +837,11 @@ class RecorderWindow(QMainWindow):
         self.canvas.update_skeleton()
 
     def _refresh_trails(self) -> None:
-        """Rebuild the canvas overlays: faint saved trails behind, the current trail in front."""
+        """Rebuild the canvas overlays: faint saved trails (by display history) behind, the current trail in front."""
         trails: list[TrailOverlay] = []
         if self.show_past_trails:
-            trails.extend(TrailOverlay(t.points, _PAST_TRAIL_COLOR, _PAST_TRAIL_WIDTH_PX) for t in self._history)
+            past = self._drawn_history()
+            trails.extend(TrailOverlay(t.points, _PAST_TRAIL_COLOR, _PAST_TRAIL_WIDTH_PX) for t in past)
         if self.show_tip_trail and len(self.log) >= _MIN_SAMPLES:
             trails.append(TrailOverlay(self.current_trail(), _CURRENT_TRAIL_COLOR, _CURRENT_TRAIL_WIDTH_PX))
         self.canvas.trails = trails
@@ -907,6 +935,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--show-past-trails",
         action="store_true",
         help="draw the tip paths of the takes saved in this session as faint lines behind the current take",
+    )
+    parser.add_argument(
+        "--past-trail-history",
+        choices=_PAST_TRAIL_HISTORIES,
+        default="all",
+        help="which saved takes --show-past-trails draws: every take saved in this session, or only the last "
+        "saved one; the saved files and the history are the same either way (default: all)",
     )
     parser.add_argument(
         "--sample-rate",
@@ -1010,6 +1045,7 @@ def main() -> None:
         start_on_grab=args.start_on_grab,
         show_tip_trail=args.show_tip_trail,
         show_past_trails=args.show_past_trails,
+        past_trail_history=args.past_trail_history,
         method=args.method,
         stiffness=args.stiffness,
         friction=args.friction,
