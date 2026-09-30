@@ -14,9 +14,9 @@ $H \ddot{q} = \tau - b + J_E^{T} f_E$ to solve for $\ddot{q}$ at every step — 
 problem of the general form $A x = b$. Because $H$ is symmetric and — for
 nondegenerate link properties — positive definite, it can be solved robustly
 (Cholesky is the natural specialized choice); `skelarm` delegates to NumPy's
-`numpy.linalg.solve`, an LU-based LAPACK routine, and raises a clear error in the
-degenerate (singular) case. The textbook method underlying such solvers is
-**Gaussian elimination**.
+`numpy.linalg.solve`, an LU-based LAPACK routine, and raises a clear error when the
+solver detects that $H$ is singular; a numerically singular $H$ can pass undetected.
+The textbook method underlying such solvers is **Gaussian elimination**.
 
 ### Gaussian elimination
 

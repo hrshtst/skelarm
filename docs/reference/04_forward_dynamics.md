@@ -96,8 +96,9 @@ reuses tested code:
   when a non-zero `grav_vec` is supplied, gravity; any external loads stored on the
   links are folded in here with the correct sign.
 - **`compute_forward_dynamics`** then solves $H \ddot{q} = \tau - b$ with
-  `numpy.linalg.solve`, raising a clear error if $H$ is singular (e.g. a link with
-  zero mass and inertia).
+  `numpy.linalg.solve`, raising a clear error when the solver detects that $H$ is
+  singular. A numerically singular $H$ can pass undetected and yield meaningless,
+  very large accelerations.
 
 !!! note "Gravity and external loads"
     The supported model is a horizontal planar arm, so **gravity is zero**. The
