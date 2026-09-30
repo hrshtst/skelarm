@@ -1,12 +1,13 @@
 # Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
 # SPDX-License-Identifier: GPL-3.0-only
 
-"""Load a full control scenario (robot + task + controller) from one TOML file.
+"""Load a full control scenario (robot + task + simulator + controller) from one TOML file.
 
 A combined config mirrors the per-section schema used by :meth:`Skeleton.from_toml`:
 ``[skeleton]`` and ``[initial]`` describe the robot and its start state, ``[task]``
-the goal (a task-space target with a movement duration), and ``[controller]`` which
-controller drives the reach. :func:`load_scenario` reads all three.
+the goal (for a reach, a task-space target with a movement duration), ``[simulator]``
+the integration settings, and ``[controller]`` which controller drives the motion.
+:func:`load_scenario` reads them all.
 
 Example::
 
@@ -14,7 +15,9 @@ Example::
     type = "reaching"  # the task kind (required)
     target = [0.55, 1.21]  # endpoint goal (x, y) in meters (required for reaching)
     duration = 2.0  # simulated time (s)
-    dt = 0.002  # control step (s)
+
+    [simulator]
+    dt = 0.002  # simulation and control step (s)
 
     [controller]
     type = "computed_torque"
@@ -64,7 +67,7 @@ if TYPE_CHECKING:
 
 _REFERENCE_DT = 0.02  # sampling step for the IK-converted joint reference (interpolated)
 _TASK_DIM = 2  # planar endpoint target (x, y)
-_REACHING_TYPE = "reaching"  # the built-in task type; the one that requires a target
+_REACHING_TYPE = "reaching"  # the built-in task type that requires a target
 _MULTI_TARGET_TYPE = "multi_target_reaching"  # several candidate targets; one active, switchable in the GUI
 _TASK_TYPES: set[str] = {_REACHING_TYPE}  # supported [task].type values; extend via register_task_type
 # Top-level [task] keys consumed by Task; any others are kept on Task.params for custom tasks.
@@ -100,9 +103,11 @@ class Task:
     """A task and the run conditions for it.
 
     The required field is ``type`` — the kind of task, which determines what else is
-    needed. ``reaching`` (the only built-in) requires a ``target``; other task types
-    (see :func:`register_task_type`) carry their own data on :attr:`params` and may
-    omit the target.
+    needed. ``reaching`` requires a ``target``. The other built-in types
+    (``multi_target_reaching``, ``periodic_curve``, ``trajectory_tracking``, and
+    ``joint_trajectory_tracking``) and custom types registered with
+    :func:`register_task_type` carry their own data on :attr:`params` and may omit the
+    target.
 
     Parameters
     ----------
@@ -112,8 +117,8 @@ class Task:
         The endpoint goal ``(x, y)`` in meters. Required for ``reaching``; ``None``
         for task types that do not use a single point goal.
     label : str | None
-        Optional name for the target, used to select it among multiple targets
-        (multi-target tasks are defined later).
+        Optional name for the target (for ``multi_target_reaching``, the active
+        candidate's label; the candidate itself is chosen by the ``active`` index).
     color : str
         Marker color for the target (any Qt/SVG color name or ``#rrggbb``).
     tolerance : float | None
