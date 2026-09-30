@@ -30,7 +30,7 @@ classDiagram
     }
     class LinkProp {
         <<dataclass>>
-        +length mass inertia qmin qmax
+        +length m i rgx rgy qmin qmax
     }
     Skeleton "1" *-- "N" Link
     Link "1" *-- "1" LinkProp

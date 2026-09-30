@@ -44,9 +44,11 @@ $$
 Here:
 
 - $H = T^{T} H_\theta T \in \mathbb{R}^{n \times n}$ is the **system inertia
-  matrix** — symmetric, and positive definite for physically valid, nondegenerate
-  link properties (a link with zero mass *and* zero inertia makes it singular,
-  which `compute_forward_dynamics` reports as an error),
+  matrix**, which is symmetric. For nonnegative masses and inertias, $H$ is
+  positive semidefinite. It is positive definite when every nonzero joint-velocity
+  vector produces positive kinetic energy. Distal bodies can keep a massless link
+  from causing singularity; singularity occurs when some nonzero combination of
+  joint velocities produces zero kinetic energy,
 - $b = T^{T} b_\theta \in \mathbb{R}^{n}$ is the **system bias force vector**
   (the velocity-dependent centripetal/Coriolis terms),
 - $\tau$ is the actuator torque vector,
