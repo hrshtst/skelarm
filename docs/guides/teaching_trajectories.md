@@ -139,8 +139,9 @@ uv run python tools/trajectory_tracking_simulator.py track.toml
 
 <video controls loop muted playsinline width="640" src="../../assets/trajectory_tracking.mp4"></video>
 
-*The taught motion tracked by computed torque: the gray overlay is the (smoothed)
-demonstrated tip path, and the target marker from the teaching scenario is kept.*
+*The taught motion tracked by computed torque: the gray overlay is the demonstrated
+tip path as recorded (the smoothing applies only to the controller's reference),
+and the target marker from the teaching scenario is kept.*
 
 Hand-taught motions are jaggy; the `filter` table pre-smooths the reference
 (zero-phase low-pass, Butterworth, moving average, or Savitzky–Golay) and the

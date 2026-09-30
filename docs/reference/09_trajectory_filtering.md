@@ -138,20 +138,31 @@ polynomial order $p$ (with $p < W$).
 ### Zero-phase application
 
 Any causal IIR filter delays the signal (phase lag), which would bias a tracked
-trajectory. To avoid this, the filters are applied **forward and then backward**
-(`filtfilt`): the two passes cancel the phase, giving zero net delay at the cost of
-doubling the magnitude roll-off. The filter state is seeded with steady-state
-initial conditions and the signal is reflected at the boundaries, so a constant
-(DC) signal passes through unchanged and edge transients are suppressed.
+trajectory, so each filter is applied in a way that leaves no net delay:
+
+- **Butterworth** runs **forward and then backward** (`filtfilt`): the two passes
+  cancel the phase at the cost of squaring the magnitude response (doubling the
+  roll-off in dB). The signal is first extended at each end by a point reflection
+  about its boundary sample, and each pass starts from steady-state initial
+  conditions, so a constant (DC) signal passes through unchanged and edge
+  transients are suppressed.
+- **First-order (RC) low-pass** also runs forward and then backward, squaring its
+  magnitude response, but without padding: each pass is seeded with its first
+  sample, which likewise preserves a constant signal.
+- **Moving average** and **Savitzky–Golay** are a single convolution with a
+  symmetric, centered kernel, which is phase-free on its own, so their magnitude
+  response is not squared. The signal is mirrored at each end so the window stays
+  full near the edges.
 
 ### The four filters compared
 
 `examples/filtering_demo.py` compares all four kinds at representative settings
 matched by nominal cutoff / window time scale: the window filters are specified
 by a window length in seconds, so the settings scale with the sample rate.
-(The final bandwidths still differ by kind — the zero-phase forward-backward
-application squares each magnitude response, pulling the effective −3 dB cutoff
-below the configured value, furthest for the first-order low-pass.) On a
+(The final bandwidths still differ by kind — the two IIR filters run forward and
+backward, which squares their magnitude responses and pulls the effective −3 dB
+cutoff below the configured value, furthest for the first-order low-pass; the
+window filters run once.) On a
 synthetic signal it reports the RMSE against
 the known ground truth as a mean over ten noise seeds; on the hand-taught
 recording shipped in `docs/assets/teach.sklog.npz` it shows the taught tip path
@@ -176,13 +187,17 @@ content and how much smoothing the task tolerates.
 
 The `trajectory_tracking` and `joint_trajectory_tracking` task types
 ([Control Configuration](../guides/control_configuration.md)) load a reference
-`.sklog.npz`, optionally `smooth` it, then `resample_with_derivatives` it onto the
-control grid:
+`.sklog.npz`, optionally `smooth` it, then `resample_with_derivatives` it onto a
+uniform 20 ms reference grid:
 
 - **Task-space** (`trajectory_tracking`): the smoothed tip path becomes a
   `SampledTaskReference`, which `ik_joint_reference` converts to a joint reference.
 - **Joint-space** (`joint_trajectory_tracking`): the smoothed angle series and its
   spline derivatives form a `SampledJointReference` directly (no inverse kinematics).
+
+Controllers read that grid by linear interpolation at every control step, whatever
+`[simulator].dt` is, so a finer simulation step does not refine the reference
+itself.
 
 The filters assume evenly spaced samples. A recorder log is nearly even, but its
 timestamps are the real elapsed times, so a late timer tick shows up as a longer
