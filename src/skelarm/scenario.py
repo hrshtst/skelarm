@@ -909,8 +909,9 @@ def rerun_log(log: StateLog) -> StateLog:
     recorded channels exactly (MPC, which calls :func:`scipy.optimize.minimize`,
     reproduces within a small numerical tolerance on the same platform). For an
     interactive simulator log the re-run is the *unperturbed* scenario:
-    mouse-applied forces are recorded in the ``ext_force`` channel but not
-    replayed.
+    mouse-applied forces (the ``ext_force`` channel) and live target switches
+    (the ``active_target`` channel) are recorded but not replayed, so the re-run
+    reaches the configured active target.
 
     Raises
     ------

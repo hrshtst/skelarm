@@ -60,11 +60,13 @@ strongest to weakest:
    recorded channels exactly; MPC matches within a small numerical tolerance
    (details below).
 3. **Interactive (GUI) runs** — a GUI recording carries the same config and
-   resolved settings, but mouse-drag tip forces and any GUI friction shaped the
-   recorded motion and are **not replayed** by `rerun_log`: a re-simulation
-   gives the *unperturbed* scenario, not the recorded motion. Use playback
-   (tier 1) to revisit a perturbed run; the drag force is recorded as the
-   `ext_force` channel for analysis.
+   resolved settings, but mouse-drag tip forces, any GUI friction, and live
+   target switches in the multi-target simulator shaped the recorded motion and
+   are **not replayed** by `rerun_log`: a re-simulation gives the *unperturbed*
+   scenario with the configured active target, not the recorded motion. Use
+   playback (tier 1) to revisit such a run; the drag force is recorded as the
+   `ext_force` channel and the switches as the `active_target` channel for
+   analysis.
 
 A log written by `run_scenario` or the interactive scenario simulators embeds —
 in the log's `[extra]` metadata — the **resolved, self-contained scenario

@@ -55,7 +55,7 @@ track a reference loaded from a `.sklog.npz` file (e.g. one recorded with
 | `type` | Reference | Tracked by |
 | --- | --- | --- |
 | `reaching` | A planned point-to-point reach to `target`. | any controller |
-| `multi_target_reaching` | Several candidate targets; the active one is reached (switchable live in the GUI). | any controller |
+| `multi_target_reaching` | Several candidate targets; the active one is reached (switchable live in the GUI). | any controller (live switching retargets reaching controllers only) |
 | `periodic_curve` | A closed task-space curve traced repeatedly, converted to joint angles by IK. | trajectory-tracking controllers |
 | `trajectory_tracking` | The recorded **tip** `(x, y)` path, converted to joint angles by IK. | trajectory-tracking controllers |
 | `joint_trajectory_tracking` | The recorded **per-joint** `q(t)` series directly (no IK). | joint-space controllers |
@@ -95,6 +95,9 @@ A `multi_target_reaching` task lists several candidate `targets` (each a `[x, y]
 target flows through the ordinary reaching pipeline; `tools/multi_target_simulator.py`
 draws all candidates and switches the active one live when you press a number key
 (`1`..`N`), retargeting a reaching controller (e.g. `virtual_spring_damper`) on the fly.
+The trajectory-tracking controllers and MPC follow a reference planned when the run
+starts, so a live switch moves only the marker: they keep reaching for the target
+that was active at the start.
 
 ```toml
 [task]
@@ -174,8 +177,9 @@ underlying mechanics.
 ## The `[controller]` section
 
 `type` selects the control law; the remaining keys are its gains (any omitted key
-falls back to the default below). Diagonal PD gains (`kp`, `kd`) and task-space
-gains (`k_task`, `d_task`, `c_joint`) are isotropic scalars. To plug in a control
+falls back to the default below). The joint-space PD gains `kp` and `kd` take either
+one scalar for every joint or a per-joint array (e.g. `kp = [300.0, 200.0]`); the
+task-space gains (`k_task`, `d_task`, `c_joint`) are isotropic scalars. To plug in a control
 law of your own, see [Defining a Controller](defining_a_controller.md).
 
 ### Trajectory tracking
@@ -217,9 +221,12 @@ Re-optimizing every step is expensive at a small `dt`; use a larger `[simulator]
 
 !!! note "Reach time vs. settling"
     For trajectory-tracking controllers the planned motion spans `[0, duration]`,
-    so the endpoint arrives at the target at `t = duration`. The reaching
-    controllers converge asymptotically, so give `duration` enough margin for the
-    endpoint to settle.
+    so the *reference* reaches the target at `t = duration`; the endpoint follows
+    with the controller's tracking error. The model-based controllers keep that
+    error small, while plain joint PD lags visibly: on `examples/reach.toml`,
+    `computed_torque` ends about 0.1 mm from the target at `t = duration` and
+    `joint_pd` about 7 mm. The reaching controllers converge asymptotically. Either
+    way, give `duration` some margin when the endpoint must settle.
 
 ## Related
 
