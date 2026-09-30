@@ -42,11 +42,15 @@ q_clamped = np.clip(q, lower, upper)  # pin the angle at the bound
 dq = np.where(q_clamped != q, 0.0, dq)  # zero the velocity of any joint that hit a limit
 ```
 
-This is a **fully inelastic, per-joint stop**: a joint that reaches its bound is
-pinned there and its velocity is set to zero — no bounce, no restoring spring, and
-the kinetic energy in that joint is removed at contact. These loops write
-`link.q` / `link.dq` directly, bypassing the warning-emitting setter, so a run
-that rides a limit does not flood the log with warnings.
+This is a simple **per-joint projection**: a joint that reaches its bound is pinned
+there and its velocity is set to zero — no bounce and no restoring spring. It does
+not model the impact: the other joints keep their velocities, and because the
+joints' inertias are coupled, zeroing one joint's velocity does not necessarily
+remove energy — the arm's total kinetic energy can even rise at the stop. Treat
+it as a way to keep the angles in range, not as an energy-dissipating contact
+model. These loops write `link.q` / `link.dq` directly, bypassing the
+warning-emitting setter, so a run that rides a limit does not flood the log with
+warnings.
 
 The shared one-step integrator `integrate_with_limits(skeleton, tau, dt, lower,
 upper)` takes the bounds as arguments; passing `lower=upper=None` (the default)

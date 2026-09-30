@@ -247,7 +247,9 @@ def integrate_with_limits(
     updated in place.
 
     When ``lower`` / ``upper`` are given, each joint is clamped to ``[lower, upper]`` and
-    the velocity of any joint that hit a bound is zeroed (a fully inelastic stop). Both
+    the velocity of any joint that hit a bound is zeroed. This is a simple projection,
+    not an impact model: the other joints keep their velocities, so the total kinetic
+    energy is not guaranteed to drop (with coupled inertias it can rise). Both
     ``None`` (the default) integrates **without** joint limits, so the limits then apply
     only to the kinematics setters and inverse kinematics.
 
