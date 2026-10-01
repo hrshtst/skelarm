@@ -15,7 +15,7 @@ catalogue; each tool's workflow has its own guide.
 | `periodic_curve_simulator.py` | Trace a closed task-space curve. | [Run Controlled Scenarios](running_scenarios.md) |
 | `trajectory_tracking_simulator.py` | Track a recorded tip / per-joint reference. | [Teach and Track Trajectories](teaching_trajectories.md) |
 | `trajectory_recorder.py` | Teach a trajectory by dragging the tip. | [Teach and Track Trajectories](teaching_trajectories.md) |
-| `player.py` | Replay, plot, and export a saved log. | [Record, Replay, and Re-simulate](recording_replay.md) |
+| `player.py` | Replay, plot, and export a saved log; several logs open a playlist. | [Record, Replay, and Re-simulate](recording_replay.md) |
 | `export_config.py` | Write a log's embedded scenario config to TOML. | [Record, Replay, and Re-simulate](recording_replay.md) |
 
 ## Shared flags
@@ -60,6 +60,7 @@ Tool-specific:
 | --- | --- | --- |
 | `←` / `B` | player | Previous frame, while paused |
 | `Home` / `End` | player | Jump to the first / last frame (`R` also returns to start) |
+| `N` / `P` | player (playlist) | Load the next / previous log of the playlist |
 | `Space` | recorder | Start a take from the reset posture (`--start-on-grab` starts on the first grab instead) |
 | `S` / `Shift+S` | recorder | Save the take and keep it visible / save and prepare the next take |
 | `R` | recorder | Reset; discards only an unsaved take |

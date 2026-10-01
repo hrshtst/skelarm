@@ -17,6 +17,7 @@ uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --output
 uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --multi-take --show-tip-trail --show-past-trails
 uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --multi-take --show-tip-trail --show-past-trails --past-trail-history last
 uv run python tools/player.py reach_001.sklog.npz                                        # replay a take
+uv run python tools/player.py reach_*.sklog.npz                                          # replay every take as a playlist
 ```
 
 ### Controls

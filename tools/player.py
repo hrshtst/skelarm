@@ -20,14 +20,21 @@ playback-only ``extra.playback.task`` table with the same ``[task]`` schema
 playback-only log can be drawn but not re-run; a malformed playback table is
 rejected on load.
 
+Given several log files, the player opens a playlist window beside it: double-click a
+file (or press Enter) to load and play it, ``N`` / ``P`` in the player load the next /
+previous one, and each finished log moves on to the next file that loads (the end of
+the list stops). Files that fail to load are greyed out and skipped; the side panel and
+the window title name the playing file, and "Plot channels…" plots it.
+
 The replay can also be exported headlessly (no GUI window) to an ``.mp4`` video or an
 animated ``.gif`` with ``--export``: each frame is rendered from the same canvas the
 interactive player uses — task overlay, centers of mass, and external-force arrow
-included — and encoded with ``imageio``.
+included — and encoded with ``imageio``. Export renders a single log.
 
 Usage::
 
     uv run python tools/player.py run.sklog.npz
+    uv run python tools/player.py reach_*.sklog.npz                     # several logs: a playlist
     uv run python tools/player.py run.sklog.npz --show-com --speed 0.5
     uv run python tools/player.py run.sklog.npz --export run.mp4          # headless mp4
     uv run python tools/player.py run.sklog.npz --export run.gif --fps 24  # headless gif
