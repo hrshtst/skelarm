@@ -687,3 +687,226 @@ def test_file_name_is_shown_in_the_side_panel(qapp) -> None:  # noqa: ANN001, AR
     assert "take_001.sklog.npz" in named.windowTitle()
     unnamed = PlaybackWindow(_log())
     assert unnamed.file_label.isHidden()
+
+
+# ----------------------------------------------------------------------------------------------
+# Playlist (several log files)
+# ----------------------------------------------------------------------------------------------
+
+
+def _write_logs(tmp_path: Path, *logs: StateLog | bytes) -> list[Path]:
+    """Save each log (or raw bytes, for a broken file) as ``take_<k>.sklog.npz`` and return the paths."""
+    paths = []
+    for k, log in enumerate(logs, start=1):
+        path = tmp_path / f"take_{k}.sklog.npz"
+        if isinstance(log, bytes):
+            path.write_bytes(log)
+        else:
+            log.save(path)
+        paths.append(path)
+    return paths
+
+
+def _double_click(playlist, row: int) -> None:  # noqa: ANN001
+    """Double-click the playlist row ``row`` through Qt's event system."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+    from PyQt6.QtWidgets import QApplication
+
+    playlist.show()
+    QApplication.processEvents()
+    widget = playlist.list_widget
+    center = widget.visualItemRect(widget.item(row)).center()
+    QTest.mouseClick(widget.viewport(), Qt.MouseButton.LeftButton, pos=center)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    QTest.mouseDClick(widget.viewport(), Qt.MouseButton.LeftButton, pos=center)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+
+
+def _entry(playlist, row: int):  # noqa: ANN001, ANN202  # QListWidgetItem (lazy PyQt import)
+    """Return the playlist entry at ``row``, asserting it exists."""
+    item = playlist.list_widget.item(row)
+    assert item is not None
+    return item
+
+
+def _marked(playlist) -> list[int]:  # noqa: ANN001
+    """Return the rows carrying the now-playing marker."""
+    return [row for row in range(playlist.list_widget.count()) if _entry(playlist, row).text().startswith("▶")]
+
+
+def test_playlist_lists_the_files_and_opens_the_first_paused(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Every file is listed by name (full path as tooltip); the first is loaded, marked, and paused."""
+    from tools.player import open_playlist
+
+    paths = _write_logs(tmp_path, _log(5), _force_log(7), _three_link_log(4))
+    player, playlist = open_playlist(paths)
+    widget = playlist.list_widget
+    assert widget.count() == 3  # noqa: PLR2004
+    assert [_entry(playlist, row).toolTip() for row in range(3)] == [str(path) for path in paths]
+    assert _entry(playlist, 1).text() == "take_2.sklog.npz"
+    assert _marked(playlist) == [0]
+    assert playlist.current == 0
+    assert len(player.log) == 5  # noqa: PLR2004
+    assert player.file_label.text() == "take_1.sklog.npz"
+    assert player.is_playing is False
+
+
+def test_double_click_loads_and_plays_that_file(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Double-clicking a row loads that file into the player and starts playing it."""
+    from tools.player import open_playlist
+
+    player, playlist = open_playlist(_write_logs(tmp_path, _log(5), _force_log(7), _three_link_log(4)))
+    _double_click(playlist, 2)
+    assert playlist.current == 2  # noqa: PLR2004
+    assert _marked(playlist) == [2]
+    assert player.skeleton.num_joints == 3  # noqa: PLR2004
+    assert player.file_label.text() == "take_3.sklog.npz"
+    assert player.is_playing is True
+    player.pause()
+
+
+def test_enter_loads_the_selected_file(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Enter is the keyboard equivalent of the double-click."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+    from PyQt6.QtWidgets import QApplication
+
+    from tools.player import open_playlist
+
+    player, playlist = open_playlist(_write_logs(tmp_path, _log(5), _force_log(7)))
+    playlist.show()
+    playlist.activateWindow()
+    playlist.list_widget.setCurrentRow(1)
+    QApplication.processEvents()
+    QTest.keyClick(playlist.list_widget, Qt.Key.Key_Return)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    assert playlist.current == 1
+    assert len(player.log) == 7  # noqa: PLR2004
+    assert player.is_playing is True
+    player.pause()
+
+
+def test_space_in_the_playlist_plays_and_pauses_the_player(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """With the playlist focused, Space still plays and pauses the loaded log."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+    from PyQt6.QtWidgets import QApplication
+
+    from tools.player import open_playlist
+
+    player, playlist = open_playlist(_write_logs(tmp_path, _log(5), _force_log(7)))
+    playlist.show()
+    playlist.activateWindow()
+    playlist.list_widget.setFocus()
+    QApplication.processEvents()
+    QTest.keyClick(playlist.list_widget, Qt.Key.Key_Space)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    assert player.is_playing is True
+    QTest.keyClick(playlist.list_widget, Qt.Key.Key_Space)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    assert player.is_playing is False
+    assert playlist.current == 0  # Space does not load anything
+
+
+def test_playback_moves_on_to_the_next_file_and_stops_after_the_last(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """When a log finishes, the next one loads and plays; the end of the list just stops."""
+    from tools.player import open_playlist
+
+    player, playlist = open_playlist(_write_logs(tmp_path, _log(5), _force_log(7)))
+    player.play()
+    player.advance(10.0)  # run into the end of the first log
+    assert playlist.current == 1
+    assert len(player.log) == 7  # noqa: PLR2004
+    assert player.is_playing is True
+    player.advance(10.0)  # and of the last one
+    assert playlist.current == 1
+    assert player.frame == len(player.log) - 1
+    assert player.is_playing is False
+
+
+def test_files_that_fail_to_load_are_marked_and_skipped(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """A broken file is greyed out with the reason and skipped; double-clicking it keeps the current log."""
+    from PyQt6.QtCore import Qt
+
+    from tools.player import open_playlist
+
+    player, playlist = open_playlist(_write_logs(tmp_path, _log(5), b"not a log", _force_log(7)))
+    player.play()
+    player.advance(10.0)
+    assert playlist.current == 2  # take_2 was skipped  # noqa: PLR2004
+    assert len(player.log) == 7  # noqa: PLR2004
+    broken = _entry(playlist, 1)
+    assert "could not load" in broken.toolTip()
+    assert not broken.flags() & Qt.ItemFlag.ItemIsEnabled
+    player.pause()
+    _double_click(playlist, 1)
+    assert playlist.current == 2  # noqa: PLR2004
+    assert len(player.log) == 7  # noqa: PLR2004
+
+
+def test_playlist_starts_at_the_first_loadable_file(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """A broken first file is skipped at startup; a list with nothing loadable is an error."""
+    from tools.player import open_playlist
+
+    player, playlist = open_playlist(_write_logs(tmp_path, b"broken", _force_log(7)))
+    assert playlist.current == 1
+    assert len(player.log) == 7  # noqa: PLR2004
+    unloadable = tmp_path / "unloadable"
+    unloadable.mkdir()
+    with pytest.raises(ValueError, match="none of the logs"):
+        open_playlist(_write_logs(unloadable, b"a", b"b"))
+
+
+def test_plot_channels_uses_the_loaded_log(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Plot channels follows the playlist: it plots the log that is loaded, not the first one."""
+    from tools.player import open_playlist
+
+    player, playlist = open_playlist(_write_logs(tmp_path, _log(5), _force_log(7)))
+    first = player.build_channel_figure()
+    assert len(first.axes) == len(_log().channel_names)
+    playlist.play_index(1, play=False)
+    second = player.build_channel_figure()
+    assert len(second.axes) == len(_force_log().channel_names)
+
+
+def test_playlist_window_reopens_and_closes_with_the_player(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Closing the playlist only hides it (the Playlist button reopens it); closing the player closes both."""
+    from PyQt6.QtWidgets import QApplication
+
+    from tools.player import open_playlist
+
+    player, playlist = open_playlist(_write_logs(tmp_path, _log(5), _force_log(7)))
+    assert not player.playlist_button.isHidden()
+    player.show()
+    playlist.show()
+    playlist.close()
+    assert not playlist.isVisible()
+    player.playlist_button.click()
+    QApplication.processEvents()
+    assert playlist.isVisible()
+    player.close()
+    QApplication.processEvents()
+    assert not playlist.isVisible()
+
+
+def test_single_file_player_has_no_playlist_button(qapp) -> None:  # noqa: ANN001, ARG001
+    """Without a playlist the Playlist button stays hidden."""
+    assert PlaybackWindow(_log()).playlist_button.isHidden()
+
+
+def test_parser_accepts_several_log_files() -> None:
+    """Several log files are accepted; one is still the plain single-log player."""
+    args = build_parser().parse_args(["a.sklog.npz", "b.sklog.npz"])
+    assert args.logfile == [Path("a.sklog.npz"), Path("b.sklog.npz")]
+    assert build_parser().parse_args(["a.sklog.npz"]).logfile == [Path("a.sklog.npz")]
+
+
+def test_export_refuses_several_log_files(tmp_path: Path) -> None:
+    """Headless export renders one log; several files are a clear command-line error."""
+    paths = _write_logs(tmp_path, _log(5), _log(6))
+    script = Path(__file__).resolve().parents[1] / "tools" / "player.py"
+    result = subprocess.run(  # noqa: S603  # trusted: our own interpreter and script path
+        [sys.executable, str(script), *map(str, paths), "--export", str(tmp_path / "out.gif")],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2  # noqa: PLR2004
+    assert "--export takes a single log" in result.stderr
+    assert not (tmp_path / "out.gif").exists()

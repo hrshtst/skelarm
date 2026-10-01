@@ -38,13 +38,14 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections.abc import Mapping
+import zipfile
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn, cast
 
 import numpy as np
-from PyQt6.QtCore import QSignalBlocker, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QEvent, QObject, QPoint, QSignalBlocker, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QApplication,
@@ -52,6 +53,8 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QPushButton,
     QSlider,
@@ -87,6 +90,9 @@ _EXPORT_FPS = 30.0  # default output frame rate for --export
 _EXPORT_SIZE_PX = 800  # square frame size (px) for --export; a multiple of 16 keeps mp4 codecs happy
 _EXPORT_SUFFIXES = (".mp4", ".gif")  # --export formats, selected from the output path extension
 _EXPORT_PANEL_WIDTH_PX = 304  # --panel side-panel width; a multiple of 16 keeps mp4 codecs happy
+_PLAYING_MARK = "▶ "  # prefixes the playlist entry of the loaded log
+# What loading and checking a log file can raise: unreadable, not an archive, missing members, not replayable.
+_LOAD_ERRORS = (OSError, ValueError, KeyError, zipfile.BadZipFile)
 
 
 class _ExportPanel(QWidget):
@@ -381,6 +387,12 @@ class PlaybackWindow(QMainWindow):
         self.plot_button.setIcon(make_icon("mdi6.chart-line"))
         self.plot_button.clicked.connect(self._on_plot_channels)
         controls.addWidget(self.plot_button)
+
+        # Reopens the playlist window; shown only when a playlist drives this player.
+        self.playlist_button = QPushButton("Playlist")
+        self.playlist_button.setIcon(make_icon("mdi6.playlist-play"))
+        self.playlist_button.setVisible(False)
+        controls.addWidget(self.playlist_button)
 
         controls.addStretch()
         layout.addWidget(panel, stretch=1)
@@ -740,6 +752,136 @@ class PlaybackWindow(QMainWindow):
         plt.show(block=False)
 
 
+class PlaylistWindow(QWidget):
+    """A playlist of log files that a :class:`PlaybackWindow` replays one after another.
+
+    Double-click a file (or press Enter on it) to load and play it; when a log
+    finishes, the next file that loads is played, and the end of the list stops.
+    A file that fails to load is greyed out with the reason and skipped. Closing
+    this window only hides it (the player's Playlist button reopens it); closing
+    the player closes it too.
+    """
+
+    def __init__(self, paths: Sequence[Path], player: PlaybackWindow, *, current: int = 0) -> None:
+        """List ``paths`` and drive ``player``, which already shows ``paths[current]``."""
+        super().__init__()
+        self.paths = list(paths)
+        self.player = player
+        self._current = current
+        self._failed: set[int] = set()
+        self.setWindowTitle("Skelarm Playlist")
+        self.resize(360, 480)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Double-click (or Enter) to play a log"))
+        self.list_widget = QListWidget()
+        for path in self.paths:
+            item = QListWidgetItem(path.name)
+            item.setToolTip(str(path))
+            self.list_widget.addItem(item)
+        # Activation is the platform's double-click (or Enter on the current row).
+        self.list_widget.itemActivated.connect(self._on_item_activated)
+        layout.addWidget(self.list_widget)
+
+        self.play_shortcut = QShortcut(QKeySequence("Space"), self)  # play/pause without leaving the list
+        self.play_shortcut.activated.connect(self.player.play_button.click)
+        player.playback_finished.connect(self._on_player_finished)
+        player.playlist_button.setVisible(True)
+        player.playlist_button.clicked.connect(self.show_and_raise)
+        player.installEventFilter(self)  # closing the player closes the playlist too
+        self._mark_current()
+
+    @property
+    def current(self) -> int:
+        """The index of the log loaded in the player."""
+        return self._current
+
+    def play_index(self, index: int, *, play: bool = True) -> bool:
+        """Load the file at ``index`` into the player and play it (unless ``play`` is false).
+
+        Returns ``False``, leaving the current log in the player, when the file fails to
+        load; the entry is then greyed out with the reason.
+        """
+        path = self.paths[index]
+        try:
+            self.player.load_log(StateLog.load(path), name=path.name)
+        except _LOAD_ERRORS as exc:
+            self.mark_failed(index, exc)
+            return False
+        self._current = index
+        self._mark_current()
+        if play:
+            self.player.play()
+        return True
+
+    def mark_failed(self, index: int, error: Exception) -> None:
+        """Grey out the entry at ``index`` with the reason it could not be loaded."""
+        self._failed.add(index)
+        item = self.list_widget.item(index)
+        assert item is not None  # every path has an entry
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+        item.setToolTip(f"{self.paths[index]}\ncould not load: {error}")
+        print(f"could not load {self.paths[index]}: {error}", file=sys.stderr)
+
+    def show_and_raise(self) -> None:
+        """Show the playlist window in front."""
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:  # noqa: N802
+        """Close together with the player window."""
+        if a0 is self.player and a1 is not None and a1.type() == QEvent.Type.Close:
+            self.close()
+        return False
+
+    def _mark_current(self) -> None:
+        """Prefix the loaded log's entry with the now-playing mark and select it."""
+        for row, path in enumerate(self.paths):
+            item = self.list_widget.item(row)
+            assert item is not None  # every path has an entry
+            item.setText(f"{_PLAYING_MARK}{path.name}" if row == self._current else path.name)
+        self.list_widget.setCurrentRow(self._current)
+
+    def _on_item_activated(self, item: QListWidgetItem) -> None:
+        """Load and play the activated entry."""
+        self.play_index(self.list_widget.row(item))
+
+    def _on_player_finished(self) -> None:
+        """Play the next file that loads; the end of the list just stops."""
+        for index in range(self._current + 1, len(self.paths)):
+            if index not in self._failed and self.play_index(index):
+                return
+
+
+def open_playlist(
+    paths: Sequence[Path], *, show_com: bool = False, speed: float = 1.0
+) -> tuple[PlaybackWindow, PlaylistWindow]:
+    """Open a player on the first of ``paths`` that loads, with a playlist window for all of them.
+
+    The player starts paused; files that fail to load are marked in the playlist.
+
+    Raises
+    ------
+    ValueError
+        If none of the logs can be replayed.
+    """
+    failures: dict[int, Exception] = {}
+    for index, path in enumerate(paths):
+        try:
+            player = PlaybackWindow(StateLog.load(path), show_com=show_com, speed=speed, name=path.name)
+        except _LOAD_ERRORS as exc:
+            failures[index] = exc
+            continue
+        playlist = PlaylistWindow(paths, player, current=index)
+        for failed, error in failures.items():
+            playlist.mark_failed(failed, error)
+        return player, playlist
+    reasons = "; ".join(f"{paths[index].name}: {error}" for index, error in failures.items())
+    msg = f"none of the logs can be replayed ({reasons})"
+    raise ValueError(msg)
+
+
 def _reject_playback_shape(key: str, value: object) -> NoReturn:
     """Refuse playback metadata of the wrong shape with the error the schema promises (a ``ValueError``)."""
     msg = f"log carries malformed {key} metadata: expected a table, got {type(value).__name__}"
@@ -764,7 +906,9 @@ def _playback_task(extra: Mapping[str, object]) -> Mapping[str, object] | None:
 def build_parser() -> argparse.ArgumentParser:
     """Build the command-line argument parser for the tool."""
     parser = argparse.ArgumentParser(description="Replay and analyze a recorded skelarm state log.")
-    parser.add_argument("logfile", type=Path, help="path to a .sklog.npz state log")
+    parser.add_argument(
+        "logfile", type=Path, nargs="+", help="path to a .sklog.npz state log; several open a playlist window"
+    )
     parser.add_argument("--show-com", action="store_true", help="overlay each link's center of mass")
     parser.add_argument("--speed", type=float, default=1.0, help="initial playback speed multiplier (default: 1.0)")
     parser.add_argument(
@@ -787,18 +931,46 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _checked_paths(parser: argparse.ArgumentParser, args: argparse.Namespace) -> list[Path]:
+    """Return the log paths after checking they exist and fit the export options (exits otherwise)."""
+    paths: list[Path] = args.logfile
+    missing = [str(path) for path in paths if not path.exists()]
+    if missing:
+        parser.error(f"log file not found: {', '.join(missing)}")
+    if args.export is not None:
+        if len(paths) > 1:
+            parser.error("--export takes a single log; export each file separately")
+        if args.export.suffix.lower() not in _EXPORT_SUFFIXES:
+            parser.error(f"unsupported export format {args.export.suffix!r}; use one of {', '.join(_EXPORT_SUFFIXES)}")
+    return paths
+
+
+def _run_playlist(parser: argparse.ArgumentParser, args: argparse.Namespace, paths: list[Path]) -> NoReturn:
+    """Run the player with a playlist window over ``paths`` until the player is closed."""
+    app = QApplication(sys.argv)
+    try:
+        player, playlist = open_playlist(paths, show_com=args.show_com, speed=args.speed)
+    except ValueError as exc:
+        parser.error(str(exc))
+    player.show()
+    playlist.move(player.frameGeometry().topRight() + QPoint(8, 0))  # beside the player
+    playlist.show()
+    sys.exit(app.exec())
+
+
 def main() -> None:
-    """Parse arguments, load the log, and run the player (or export it headlessly)."""
+    """Parse arguments, load the log(s), and run the player (or export one log headlessly)."""
     parser = build_parser()
     args = parser.parse_args()
-    if not args.logfile.exists():
-        parser.error(f"log file not found: {args.logfile}")
-    if args.export is not None and args.export.suffix.lower() not in _EXPORT_SUFFIXES:
-        parser.error(f"unsupported export format {args.export.suffix!r}; use one of {', '.join(_EXPORT_SUFFIXES)}")
+    paths = _checked_paths(parser, args)
+    if len(paths) > 1:
+        _run_playlist(parser, args, paths)
+
+    logfile = paths[0]
     try:
-        log = StateLog.load(args.logfile)
-    except (OSError, ValueError, KeyError) as exc:
-        parser.error(f"could not load {args.logfile}: {exc}")
+        log = StateLog.load(logfile)
+    except _LOAD_ERRORS as exc:
+        parser.error(f"could not load {logfile}: {exc}")
 
     # Export mode renders offscreen so no GUI window is ever shown (headless).
     if args.export is not None:
@@ -806,7 +978,7 @@ def main() -> None:
 
     app = QApplication(sys.argv)
     try:
-        window = PlaybackWindow(log, show_com=args.show_com, speed=args.speed, name=args.logfile.name)
+        window = PlaybackWindow(log, show_com=args.show_com, speed=args.speed, name=logfile.name)
     except ValueError as exc:
         parser.error(str(exc))
 
