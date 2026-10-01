@@ -563,3 +563,127 @@ def test_player_rejects_non_mapping_playback_metadata(qapp, extra: dict[str, obj
     log.extra.update(extra)
     with pytest.raises(ValueError, match=r"extra\.playback"):
         PlaybackWindow(log)
+
+
+# ----------------------------------------------------------------------------------------------
+# Switching logs in place (the basis of the playlist)
+# ----------------------------------------------------------------------------------------------
+
+
+def _three_link_log(frames: int = 4) -> StateLog:
+    """A three-link log, so switching to it changes the robot's joint count."""
+    link_props = [LinkProp(length=0.6, m=1.0, i=0.1, rgx=0.3, rgy=0.0, qmin=-np.pi, qmax=np.pi) for _ in range(3)]
+    log = StateLog(Skeleton(link_props), producer="three-link")
+    for k in range(frames):
+        log.record(0.2 * k, q=[0.1 * k, 0.2 * k, -0.1 * k])
+    return log
+
+
+def test_load_log_switches_the_window_to_another_log(qapp) -> None:  # noqa: ANN001, ARG001
+    """``load_log`` replaces the replayed log in place: frames, slider, pose, header, and file name."""
+    window = PlaybackWindow(_log(5), name="first.sklog.npz")
+    window.set_frame(3)
+    other = _three_link_log(4)
+    window.load_log(other, name="second.sklog.npz")
+    assert window.log is other
+    assert window.frame == 0
+    assert (window.slider.minimum(), window.slider.maximum()) == (0, 3)
+    assert window.skeleton.num_joints == 3  # noqa: PLR2004
+    assert window.canvas.skeleton is window.skeleton
+    assert window.skeleton.q == pytest.approx(other.channel("q")[0])
+    window.set_frame(2)
+    assert window.skeleton.q == pytest.approx(other.channel("q")[2])
+    assert "three-link" in window.header_label.text()
+    assert window.file_label.text() == "second.sklog.npz"
+
+
+def test_load_log_shows_only_the_toggles_the_new_log_supports(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Force and overlay toggles appear and disappear with the data of the loaded log."""
+    window = PlaybackWindow(_force_log())
+    assert not window.force_checkbox.isHidden()
+    window.load_log(_log())
+    assert window.force_checkbox.isHidden()
+    assert window.force_label.isHidden()
+    assert window.canvas.tip_force is None
+
+    window.load_log(_embedded_log("periodic_curve.toml", tmp_path))
+    assert not window.reference_checkbox.isHidden()
+    assert window.canvas.overlay_path is not None
+    window.load_log(_embedded_log("multi_target.toml", tmp_path))
+    assert not window.target_checkbox.isHidden()
+    assert len(window.canvas.overlay_targets) == 3  # noqa: PLR2004
+    window.load_log(_log())
+    assert window.target_checkbox.isHidden()
+    assert window.reference_checkbox.isHidden()
+    assert window.canvas.overlay_targets == []
+    assert window.canvas.overlay_path is None
+
+
+def test_load_log_keeps_the_viewer_settings(qapp) -> None:  # noqa: ANN001, ARG001
+    """Speed, centers of mass, and a hidden force arrow carry over to the next log."""
+    window = PlaybackWindow(_force_log())
+    window.speed_spin.setValue(2.0)
+    window.com_checkbox.setChecked(True)
+    window.force_checkbox.setChecked(False)
+    window.load_log(_force_log(8))
+    assert window.speed == pytest.approx(2.0)
+    assert window.canvas.show_com
+    window.set_frame(3)
+    assert window.canvas.tip_force is None  # still hidden
+
+
+def test_load_log_pauses_playback(qapp) -> None:  # noqa: ANN001, ARG001
+    """Loading another log stops the running timeline; the caller decides whether to play it."""
+    window = PlaybackWindow(_log())
+    window.play()
+    window.load_log(_log(8))
+    assert window.is_playing is False
+    assert window.play_button.isChecked() is False
+
+
+@pytest.mark.parametrize("broken", ["no-q", "bad-playback"])
+def test_load_log_rejects_a_bad_log_and_keeps_the_current_one(qapp, broken: str) -> None:  # noqa: ANN001, ARG001
+    """A log that cannot be replayed raises before anything changes: the current log stays on screen."""
+    current = _force_log()
+    window = PlaybackWindow(current, name="good.sklog.npz")
+    window.set_frame(2)
+    if broken == "no-q":
+        bad = StateLog(
+            Skeleton([LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi)]), producer="bad"
+        )
+        bad.record(0.0, tau=[0.0])
+    else:
+        bad = _log()
+        bad.extra.update({"playback": {"task": {"type": "reaching"}}})
+    with pytest.raises(ValueError, match=r"'q' channel|playback"):
+        window.load_log(bad, name="bad.sklog.npz")
+    assert window.log is current
+    assert window.frame == 2  # noqa: PLR2004
+    assert window.file_label.text() == "good.sklog.npz"
+    assert not window.force_checkbox.isHidden()
+
+
+def test_playback_finished_fires_only_at_a_natural_end(qapp) -> None:  # noqa: ANN001, ARG001
+    """The signal marks playback running into the last frame, not jumps or steps to it."""
+    window = PlaybackWindow(_log())
+    finished: list[int] = []
+    window.playback_finished.connect(lambda: finished.append(window.frame))
+    window.set_frame(len(window.log) - 1)  # a jump to the end
+    window.set_frame(0)
+    for _ in range(len(window.log)):
+        window.step_button.click()  # stepping onto the last frame while paused
+    assert finished == []
+    window.play()
+    window.advance(10.0)
+    assert finished == [len(window.log) - 1]
+    assert window.is_playing is False
+
+
+def test_file_name_is_shown_in_the_side_panel(qapp) -> None:  # noqa: ANN001, ARG001
+    """The playing file's name is shown in the panel (and the title); without one the label is hidden."""
+    named = PlaybackWindow(_log(), name="take_001.sklog.npz")
+    assert named.file_label.text() == "take_001.sklog.npz"
+    assert not named.file_label.isHidden()
+    assert "take_001.sklog.npz" in named.windowTitle()
+    unnamed = PlaybackWindow(_log())
+    assert unnamed.file_label.isHidden()

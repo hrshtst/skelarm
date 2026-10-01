@@ -39,11 +39,12 @@ import argparse
 import os
 import sys
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn, cast
 
 import numpy as np
-from PyQt6.QtCore import QSignalBlocker, Qt, QTimer
+from PyQt6.QtCore import QSignalBlocker, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QApplication,
@@ -76,6 +77,7 @@ if TYPE_CHECKING:
     from collections.abc import Buffer
 
     from numpy.typing import NDArray
+    from PyQt6.QtGui import QColor
 
     from skelarm import Skeleton
 
@@ -165,15 +167,108 @@ class _ExportPanel(QWidget):
             self._active_label.setText(f"Active target: {round(float(self._active[index])) + 1}")
 
 
+@dataclass(frozen=True, eq=False)
+class _Replay:
+    """Everything the player derives from one log, checked before the window switches to it."""
+
+    log: StateLog
+    skeleton: Skeleton
+    q: NDArray[np.float64]
+    times: NDArray[np.float64]
+    force: NDArray[np.float64] | None
+    active_target: NDArray[np.float64] | None
+    targets: list[tuple[NDArray[np.float64], QColor, float | None, bool]]
+    path: NDArray[np.float64] | None
+
+
+def _prepare_replay(log: StateLog) -> _Replay:
+    """Check that ``log`` can be replayed and derive its arm, channels, and task overlays.
+
+    Raises
+    ------
+    ValueError
+        If the log has no ``q`` channel or carries malformed playback metadata.
+    """
+    if "q" not in log.channel_names:
+        msg = "log has no 'q' channel; cannot replay the arm"
+        raise ValueError(msg)
+    skeleton = log.build_skeleton()
+    targets, path = _task_overlays_of(log, skeleton)
+    names = log.channel_names
+    return _Replay(
+        log=log,
+        skeleton=skeleton,
+        q=log.channel("q"),
+        times=log.times,
+        force=log.channel("ext_force") if "ext_force" in names else None,
+        active_target=log.channel("active_target") if "active_target" in names else None,
+        targets=targets,
+        path=path,
+    )
+
+
+def _task_overlays_of(
+    log: StateLog, skeleton: Skeleton
+) -> tuple[list[tuple[NDArray[np.float64], QColor, float | None, bool]], NDArray[np.float64] | None]:
+    """Reconstruct the task from the embedded metadata and return its ``(targets, path)`` overlays.
+
+    A full ``extra.source_config.task`` (as embedded by the simulators) always wins;
+    ``extra.playback.task`` is a playback-only fallback for producers that can describe
+    the task (target, tolerance) without a rerunnable scenario. Logs without either
+    draw no overlays.
+
+    Raises
+    ------
+    ValueError
+        If the playback-only metadata is malformed.
+    """
+    task_cfg = log.extra.get("source_config", {}).get("task")
+    if task_cfg:
+        try:
+            task = Task.from_dict(task_cfg)
+        except (ValueError, KeyError):
+            return [], None
+    else:
+        playback_cfg = _playback_task(log.extra)
+        if playback_cfg is None:
+            return [], None
+        try:
+            task = Task.from_dict(playback_cfg)
+        except (ValueError, KeyError) as exc:
+            # Playback metadata exists only to be drawn; drawing nothing would hide the
+            # producer's mistake, so a malformed table is an explicit error.
+            msg = f"log carries malformed extra.playback.task metadata: {exc}"
+            raise ValueError(msg) from exc
+    return task_overlays(task, skeleton)
+
+
 class PlaybackWindow(QMainWindow):
     """A timeline player for a recorded :class:`~skelarm.StateLog`.
 
     The arm is reconstructed from the log's embedded geometry and posed from the
     recorded ``q`` channel; scrubbing and playback are purely kinematic. The same
-    window can open per-channel analysis plots via :meth:`build_channel_figure`.
+    window can open per-channel analysis plots via :meth:`build_channel_figure`, and
+    :meth:`load_log` switches it to another log in place (the playlist uses this).
     """
 
-    def __init__(self, log: StateLog, *, show_com: bool = False, speed: float = 1.0) -> None:
+    # Emitted when playback runs into the last frame (not on a jump, scrub, or step to it).
+    playback_finished = pyqtSignal()
+
+    # The replayed log and what is derived from it, all (re)set by _switch_to.
+    log: StateLog
+    skeleton: Skeleton
+    _q: NDArray[np.float64]
+    _times: NDArray[np.float64]
+    _n: int
+    _force: NDArray[np.float64] | None
+    _active_target: NDArray[np.float64] | None
+    _shown_active: int | None
+    _has_targets: bool
+    _has_reference: bool
+    _frame: int  # the frame shown
+    _play_time: float  # the playback clock (log seconds)
+
+    def __init__(self, log: StateLog, *, show_com: bool = False, speed: float = 1.0, name: str | None = None) -> None:
         """Build the player for ``log``.
 
         Parameters
@@ -184,42 +279,21 @@ class PlaybackWindow(QMainWindow):
             Overlay each link's center of mass at startup.
         speed : float, optional
             Initial playback speed multiplier.
+        name : str or None, optional
+            The file name shown in the side panel and the title (hidden when ``None``).
 
         Raises
         ------
         ValueError
-            If the log has no ``q`` channel to drive the arm.
+            If the log has no ``q`` channel to drive the arm, or carries malformed
+            playback metadata.
         """
         super().__init__()
-        if "q" not in log.channel_names:
-            msg = "log has no 'q' channel; cannot replay the arm"
-            raise ValueError(msg)
-
-        self.log = log
-        self.skeleton = log.build_skeleton()
-        self._q = log.channel("q")
-        self._times = log.times
-        self._n = len(log)
-        self._frame = 0
-        self._play_time = float(self._times[0]) if self._n else 0.0
+        replay = _prepare_replay(log)
         self._speed = speed
-        # Recorded external tip force (N), shown as an arrow when present.
-        self._force = log.channel("ext_force") if "ext_force" in log.channel_names else None
-        self._show_force = self._force is not None
-
-        self.canvas = SkelarmCanvas(self.skeleton)
+        self._show_force = True  # mirrors the "Show external force" checkbox
+        self.canvas = SkelarmCanvas(replay.skeleton)
         self.canvas.show_com = show_com
-        if self._force is not None:
-            self.canvas.force_scale = self._force_arrow_scale()
-
-        # Reconstruct the task from the embedded config to draw its overlays (target /
-        # active-target emphasis / periodic curve / reference trajectory).
-        self._has_targets, self._has_reference = self._build_task_overlays()
-        # Recorded active-target index (multi-target runs); replays live switches.
-        self._active_target = log.channel("active_target") if "active_target" in log.channel_names else None
-        self._shown_active: int | None = None
-
-        self.setWindowTitle("Skelarm Replay")
         self.resize(1024, 768)
 
         central = QWidget()
@@ -231,7 +305,11 @@ class PlaybackWindow(QMainWindow):
         panel.setFixedWidth(_PANEL_WIDTH_PX)  # keep a constant width; the time/frame readout won't resize it
         controls = QVBoxLayout(panel)
         self.controls_panel = panel  # exposed for sizing (fixed width) and tests
-        controls.addWidget(QLabel(f"<b>Replay</b> — {log.producer or 'state log'}"))
+        self.header_label = QLabel()
+        controls.addWidget(self.header_label)
+        self.file_label = QLabel()  # the playing file's name
+        self.file_label.setWordWrap(True)
+        controls.addWidget(self.file_label)
 
         self.time_label = QLabel()
         self.time_label.setWordWrap(True)  # wrap rather than clip if the readout outgrows the fixed width
@@ -241,8 +319,7 @@ class PlaybackWindow(QMainWindow):
         self.time_label.setFont(time_font)
         controls.addWidget(self.time_label)
 
-        self.slider = QSlider(Qt.Orientation.Horizontal)
-        self.slider.setRange(0, max(self._n - 1, 0))
+        self.slider = QSlider(Qt.Orientation.Horizontal)  # its range follows the loaded log
         self.slider.valueChanged.connect(self.set_frame)
         controls.addWidget(self.slider)
 
@@ -282,26 +359,23 @@ class PlaybackWindow(QMainWindow):
         self.com_checkbox.toggled.connect(self._on_show_com_toggled)
         controls.addWidget(self.com_checkbox)
 
-        # External-force arrow controls, shown only when the log recorded a force.
+        # External-force arrow controls, shown only while the log recorded a force.
         self.force_checkbox = QCheckBox("Show external force")
         self.force_checkbox.setChecked(True)
         self.force_checkbox.toggled.connect(self._on_show_force_toggled)
+        controls.addWidget(self.force_checkbox)
         self.force_label = QLabel()
-        if self._force is not None:
-            controls.addWidget(self.force_checkbox)
-            controls.addWidget(self.force_label)
+        controls.addWidget(self.force_label)
 
-        # Task-overlay toggles, shown only when the log embeds the matching data.
+        # Task-overlay toggles, shown only while the log embeds the matching data.
         self.target_checkbox = QCheckBox("Show target(s)")
         self.target_checkbox.setChecked(True)
         self.target_checkbox.toggled.connect(self._on_show_targets_toggled)
-        if self._has_targets:
-            controls.addWidget(self.target_checkbox)
+        controls.addWidget(self.target_checkbox)
         self.reference_checkbox = QCheckBox("Show reference")
         self.reference_checkbox.setChecked(True)
         self.reference_checkbox.toggled.connect(self._on_show_reference_toggled)
-        if self._has_reference:
-            controls.addWidget(self.reference_checkbox)
+        controls.addWidget(self.reference_checkbox)
 
         self.plot_button = QPushButton("Plot channels…")
         self.plot_button.setIcon(make_icon("mdi6.chart-line"))
@@ -313,6 +387,64 @@ class PlaybackWindow(QMainWindow):
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._on_timeout)
+        self._switch_to(replay, name)
+
+    def load_log(self, log: StateLog, *, name: str | None = None) -> None:
+        """Replay ``log`` in this window instead, starting paused at its first frame.
+
+        The log is checked before anything changes, so a log that cannot be replayed
+        leaves the current one on screen. Viewer settings (speed, centers of mass, and
+        the overlay toggles) carry over.
+
+        Parameters
+        ----------
+        log : StateLog
+            The recording to replay next.
+        name : str or None, optional
+            The file name shown in the side panel and the title (hidden when ``None``).
+
+        Raises
+        ------
+        ValueError
+            If the log has no ``q`` channel or carries malformed playback metadata.
+        """
+        replay = _prepare_replay(log)
+        self.pause()
+        self._switch_to(replay, name)
+
+    def _switch_to(self, replay: _Replay, name: str | None) -> None:
+        """Make ``replay`` the shown log: arm, channels, overlays, toggles, labels, and frame 0."""
+        self.log = replay.log
+        self.skeleton = replay.skeleton
+        self.canvas.skeleton = replay.skeleton
+        self._q = replay.q
+        self._times = replay.times
+        self._n = len(replay.log)
+        self._force = replay.force  # recorded external tip force (N), shown as an arrow
+        if self._force is None:
+            self.canvas.tip_force = None
+        else:
+            self.canvas.force_scale = self._force_arrow_scale()
+        # Task overlays (target / active-target emphasis / periodic curve / reference trajectory).
+        self.canvas.overlay_targets = replay.targets
+        self.canvas.overlay_path = replay.path
+        self._has_targets, self._has_reference = bool(replay.targets), replay.path is not None
+        # Recorded active-target index (multi-target runs); replays live switches.
+        self._active_target = replay.active_target
+        self._shown_active = None
+
+        self.force_checkbox.setVisible(self._force is not None)
+        self.force_label.setVisible(self._force is not None)
+        self.target_checkbox.setVisible(self._has_targets)
+        self.reference_checkbox.setVisible(self._has_reference)
+        self.header_label.setText(f"<b>Replay</b> — {replay.log.producer or 'state log'}")
+        self.file_label.setText(name or "")
+        self.file_label.setVisible(name is not None)
+        self.setWindowTitle(f"Skelarm Replay — {name}" if name else "Skelarm Replay")
+        with QSignalBlocker(self.slider):
+            self.slider.setRange(0, max(self._n - 1, 0))
+        self._frame = 0
+        self._play_time = float(self._times[0]) if self._n else 0.0
         self._show_frame(0)
 
     @property
@@ -348,7 +480,10 @@ class PlaybackWindow(QMainWindow):
         if self._play_time >= self._times[-1]:
             self._play_time = float(self._times[-1])
             self._show_frame(self._n - 1)
+            was_playing = self.is_playing
             self.pause()
+            if was_playing:
+                self.playback_finished.emit()
             return
         index = int(np.searchsorted(self._times, self._play_time, side="right") - 1)
         self._show_frame(max(index, 0))
@@ -582,37 +717,6 @@ class PlaybackWindow(QMainWindow):
         reach = sum(link.prop.length for link in self.skeleton.links)
         return 0.4 * reach / peak
 
-    def _build_task_overlays(self) -> tuple[bool, bool]:
-        """Reconstruct the task from the embedded metadata and set the canvas overlays.
-
-        Returns ``(has_targets, has_reference)`` so the GUI only adds the toggles whose
-        data is present. A full ``extra.source_config.task`` (as embedded by the
-        simulators) always wins; ``extra.playback.task`` is a playback-only fallback
-        for producers that can describe the task (target, tolerance) without a
-        rerunnable scenario. Logs without either draw no overlays.
-        """
-        task_cfg = self.log.extra.get("source_config", {}).get("task")
-        if task_cfg:
-            try:
-                task = Task.from_dict(task_cfg)
-            except (ValueError, KeyError):
-                return False, False
-        else:
-            playback_cfg = _playback_task(self.log.extra)
-            if playback_cfg is None:
-                return False, False
-            try:
-                task = Task.from_dict(playback_cfg)
-            except (ValueError, KeyError) as exc:
-                # Playback metadata exists only to be drawn; drawing nothing would hide the
-                # producer's mistake, so a malformed table is an explicit error.
-                msg = f"log carries malformed extra.playback.task metadata: {exc}"
-                raise ValueError(msg) from exc
-        targets, path = task_overlays(task, self.skeleton)
-        self.canvas.overlay_targets = targets
-        self.canvas.overlay_path = path
-        return bool(targets), path is not None
-
     def _apply_active_target(self, index: int) -> None:
         """Re-flag the overlay markers to the frame's recorded active target, if recorded."""
         if self._active_target is None or not self.canvas.overlay_targets:
@@ -702,7 +806,7 @@ def main() -> None:
 
     app = QApplication(sys.argv)
     try:
-        window = PlaybackWindow(log, show_com=args.show_com, speed=args.speed)
+        window = PlaybackWindow(log, show_com=args.show_com, speed=args.speed, name=args.logfile.name)
     except ValueError as exc:
         parser.error(str(exc))
 
