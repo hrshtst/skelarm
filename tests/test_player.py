@@ -910,3 +910,63 @@ def test_export_refuses_several_log_files(tmp_path: Path) -> None:
     assert result.returncode == 2  # noqa: PLR2004
     assert "--export takes a single log" in result.stderr
     assert not (tmp_path / "out.gif").exists()
+
+
+def _press(window, key) -> None:  # noqa: ANN001
+    """Press ``key`` in the (activated) ``window`` through Qt's event system."""
+    from PyQt6.QtTest import QTest
+
+    _activate(window)
+    QTest.keyClick(window, key)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+
+
+def test_n_and_p_load_the_next_and_previous_files(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """N/P step through the playlist, keep a paused player paused and a playing one playing, and stop at the ends."""
+    from PyQt6.QtCore import Qt
+
+    from tools.player import open_playlist
+
+    player, playlist = open_playlist(_write_logs(tmp_path, _log(5), _force_log(7), _three_link_log(4)))
+    assert player.next_shortcut.key().toString() == "N"
+    assert player.previous_shortcut.key().toString() == "P"
+    _press(player, Qt.Key.Key_N)
+    assert playlist.current == 1
+    assert player.is_playing is False  # paused stays paused
+    player.play()
+    _press(player, Qt.Key.Key_N)
+    assert playlist.current == 2  # noqa: PLR2004
+    assert player.is_playing is True  # playing keeps playing
+    _press(player, Qt.Key.Key_N)  # already the last file
+    assert playlist.current == 2  # noqa: PLR2004
+    _press(player, Qt.Key.Key_P)
+    _press(player, Qt.Key.Key_P)
+    assert playlist.current == 0
+    assert len(player.log) == 5  # noqa: PLR2004
+    _press(player, Qt.Key.Key_P)  # already the first file
+    assert playlist.current == 0
+    player.pause()
+
+
+def test_n_and_p_skip_files_that_fail_to_load(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """A broken file between two good ones is skipped in both directions."""
+    from PyQt6.QtCore import Qt
+
+    from tools.player import open_playlist
+
+    player, playlist = open_playlist(_write_logs(tmp_path, _log(5), b"broken", _force_log(7)))
+    _press(player, Qt.Key.Key_N)
+    assert playlist.current == 2  # noqa: PLR2004
+    _press(player, Qt.Key.Key_P)
+    assert playlist.current == 0
+
+
+def test_n_and_p_do_nothing_without_a_playlist(qapp) -> None:  # noqa: ANN001, ARG001
+    """A single-log player has no next/previous shortcuts to fire."""
+    from PyQt6.QtCore import Qt
+
+    log = _log()
+    window = PlaybackWindow(log)
+    _press(window, Qt.Key.Key_N)
+    _press(window, Qt.Key.Key_P)
+    assert window.log is log
+    assert window.next_shortcut.isEnabled() is False

@@ -350,6 +350,12 @@ class PlaybackWindow(QMainWindow):
         self.end_shortcut = QShortcut(QKeySequence("End"), self)
         self.end_shortcut.activated.connect(self._on_end_shortcut)
         self.quit_shortcut = bind_quit_key(self)
+        # Next / previous log of a playlist: disabled until a playlist connects them.
+        self.next_shortcut = QShortcut(QKeySequence("N"), self)
+        self.previous_shortcut = QShortcut(QKeySequence("P"), self)
+        for shortcut in (self.next_shortcut, self.previous_shortcut):
+            shortcut.setAutoRepeat(False)  # a held key must not race through the list
+            shortcut.setEnabled(False)
 
         controls.addWidget(QLabel("Playback speed"))
         self.speed_spin = QDoubleSpinBox()
@@ -787,7 +793,13 @@ class PlaylistWindow(QWidget):
         self.play_shortcut.activated.connect(self.player.play_button.click)
         player.playback_finished.connect(self._on_player_finished)
         player.playlist_button.setVisible(True)
+        player.playlist_button.setToolTip("Show the playlist (N / P: next / previous log)")
         player.playlist_button.clicked.connect(self.show_and_raise)
+        # N / P live on the player only: in this window they would hijack the list's type-to-search.
+        player.next_shortcut.activated.connect(self.play_next)
+        player.previous_shortcut.activated.connect(self.play_previous)
+        player.next_shortcut.setEnabled(True)
+        player.previous_shortcut.setEnabled(True)
         player.installEventFilter(self)  # closing the player closes the playlist too
         self._mark_current()
 
@@ -813,6 +825,14 @@ class PlaylistWindow(QWidget):
         if play:
             self.player.play()
         return True
+
+    def play_next(self) -> bool:
+        """Load the next file that loads, keeping a playing player playing; ``False`` at the end."""
+        return self._move(+1, play=self.player.is_playing)
+
+    def play_previous(self) -> bool:
+        """Load the previous file that loads, keeping a playing player playing; ``False`` at the start."""
+        return self._move(-1, play=self.player.is_playing)
 
     def mark_failed(self, index: int, error: Exception) -> None:
         """Grey out the entry at ``index`` with the reason it could not be loaded."""
@@ -849,9 +869,16 @@ class PlaylistWindow(QWidget):
 
     def _on_player_finished(self) -> None:
         """Play the next file that loads; the end of the list just stops."""
-        for index in range(self._current + 1, len(self.paths)):
-            if index not in self._failed and self.play_index(index):
-                return
+        self._move(+1, play=True)
+
+    def _move(self, step: int, *, play: bool) -> bool:
+        """Load the nearest file in direction ``step`` that loads, skipping failed ones."""
+        index = self._current + step
+        while 0 <= index < len(self.paths):
+            if index not in self._failed and self.play_index(index, play=play):
+                return True
+            index += step
+        return False
 
 
 def open_playlist(
