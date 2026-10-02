@@ -179,9 +179,10 @@ trajectory-tracking tasks load a recorded reference — each converted via
 ## PyQt6 GUI
 
 The interactive tools subclass PyQt6 base classes. [`SkelarmCanvas`](canvas.md)
-(a `QWidget`) renders a `Skeleton` and is extended by
-[`SimulatorCanvas`](simulator.md); `SkelarmViewer` and `SkelarmSimulator` are the
-`QMainWindow` shells that host them.
+(a `QWidget`) renders a `Skeleton` and poses it by inverse kinematics on a left
+click or drag, unless its `drag_to_pose` attribute is `False`. It is extended by
+[`SimulatorCanvas`](simulator.md), whose drag applies a tip force instead;
+`SkelarmViewer` and `SkelarmSimulator` are the `QMainWindow` shells that host them.
 
 !!! note "Value types not shown"
     A few standalone value types are omitted from the diagram to keep it

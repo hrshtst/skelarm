@@ -297,6 +297,57 @@ def test_left_drag_solves_ik(qapp) -> None:  # noqa: ANN001, ARG001
     assert np.array([tip.xe, tip.ye]) == pytest.approx(np.array(target), abs=1e-3)
 
 
+@pytest.mark.parametrize("drag", [False, True], ids=["click", "drag"])
+def test_drag_to_pose_switches_mouse_posing_on_and_off(qapp, drag: bool) -> None:  # noqa: ANN001, ARG001, FBT001
+    """With ``drag_to_pose`` off, a left click or drag leaves the arm, the IK target, and ``pose_changed`` alone."""
+    from PyQt6.QtCore import QEvent, QPointF, Qt
+    from PyQt6.QtGui import QMouseEvent
+
+    canvas = _two_link_viewer().canvas
+    canvas.resize(400, 400)
+    emitted: list[None] = []
+    canvas.pose_changed.connect(lambda: emitted.append(None))
+    target = (0.5, 1.2)
+    position = QPointF(
+        canvas.width() / 2 + target[0] * canvas.scale_factor, canvas.height() / 2 - target[1] * canvas.scale_factor
+    )
+    if drag:  # a move with the left button held
+        event = QMouseEvent(
+            QEvent.Type.MouseMove,
+            position,
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        deliver = canvas.mouseMoveEvent
+    else:
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            position,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        deliver = canvas.mousePressEvent
+    assert canvas.drag_to_pose  # on by default
+
+    canvas.drag_to_pose = False
+    start = canvas.skeleton.q.copy()
+    deliver(event)
+    assert np.array_equal(canvas.skeleton.q, start)
+    assert emitted == []
+    assert canvas.last_ik_result is None
+    assert canvas._ik_target is None  # noqa: SLF001  # so no target marker is drawn
+
+    canvas.drag_to_pose = True
+    deliver(event)
+    tip = canvas.skeleton.links[-1]
+    assert np.array([tip.xe, tip.ye]) == pytest.approx(np.array(target), abs=1e-3)
+    assert emitted == [None]
+    assert canvas.last_ik_result is not None
+    assert canvas._ik_target == pytest.approx(target)  # noqa: SLF001
+
+
 def _trail_canvas():  # noqa: ANN202  # SkelarmCanvas (lazy PyQt import)
     """Return a shown 400x300 canvas of a two-link arm, ready to grab."""
     from skelarm.canvas import SkelarmCanvas

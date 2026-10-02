@@ -24,6 +24,10 @@ Dragging the tip runs the numerical IK solver each move; joint limits clamp the
 solution, so the arm stops at its bounds rather than folding through them
 ([Joint Limits](joint_limits.md)).
 
+In a PyQt6 tool of your own, the [`SkelarmCanvas`](../api/canvas.md) widget poses
+the arm on a click or drag the same way. Set its `drag_to_pose` attribute to
+`False` to switch that off, for example while the tool animates the arm.
+
 ## Scripted kinematics and plotting
 
 For a minimal scripted example that defines a robot, computes forward

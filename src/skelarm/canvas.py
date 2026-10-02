@@ -128,7 +128,22 @@ class TrailOverlay:
 
 
 class SkelarmCanvas(QWidget):
-    """A widget to draw the robot arm skeleton."""
+    """A widget to draw the robot arm skeleton.
+
+    A left click or drag poses the arm by inverse kinematics: the tip is solved toward
+    the pointer with :meth:`solve_to_world`, which marks the IK target and emits
+    :attr:`pose_changed`.
+
+    Attributes
+    ----------
+    drag_to_pose : bool
+        Whether a left click or drag poses the arm (default ``True``). Set it to
+        ``False`` to switch drag-to-pose off, e.g. while a run animates the arm: the
+        mouse then leaves the arm, the IK target, and :attr:`pose_changed` alone.
+        Calling :meth:`solve_to_world` directly still poses the arm. Subclasses that
+        replace the mouse handlers (such as :class:`~skelarm.SimulatorCanvas`, whose
+        drag applies a force instead) do not consult it.
+    """
 
     # Emitted after the pose changes from an in-canvas IK solve, so the viewer can
     # refresh its sliders.
@@ -154,6 +169,7 @@ class SkelarmCanvas(QWidget):
         self.ik_method = "lm_sugihara"  # solver method used by solve_to_world
         self.last_ik_result: IKResult | None = None  # outcome of the latest IK solve
         self._ik_target: tuple[float, float] | None = None  # latest IK click target
+        self.drag_to_pose = True  # whether a left click/drag solves IK toward the pointer
         # Optional external force (N) at the tip, drawn as an arrow of length
         # force * force_scale (meters per Newton). None hides the arrow.
         self.tip_force: NDArray[np.float64] | None = None
@@ -400,13 +416,13 @@ class SkelarmCanvas(QWidget):
         self.update()
 
     def mousePressEvent(self, a0: QMouseEvent | None) -> None:  # noqa: N802
-        """Solve IK toward the point clicked with the left mouse button."""
-        if a0 is not None and a0.button() == Qt.MouseButton.LeftButton:
+        """Solve IK toward the point clicked with the left mouse button, unless :attr:`drag_to_pose` is off."""
+        if self.drag_to_pose and a0 is not None and a0.button() == Qt.MouseButton.LeftButton:
             self.solve_to_world(*self._world_from_screen(a0.position()))
 
     def mouseMoveEvent(self, a0: QMouseEvent | None) -> None:  # noqa: N802
-        """Continuously solve IK while dragging with the left mouse button held."""
-        if a0 is not None and a0.buttons() & Qt.MouseButton.LeftButton:
+        """Continuously solve IK while dragging with the left mouse button held, unless :attr:`drag_to_pose` is off."""
+        if self.drag_to_pose and a0 is not None and a0.buttons() & Qt.MouseButton.LeftButton:
             self.solve_to_world(*self._world_from_screen(a0.position()))
 
 
