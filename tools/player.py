@@ -197,27 +197,52 @@ class _Replay:
 def _prepare_replay(log: StateLog) -> _Replay:
     """Check that ``log`` can be replayed and derive its arm, channels, and task overlays.
 
+    Every channel the window reads per frame is checked for its shape here, so a log
+    that does not fit is rejected before the window changes, never on a later frame.
+
     Raises
     ------
     ValueError
-        If the log has no ``q`` channel or carries malformed playback metadata.
+        If the log has no ``q`` channel, a replayed channel of the wrong shape, or
+        malformed playback metadata.
     """
     if "q" not in log.channel_names:
         msg = "log has no 'q' channel; cannot replay the arm"
         raise ValueError(msg)
     skeleton = log.build_skeleton()
-    targets, path = _task_overlays_of(log, skeleton)
+    frames = len(log)
     names = log.channel_names
+    q = _checked_channel(log, "q", (frames, skeleton.num_joints), "one angle per joint per frame")
+    force = (
+        _checked_channel(log, "ext_force", (frames, 2), "a tip force (fx, fy) per frame")
+        if "ext_force" in names
+        else None
+    )
+    active_target = (
+        _checked_channel(log, "active_target", (frames,), "one target index per frame")
+        if "active_target" in names
+        else None
+    )
+    targets, path = _task_overlays_of(log, skeleton)
     return _Replay(
         log=log,
         skeleton=skeleton,
-        q=log.channel("q"),
+        q=q,
         times=log.times,
-        force=log.channel("ext_force") if "ext_force" in names else None,
-        active_target=log.channel("active_target") if "active_target" in names else None,
+        force=force,
+        active_target=active_target,
         targets=targets,
         path=path,
     )
+
+
+def _checked_channel(log: StateLog, name: str, shape: tuple[int, ...], meaning: str) -> NDArray[np.float64]:
+    """Return the channel ``name``, raising ``ValueError`` unless it has the replayed ``shape``."""
+    data = log.channel(name)
+    if data.shape != shape:
+        msg = f"log channel {name!r} has shape {data.shape}, expected {shape} ({meaning})"
+        raise ValueError(msg)
+    return data
 
 
 def _task_overlays_of(
@@ -498,9 +523,11 @@ class PlaybackWindow(QMainWindow):
         self._show_frame(index)
 
     def advance(self, seconds: float) -> None:
-        """Advance the playback clock by ``seconds`` (scaled by :attr:`speed`)."""
-        if self._n <= 1:
-            return
+        """Advance the playback clock by ``seconds`` (scaled by :attr:`speed`).
+
+        Reaching the last frame pauses; if the timeline was playing, that is the natural
+        end and :attr:`playback_finished` fires (a one-frame log ends on its first tick).
+        """
         self._play_time += seconds * self._speed
         if self._play_time >= self._times[-1]:
             self._play_time = float(self._times[-1])

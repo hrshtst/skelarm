@@ -970,3 +970,97 @@ def test_n_and_p_do_nothing_without_a_playlist(qapp) -> None:  # noqa: ANN001, A
     _press(window, Qt.Key.Key_P)
     assert window.log is log
     assert window.next_shortcut.isEnabled() is False
+
+
+# ----------------------------------------------------------------------------------------------
+# Logs that do not fit the player (rejected up front) and one-frame logs
+# ----------------------------------------------------------------------------------------------
+
+
+def _misfit_log(kind: str) -> StateLog:
+    """A two-joint log whose ``kind`` channel has the wrong number of columns for the player."""
+    link_props = [LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi) for _ in range(2)]
+    log = StateLog(Skeleton(link_props), producer="misfit")
+    for k in range(4):
+        channels: dict[str, list[float]] = {"q": [0.1 * k, 0.2 * k]}
+        if kind == "q":
+            channels["q"] = [0.1 * k]  # one angle for a two-joint arm
+        elif kind == "ext_force":
+            channels["ext_force"] = [0.5 * k]  # a force needs (fx, fy)
+        elif kind == "active_target":
+            channels["active_target"] = [0.0, 1.0]  # one index per frame
+        log.record(0.1 * k, **channels)
+    return log
+
+
+_MISFITS = ["q", "ext_force", "active_target"]
+
+
+@pytest.mark.parametrize("kind", _MISFITS)
+def test_player_rejects_a_log_whose_channels_do_not_fit(qapp, kind: str) -> None:  # noqa: ANN001, ARG001
+    """A channel of the wrong shape is a clear ValueError up front, not a failure on the first frame."""
+    with pytest.raises(ValueError, match=kind):
+        PlaybackWindow(_misfit_log(kind))
+
+
+@pytest.mark.parametrize("kind", _MISFITS)
+def test_load_log_rejects_misfit_channels_and_keeps_the_current_log(qapp, kind: str) -> None:  # noqa: ANN001, ARG001
+    """The check runs before the window changes: the current log stays and scrubbing keeps working."""
+    current = _force_log()
+    window = PlaybackWindow(current, name="good.sklog.npz")
+    window.set_frame(2)
+    window.play()
+    with pytest.raises(ValueError, match=kind):
+        window.load_log(_misfit_log(kind), name="bad.sklog.npz")
+    assert window.log is current
+    assert window.frame == 2  # noqa: PLR2004
+    assert window.file_label.text() == "good.sklog.npz"
+    assert window.is_playing is True  # rejected before pausing
+    window.pause()
+    window.set_frame(3)
+    assert window.skeleton.q == pytest.approx(current.channel("q")[3])
+
+
+def test_playlist_skips_a_log_whose_channels_do_not_fit(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """A misfit file is marked failed and skipped; the player keeps replaying the good log."""
+    from tools.player import open_playlist
+
+    player, playlist = open_playlist(_write_logs(tmp_path, _log(5), _misfit_log("q"), _force_log(7)))
+    assert playlist.play_index(1) is False
+    assert playlist.current == 0
+    assert len(player.log) == 5  # noqa: PLR2004
+    player.set_frame(4)  # scrubbing the kept log still works
+    assert "could not load" in _entry(playlist, 1).toolTip()
+    player.play()
+    player.advance(10.0)
+    assert playlist.current == 2  # noqa: PLR2004
+    player.pause()
+
+
+def _one_frame_log() -> StateLog:
+    """A log holding a single frame."""
+    return _log(1)
+
+
+def test_one_frame_log_finishes_playback(qapp) -> None:  # noqa: ANN001, ARG001
+    """Playing a one-frame log completes at once: it pauses and reports the natural end."""
+    window = PlaybackWindow(_one_frame_log())
+    finished: list[int] = []
+    window.playback_finished.connect(lambda: finished.append(window.frame))
+    window.play()
+    window.advance(0.02)
+    assert window.is_playing is False
+    assert window.play_button.isChecked() is False
+    assert finished == [0]
+
+
+def test_playlist_moves_past_a_one_frame_log(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """A one-frame log in the playlist finishes and the next file plays, like any other log."""
+    from tools.player import open_playlist
+
+    player, playlist = open_playlist(_write_logs(tmp_path, _one_frame_log(), _force_log(7)))
+    player.play()
+    player.advance(10.0)
+    assert playlist.current == 1
+    assert player.is_playing is True
+    player.pause()
