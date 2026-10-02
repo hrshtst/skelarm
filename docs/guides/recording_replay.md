@@ -48,7 +48,10 @@ The side panel and the window title name the playing file, **Plot channels…**
 plots that file, and your speed and overlay toggles carry over from file to
 file. A file that cannot be replayed is greyed out with the reason and skipped.
 The **Playlist** button (or the dock's close button) hides the playlist, and the
-button shows it again; closing the player closes it too. `--export` renders a
+button shows it again; the window narrows and widens with it (and when you float
+the playlist off or dock it back), so the canvas and side panel keep their size —
+except in a maximized or full-screen window, whose size the desktop decides.
+Closing the player closes the playlist too. `--export` renders a
 single log, so export each file separately.
 
 ## Export to video

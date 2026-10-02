@@ -885,7 +885,7 @@ def test_playlist_is_docked_beside_the_player(qapp, tmp_path: Path) -> None:  # 
     assert player.dockWidgetArea(playlist) == Qt.DockWidgetArea.RightDockWidgetArea
     assert playlist.x() >= central.geometry().right()  # beside, never over, the canvas and panel
     assert player.width() > single.width()
-    assert abs(central.width() - single_central.width()) <= 16  # noqa: PLR2004
+    assert central.width() == single_central.width()  # the canvas and side panel keep their size
     assert playlist.features() & QDockWidget.DockWidgetFeature.DockWidgetFloatable
     playlist.setFloating(True)
     assert playlist.isFloating()
@@ -1133,3 +1133,67 @@ def test_playlist_moves_past_a_one_frame_log(qapp, tmp_path: Path) -> None:  # n
     assert playlist.current == 1
     assert player.is_playing is True
     player.pause()
+
+
+def _central_width(player) -> int:  # noqa: ANN001
+    """Return the width of the player's central widget (canvas plus side panel)."""
+    central = player.centralWidget()
+    assert central is not None
+    return central.width()
+
+
+def test_hiding_and_showing_the_playlist_resizes_the_window_not_the_canvas(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The window narrows by the dock's room when it hides and widens back when it shows; the canvas keeps its size."""
+    from PyQt6.QtWidgets import QApplication
+
+    from tools.player import open_playlist
+
+    player, playlist = open_playlist(_write_logs(tmp_path, _log(5), _force_log(7)))
+    _activate(player)
+    window, central, dock = player.width(), _central_width(player), playlist.width()
+    for hide, show in ((player.playlist_button.click, player.playlist_button.click), (playlist.close, playlist.show)):
+        hide()
+        QApplication.processEvents()
+        assert playlist.isHidden()
+        assert player.width() < window - dock + 1  # the dock's width (and its separator) is given back
+        assert _central_width(player) == central
+        show()
+        QApplication.processEvents()
+        assert player.width() == window
+        assert _central_width(player) == central
+        assert playlist.width() == dock
+
+
+def test_floating_and_redocking_the_playlist_resizes_the_window(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Floating the playlist off narrows the window; docking it back widens it again, the canvas unchanged."""
+    from PyQt6.QtWidgets import QApplication
+
+    from tools.player import open_playlist
+
+    player, playlist = open_playlist(_write_logs(tmp_path, _log(5), _force_log(7)))
+    _activate(player)
+    window, central = player.width(), _central_width(player)
+    playlist.setFloating(True)
+    QApplication.processEvents()
+    assert player.width() < window - playlist.width() + 1
+    assert _central_width(player) == central
+    playlist.setFloating(False)
+    QApplication.processEvents()
+    assert player.width() == window
+    assert _central_width(player) == central
+
+
+def test_a_maximized_player_keeps_its_size_when_the_playlist_hides(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """A maximized window's size belongs to the desktop: hiding the playlist leaves it alone."""
+    from PyQt6.QtWidgets import QApplication
+
+    from tools.player import open_playlist
+
+    player, _playlist = open_playlist(_write_logs(tmp_path, _log(5), _force_log(7)))
+    player.showMaximized()
+    QApplication.processEvents()
+    width = player.width()
+    player.playlist_button.click()
+    QApplication.processEvents()
+    assert player.width() == width
+    player.close()

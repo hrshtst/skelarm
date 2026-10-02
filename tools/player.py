@@ -21,11 +21,11 @@ playback-only log can be drawn but not re-run; a malformed playback table is
 rejected on load.
 
 Given several log files, the player docks a playlist on its right (the window widens to
-make room; the dock can be floated as a window of its own): double-click a file (or
-press Enter) to load and play it, ``N`` / ``P`` load the next / previous one, and each
-finished log moves on to the next file that loads (the end of the list stops). Files
-that fail to load are greyed out and skipped; the side panel and the window title name
-the playing file, and "Plot channels…" plots it.
+make room, and narrows again when the playlist is hidden or floated as a window of its
+own): double-click a file (or press Enter) to load and play it, ``N`` / ``P`` load the
+next / previous one, and each finished log moves on to the next file that loads (the
+end of the list stops). Files that fail to load are greyed out and skipped; the side
+panel and the window title name the playing file, and "Plot channels…" plots it.
 
 The replay can also be exported headlessly (no GUI window) to an ``.mp4`` video or an
 animated ``.gif`` with ``--export``: each frame is rendered from the same canvas the
@@ -67,6 +67,7 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QPushButton,
     QSlider,
+    QStyle,
     QVBoxLayout,
     QWidget,
 )
@@ -813,6 +814,11 @@ class PlaylistDock(QDockWidget):
     skipped. Closing the dock only hides it (the player's Playlist button toggles it),
     and it closes with the player. The player's own keys (Space, N / P, ...) keep
     working while the list has the focus.
+
+    Whenever the dock stops or starts taking room in the window (hidden or shown,
+    floated off or docked back), the window narrows or widens by that room, so the
+    canvas and the side panel keep their size; a maximized or full-screen window
+    keeps the size the desktop gives it.
     """
 
     def __init__(self, paths: Sequence[Path], player: PlaybackWindow, *, current: int = 0) -> None:
@@ -839,8 +845,11 @@ class PlaylistDock(QDockWidget):
         self.setWidget(content)
 
         player.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self)
-        player.resize(player.width() + _PLAYLIST_WIDTH_PX, player.height())  # the canvas keeps its room
-        player.resizeDocks([self], [_PLAYLIST_WIDTH_PX], Qt.Orientation.Horizontal)
+        self._room = 0  # the window width the dock takes (its width plus the separator); 0 when it takes none
+        self._width = _PLAYLIST_WIDTH_PX  # the dock's width, restored when it docks or shows again
+        self._fit_window()  # widen the window for the dock, so the canvas keeps its size
+        self.visibilityChanged.connect(self._fit_window)
+        self.topLevelChanged.connect(self._fit_window)
 
         player.playback_finished.connect(self._on_player_finished)
         button = player.playlist_button
@@ -904,6 +913,27 @@ class PlaylistDock(QDockWidget):
             assert item is not None  # every path has an entry
             item.setText(f"{_PLAYING_MARK}{path.name}" if row == self._current else path.name)
         self.list_widget.setCurrentRow(self._current)
+
+    def _fit_window(self, _changed: bool = False) -> None:  # noqa: FBT001, FBT002  # also a bool-signal slot
+        """Narrow or widen the player window by the dock's room as the dock leaves or takes it."""
+        takes_room = not self.isHidden() and not self.isFloating()
+        if takes_room == (self._room > 0):
+            return
+        window = self.player
+        style = window.style()
+        assert style is not None  # every widget has a style
+        separator = style.pixelMetric(QStyle.PixelMetric.PM_DockWidgetSeparatorExtent, None, window)
+        resizable = not (window.isMaximized() or window.isFullScreen())  # the desktop owns those sizes
+        if takes_room:
+            self._room = self._width + separator
+            if resizable:
+                window.resize(window.width() + self._room, window.height())
+            window.resizeDocks([self], [self._width], Qt.Orientation.Horizontal)
+        else:
+            self._width = self.width()  # keep a width the user dragged the dock to
+            if resizable:
+                window.resize(window.width() - self._room, window.height())
+            self._room = 0
 
     def _on_item_activated(self, item: QListWidgetItem) -> None:
         """Load and play the activated entry."""
