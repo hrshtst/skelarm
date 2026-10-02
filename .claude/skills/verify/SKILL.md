@@ -64,12 +64,14 @@ Run with `uv run python <driver>.py` from the repo root (tools import `tools._sc
   syncs the toggle.
 - Player: play at speed, auto-pause at the last frame (toggle unchecks), frame-step,
   back-to-start (pauses at frame 0), step past the end clamps.
-- Player playlist (several log files on the command line): find both top-level widgets
-  (`PlaybackWindow`, `PlaylistWindow`); double-click a row with `QTest.mouseClick` then
-  `QTest.mouseDClick` on `list_widget.viewport()` at `visualItemRect(item).center()`;
-  with `speed_spin` raised, finished logs auto-advance (a broken file is greyed out and
-  skipped) and the last one stops; `N`/`P` on the activated player step files; closing
-  the player hides the playlist too.
+- Player playlist (several log files on the command line): one top-level
+  `PlaybackWindow`; the playlist is a `QDockWidget` in it (`player.findChild(QDockWidget)`,
+  docked right, `setFloating(True)` detaches it). Double-click a row with
+  `QTest.mouseClick` then `QTest.mouseDClick` on `list_widget.viewport()` at
+  `visualItemRect(item).center()`; with `speed_spin` raised, finished logs auto-advance
+  (a broken file is greyed out and skipped) and the last one stops; `N`/`P` step files
+  (also with the list focused); the checkable Playlist button hides/shows the dock. Under
+  Wayland the app cannot position top-level windows, which is why the playlist is docked.
 - Keyboard shortcuts: `Space` play/pause, `→`/`F` step, `R` reset in every transport
   window; player adds `←`/`B` previous frame, `Home`/`End`; inspector `R` = Reset pose;
   recorder `Space` start / `S` save / `Shift+S` save and next / `R` reset (no `F`);

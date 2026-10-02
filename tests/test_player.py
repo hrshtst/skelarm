@@ -713,7 +713,7 @@ def _double_click(playlist, row: int) -> None:  # noqa: ANN001
     from PyQt6.QtTest import QTest
     from PyQt6.QtWidgets import QApplication
 
-    playlist.show()
+    playlist.window().show()  # the player window holding the dock (or the floating dock itself)
     QApplication.processEvents()
     widget = playlist.list_widget
     center = widget.visualItemRect(widget.item(row)).center()
@@ -773,8 +773,8 @@ def test_enter_loads_the_selected_file(qapp, tmp_path: Path) -> None:  # noqa: A
     from tools.player import open_playlist
 
     player, playlist = open_playlist(_write_logs(tmp_path, _log(5), _force_log(7)))
-    playlist.show()
-    playlist.activateWindow()
+    _activate(player)
+    playlist.list_widget.setFocus()
     playlist.list_widget.setCurrentRow(1)
     QApplication.processEvents()
     QTest.keyClick(playlist.list_widget, Qt.Key.Key_Return)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
@@ -784,8 +784,9 @@ def test_enter_loads_the_selected_file(qapp, tmp_path: Path) -> None:  # noqa: A
     player.pause()
 
 
-def test_space_in_the_playlist_plays_and_pauses_the_player(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
-    """With the playlist focused, Space still plays and pauses the loaded log."""
+@pytest.mark.parametrize("floating", [False, True], ids=["docked", "floating"])
+def test_space_in_the_playlist_plays_and_pauses_the_player(qapp, tmp_path: Path, floating: bool) -> None:  # noqa: ANN001, ARG001, FBT001
+    """With the playlist focused, docked or floating, Space plays and pauses the loaded log exactly once."""
     from PyQt6.QtCore import Qt
     from PyQt6.QtTest import QTest
     from PyQt6.QtWidgets import QApplication
@@ -793,8 +794,9 @@ def test_space_in_the_playlist_plays_and_pauses_the_player(qapp, tmp_path: Path)
     from tools.player import open_playlist
 
     player, playlist = open_playlist(_write_logs(tmp_path, _log(5), _force_log(7)))
-    playlist.show()
-    playlist.activateWindow()
+    _activate(player)
+    playlist.setFloating(floating)
+    _activate(playlist.window())
     playlist.list_widget.setFocus()
     QApplication.processEvents()
     QTest.keyClick(playlist.list_widget, Qt.Key.Key_Space)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
@@ -865,19 +867,68 @@ def test_plot_channels_uses_the_loaded_log(qapp, tmp_path: Path) -> None:  # noq
     assert len(second.axes) == len(_force_log().channel_names)
 
 
-def test_playlist_window_reopens_and_closes_with_the_player(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
-    """Closing the playlist only hides it (the Playlist button reopens it); closing the player closes both."""
+def test_playlist_is_docked_beside_the_player(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The playlist docks on the player's right, the window widening so the canvas keeps its room; it can float."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QDockWidget
+
+    from tools.player import open_playlist
+
+    single = PlaybackWindow(_log())
+    _activate(single)
+    player, playlist = open_playlist(_write_logs(tmp_path, _log(5), _force_log(7)))
+    _activate(player)
+    central, single_central = player.centralWidget(), single.centralWidget()
+    assert central is not None
+    assert single_central is not None
+    assert isinstance(playlist, QDockWidget)
+    assert player.dockWidgetArea(playlist) == Qt.DockWidgetArea.RightDockWidgetArea
+    assert playlist.x() >= central.geometry().right()  # beside, never over, the canvas and panel
+    assert player.width() > single.width()
+    assert abs(central.width() - single_central.width()) <= 16  # noqa: PLR2004
+    assert playlist.features() & QDockWidget.DockWidgetFeature.DockWidgetFloatable
+    playlist.setFloating(True)
+    assert playlist.isFloating()
+    playlist.setFloating(False)
+    assert player.dockWidgetArea(playlist) == Qt.DockWidgetArea.RightDockWidgetArea
+
+
+def test_playlist_button_shows_and_hides_the_dock(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The Playlist button toggles the dock and follows it when the dock's own close button hides it."""
     from PyQt6.QtWidgets import QApplication
 
     from tools.player import open_playlist
 
     player, playlist = open_playlist(_write_logs(tmp_path, _log(5), _force_log(7)))
-    assert not player.playlist_button.isHidden()
-    player.show()
-    playlist.show()
-    playlist.close()
-    assert not playlist.isVisible()
-    player.playlist_button.click()
+    _activate(player)
+    button = player.playlist_button
+    assert not button.isHidden()
+    assert button.isCheckable()
+    assert button.isChecked()
+    button.click()
+    QApplication.processEvents()
+    assert playlist.isHidden()
+    assert not button.isChecked()
+    button.click()
+    QApplication.processEvents()
+    assert playlist.isVisible()
+    assert button.isChecked()
+    playlist.close()  # the dock's own close button
+    QApplication.processEvents()
+    assert playlist.isHidden()
+    assert not button.isChecked()
+
+
+@pytest.mark.parametrize("floating", [False, True], ids=["docked", "floating"])
+def test_closing_the_player_closes_the_playlist(qapp, tmp_path: Path, floating: bool) -> None:  # noqa: ANN001, ARG001, FBT001
+    """Closing the player leaves no playlist behind, docked or floating."""
+    from PyQt6.QtWidgets import QApplication
+
+    from tools.player import open_playlist
+
+    player, playlist = open_playlist(_write_logs(tmp_path, _log(5), _force_log(7)))
+    _activate(player)
+    playlist.setFloating(floating)
     QApplication.processEvents()
     assert playlist.isVisible()
     player.close()
@@ -945,6 +996,24 @@ def test_n_and_p_load_the_next_and_previous_files(qapp, tmp_path: Path) -> None:
     _press(player, Qt.Key.Key_P)  # already the first file
     assert playlist.current == 0
     player.pause()
+
+
+def test_n_and_p_work_with_the_playlist_focused(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The dock lives in the player window, so N / P step files even while the list has the focus."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+    from PyQt6.QtWidgets import QApplication
+
+    from tools.player import open_playlist
+
+    player, playlist = open_playlist(_write_logs(tmp_path, _log(5), _force_log(7)))
+    _activate(player)
+    playlist.list_widget.setFocus()
+    QApplication.processEvents()
+    QTest.keyClick(playlist.list_widget, Qt.Key.Key_N)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    assert playlist.current == 1
+    QTest.keyClick(playlist.list_widget, Qt.Key.Key_P)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    assert playlist.current == 0
 
 
 def test_n_and_p_skip_files_that_fail_to_load(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001

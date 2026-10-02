@@ -20,11 +20,12 @@ playback-only ``extra.playback.task`` table with the same ``[task]`` schema
 playback-only log can be drawn but not re-run; a malformed playback table is
 rejected on load.
 
-Given several log files, the player opens a playlist window beside it: double-click a
-file (or press Enter) to load and play it, ``N`` / ``P`` in the player load the next /
-previous one, and each finished log moves on to the next file that loads (the end of
-the list stops). Files that fail to load are greyed out and skipped; the side panel and
-the window title name the playing file, and "Plot channels…" plots it.
+Given several log files, the player docks a playlist on its right (the window widens to
+make room; the dock can be floated as a window of its own): double-click a file (or
+press Enter) to load and play it, ``N`` / ``P`` load the next / previous one, and each
+finished log moves on to the next file that loads (the end of the list stops). Files
+that fail to load are greyed out and skipped; the side panel and the window title name
+the playing file, and "Plot channels…" plots it.
 
 The replay can also be exported headlessly (no GUI window) to an ``.mp4`` video or an
 animated ``.gif`` with ``--export``: each frame is rendered from the same canvas the
@@ -52,11 +53,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn, cast
 
 import numpy as np
-from PyQt6.QtCore import QEvent, QObject, QPoint, QSignalBlocker, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QKeySequence, QShortcut
+from PyQt6.QtCore import QSignalBlocker, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QDockWidget,
     QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
@@ -98,6 +100,7 @@ _EXPORT_SIZE_PX = 800  # square frame size (px) for --export; a multiple of 16 k
 _EXPORT_SUFFIXES = (".mp4", ".gif")  # --export formats, selected from the output path extension
 _EXPORT_PANEL_WIDTH_PX = 304  # --panel side-panel width; a multiple of 16 keeps mp4 codecs happy
 _PLAYING_MARK = "▶ "  # prefixes the playlist entry of the loaded log
+_PLAYLIST_WIDTH_PX = 320  # docked playlist width; the player window widens by as much
 # What loading and checking a log file can raise: unreadable, not an archive, missing members, not replayable.
 _LOAD_ERRORS = (OSError, ValueError, KeyError, zipfile.BadZipFile)
 
@@ -426,7 +429,7 @@ class PlaybackWindow(QMainWindow):
         self.plot_button.clicked.connect(self._on_plot_channels)
         controls.addWidget(self.plot_button)
 
-        # Reopens the playlist window; shown only when a playlist drives this player.
+        # Shows / hides the docked playlist; shown only when a playlist drives this player.
         self.playlist_button = QPushButton("Playlist")
         self.playlist_button.setIcon(make_icon("mdi6.playlist-play"))
         self.playlist_button.setVisible(False)
@@ -782,6 +785,13 @@ class PlaybackWindow(QMainWindow):
             for i, (pos, color, tolerance, _) in enumerate(self.canvas.overlay_targets)
         ]
 
+    def closeEvent(self, a0: QCloseEvent | None) -> None:  # noqa: N802
+        """Close together with any floating dock (a detached playlist), which would otherwise stay on screen."""
+        for dock in self.findChildren(QDockWidget):
+            if dock.isFloating():
+                dock.hide()
+        super().closeEvent(a0)
+
     def _on_plot_channels(self) -> None:
         """Open the per-channel analysis plots without blocking the player."""
         import matplotlib.pyplot as plt
@@ -792,27 +802,31 @@ class PlaybackWindow(QMainWindow):
         plt.show(block=False)
 
 
-class PlaylistWindow(QWidget):
-    """A playlist of log files that a :class:`PlaybackWindow` replays one after another.
+class PlaylistDock(QDockWidget):
+    """A playlist of log files, docked beside a :class:`PlaybackWindow` that replays them one after another.
 
-    Double-click a file (or press Enter on it) to load and play it; when a log
-    finishes, the next file that loads is played, and the end of the list stops.
-    A file that fails to load is greyed out with the reason and skipped. Closing
-    this window only hides it (the player's Playlist button reopens it); closing
-    the player closes it too.
+    The dock sits on the player's right (the window widens so the canvas keeps its
+    size); its title bar's float button detaches it into a window of its own and it
+    docks back on either side. Double-click a file (or press Enter on it) to load and
+    play it; when a log finishes, the next file that loads is played, and the end of
+    the list stops. A file that fails to load is greyed out with the reason and
+    skipped. Closing the dock only hides it (the player's Playlist button toggles it),
+    and it closes with the player. The player's own keys (Space, N / P, ...) keep
+    working while the list has the focus.
     """
 
     def __init__(self, paths: Sequence[Path], player: PlaybackWindow, *, current: int = 0) -> None:
-        """List ``paths`` and drive ``player``, which already shows ``paths[current]``."""
-        super().__init__()
+        """List ``paths`` beside ``player``, which already shows ``paths[current]``, and drive it."""
+        super().__init__("Playlist", player)
+        self.setObjectName("playlist")
+        self.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
         self.paths = list(paths)
         self.player = player
         self._current = current
         self._failed: set[int] = set()
-        self.setWindowTitle("Skelarm Playlist")
-        self.resize(360, 480)
 
-        layout = QVBoxLayout(self)
+        content = QWidget()
+        layout = QVBoxLayout(content)
         layout.addWidget(QLabel("Double-click (or Enter) to play a log"))
         self.list_widget = QListWidget()
         for path in self.paths:
@@ -822,19 +836,25 @@ class PlaylistWindow(QWidget):
         # Activation is the platform's double-click (or Enter on the current row).
         self.list_widget.itemActivated.connect(self._on_item_activated)
         layout.addWidget(self.list_widget)
+        self.setWidget(content)
 
-        self.play_shortcut = QShortcut(QKeySequence("Space"), self)  # play/pause without leaving the list
-        self.play_shortcut.activated.connect(self.player.play_button.click)
+        player.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self)
+        player.resize(player.width() + _PLAYLIST_WIDTH_PX, player.height())  # the canvas keeps its room
+        player.resizeDocks([self], [_PLAYLIST_WIDTH_PX], Qt.Orientation.Horizontal)
+
         player.playback_finished.connect(self._on_player_finished)
-        player.playlist_button.setVisible(True)
-        player.playlist_button.setToolTip("Show the playlist (N / P: next / previous log)")
-        player.playlist_button.clicked.connect(self.show_and_raise)
-        # N / P live on the player only: in this window they would hijack the list's type-to-search.
+        button = player.playlist_button
+        button.setVisible(True)
+        button.setCheckable(True)
+        button.setChecked(True)
+        button.setToolTip("Show / hide the playlist (N / P: next / previous log)")
+        button.toggled.connect(self.setVisible)
+        self.visibilityChanged.connect(button.setChecked)  # follows the dock's own close button
+        # N / P are the player's window shortcuts, so they also work while the list has the focus.
         player.next_shortcut.activated.connect(self.play_next)
         player.previous_shortcut.activated.connect(self.play_previous)
         player.next_shortcut.setEnabled(True)
         player.previous_shortcut.setEnabled(True)
-        player.installEventFilter(self)  # closing the player closes the playlist too
         self._mark_current()
 
     @property
@@ -877,18 +897,6 @@ class PlaylistWindow(QWidget):
         item.setToolTip(f"{self.paths[index]}\ncould not load: {error}")
         print(f"could not load {self.paths[index]}: {error}", file=sys.stderr)
 
-    def show_and_raise(self) -> None:
-        """Show the playlist window in front."""
-        self.show()
-        self.raise_()
-        self.activateWindow()
-
-    def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:  # noqa: N802
-        """Close together with the player window."""
-        if a0 is self.player and a1 is not None and a1.type() == QEvent.Type.Close:
-            self.close()
-        return False
-
     def _mark_current(self) -> None:
         """Prefix the loaded log's entry with the now-playing mark and select it."""
         for row, path in enumerate(self.paths):
@@ -917,8 +925,8 @@ class PlaylistWindow(QWidget):
 
 def open_playlist(
     paths: Sequence[Path], *, show_com: bool = False, speed: float = 1.0
-) -> tuple[PlaybackWindow, PlaylistWindow]:
-    """Open a player on the first of ``paths`` that loads, with a playlist window for all of them.
+) -> tuple[PlaybackWindow, PlaylistDock]:
+    """Open a player on the first of ``paths`` that loads, with a playlist of all of them docked beside it.
 
     The player starts paused; files that fail to load are marked in the playlist.
 
@@ -934,7 +942,7 @@ def open_playlist(
         except _LOAD_ERRORS as exc:
             failures[index] = exc
             continue
-        playlist = PlaylistWindow(paths, player, current=index)
+        playlist = PlaylistDock(paths, player, current=index)
         for failed, error in failures.items():
             playlist.mark_failed(failed, error)
         return player, playlist
@@ -1007,15 +1015,13 @@ def _checked_paths(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
 
 
 def _run_playlist(parser: argparse.ArgumentParser, args: argparse.Namespace, paths: list[Path]) -> NoReturn:
-    """Run the player with a playlist window over ``paths`` until the player is closed."""
+    """Run the player with the playlist of ``paths`` docked beside it until the player is closed."""
     app = QApplication(sys.argv)
     try:
-        player, playlist = open_playlist(paths, show_com=args.show_com, speed=args.speed)
+        player, _playlist = open_playlist(paths, show_com=args.show_com, speed=args.speed)
     except ValueError as exc:
         parser.error(str(exc))
     player.show()
-    playlist.move(player.frameGeometry().topRight() + QPoint(8, 0))  # beside the player
-    playlist.show()
     sys.exit(app.exec())
 
 

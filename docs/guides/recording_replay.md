@@ -37,17 +37,19 @@ recording session:
 uv run python tools/player.py reach_*.sklog.npz
 ```
 
-A playlist window opens beside the player, listing the files by name (hover for
-the full path). Double-click a file — or select it and press `Enter` — to load
-and play it; `Space` plays and pauses from either window. When a log finishes,
-the next file plays, and the end of the list stops. In the player, `N` / `P`
-load the next / previous file, keeping playback running if it was. The side
-panel and the window title name the playing file, **Plot channels…** plots that
-file, and your speed and overlay toggles carry over from file to file. A file
-that cannot be replayed is greyed out with the reason and skipped. Closing the
-playlist only hides it (the **Playlist** button brings it back); closing the
-player closes both. `--export` renders a single log, so export each file
-separately.
+The playlist is docked on the right of the player — the window widens to make
+room — and lists the files by name (hover for the full path). Its title-bar
+button floats it as a window of its own, and you can dock it back on either
+side. Double-click a file — or select it and press `Enter` — to load and play
+it. When a log finishes, the next file plays, and the end of the list stops.
+`N` / `P` load the next / previous file, keeping playback running if it was;
+they and the other player keys (`Space`, …) work while the list has the focus.
+The side panel and the window title name the playing file, **Plot channels…**
+plots that file, and your speed and overlay toggles carry over from file to
+file. A file that cannot be replayed is greyed out with the reason and skipped.
+The **Playlist** button (or the dock's close button) hides the playlist, and the
+button shows it again; closing the player closes it too. `--export` renders a
+single log, so export each file separately.
 
 ## Export to video
 
