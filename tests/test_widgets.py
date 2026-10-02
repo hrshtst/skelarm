@@ -214,3 +214,100 @@ def test_keys_drive_buttons_end_to_end(qapp) -> None:  # noqa: ANN001, ARG001
     bar.reset_button.clicked.connect(reset_fired.append)
     QTest.keyClick(bar, Qt.Key.Key_R)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
     assert reset_fired == [False]
+
+
+# === playback clock and speed spin box ===
+
+
+def test_playback_clock_and_speed_spin_box_are_exported(qapp) -> None:  # noqa: ANN001, ARG001
+    """Both live next to TransportBar at the package top level."""
+    import skelarm
+    from skelarm.widgets import PlaybackClock, SpeedSpinBox
+
+    assert skelarm.PlaybackClock is PlaybackClock
+    assert skelarm.SpeedSpinBox is SpeedSpinBox
+    assert {"PlaybackClock", "SpeedSpinBox"} <= set(skelarm.__all__)
+
+
+def test_playback_clock_defaults(qapp) -> None:  # noqa: ANN001, ARG001
+    """A default clock is stopped, ticks every 20 ms, and runs at speed 1."""
+    from skelarm.widgets import PlaybackClock
+
+    clock = PlaybackClock()
+    assert clock.period_ms == 20  # noqa: PLR2004
+    assert clock.speed == 1.0
+    assert clock.is_running is False
+
+
+def test_playback_clock_ticks_its_period_times_the_speed(qapp) -> None:  # noqa: ANN001, ARG001
+    """Each tick reports the timeline seconds to advance: the period scaled by the speed it has at that tick."""
+    from PyQt6.QtTest import QSignalSpy
+
+    from skelarm.widgets import PlaybackClock
+
+    clock = PlaybackClock(period_ms=5, speed=2.5)
+    ticks = QSignalSpy(clock.ticked)
+    clock.start()
+    assert ticks.wait(1000)
+    assert ticks[0][0] == pytest.approx(0.005 * 2.5)
+
+    clock.speed = 0.5  # a running clock picks up a new speed on its next tick
+    later = QSignalSpy(clock.ticked)
+    assert later.wait(1000)
+    assert later[0][0] == pytest.approx(0.005 * 0.5)
+    clock.stop()
+
+
+def test_playback_clock_starts_and_stops(qapp) -> None:  # noqa: ANN001, ARG001
+    """``start`` runs the clock and ``stop`` halts it; a stopped clock does not tick."""
+    from PyQt6.QtTest import QSignalSpy
+
+    from skelarm.widgets import PlaybackClock
+
+    clock = PlaybackClock(period_ms=5)
+    clock.start()
+    assert clock.is_running is True
+    clock.stop()
+    assert clock.is_running is False
+    ticks = QSignalSpy(clock.ticked)
+    assert not ticks.wait(50)
+
+
+def test_playback_clock_keeps_speed_unclamped(qapp) -> None:  # noqa: ANN001, ARG001
+    """The speed is stored as a float as given; only the spin box limits what a user can pick."""
+    from skelarm.widgets import PlaybackClock
+
+    clock = PlaybackClock(speed=20)
+    assert clock.speed == 20.0  # noqa: PLR2004
+    assert isinstance(clock.speed, float)
+    clock.speed = 3
+    assert isinstance(clock.speed, float)
+
+
+def test_speed_spin_box_is_preconfigured(qapp) -> None:  # noqa: ANN001, ARG001
+    """The spin box offers 0.1x to 10x in steps of 0.1, shown with two decimals."""
+    from PyQt6.QtWidgets import QDoubleSpinBox
+
+    from skelarm.widgets import SpeedSpinBox
+
+    spin = SpeedSpinBox()
+    assert isinstance(spin, QDoubleSpinBox)
+    assert spin.decimals() == 2  # noqa: PLR2004
+    assert (spin.minimum(), spin.maximum()) == (pytest.approx(0.1), pytest.approx(10.0))
+    assert spin.singleStep() == pytest.approx(0.1)
+    assert spin.value() == pytest.approx(1.0)
+
+
+def test_speed_spin_box_starts_at_the_given_speed_and_steps(qapp) -> None:  # noqa: ANN001, ARG001
+    """The initial speed is shown (clamped to the range), and a step moves it by 0.1."""
+    from skelarm.widgets import SpeedSpinBox
+
+    spin = SpeedSpinBox(speed=2.0)
+    assert spin.value() == pytest.approx(2.0)
+    spin.stepUp()
+    assert spin.value() == pytest.approx(2.1)
+    spin.stepDown()
+    spin.stepDown()
+    assert spin.value() == pytest.approx(1.9)
+    assert SpeedSpinBox(speed=20.0).value() == pytest.approx(10.0)
+    assert SpeedSpinBox(speed=0.0).value() == pytest.approx(0.1)

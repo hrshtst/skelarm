@@ -54,13 +54,12 @@ from typing import TYPE_CHECKING, NoReturn, cast
 
 import numpy as np
 from PyQt6 import sip
-from PyQt6.QtCore import QSignalBlocker, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QSignalBlocker, Qt, pyqtSignal
 from PyQt6.QtGui import QCloseEvent, QKeySequence, QResizeEvent, QShortcut
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
     QDockWidget,
-    QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -74,7 +73,9 @@ from PyQt6.QtWidgets import (
 )
 
 from skelarm import (
+    PlaybackClock,
     SkelarmCanvas,
+    SpeedSpinBox,
     StateLog,
     Task,
     TransportBar,
@@ -333,7 +334,8 @@ class PlaybackWindow(QMainWindow):
         """
         super().__init__()
         replay = _prepare_replay(log)
-        self._speed = speed
+        self._clock = PlaybackClock(self, period_ms=_TIMER_MS, speed=speed)  # ticks the timeline while playing
+        self._clock.ticked.connect(self._advance_timeline)
         self._show_force = True  # mirrors the "Show external force" checkbox
         self.canvas = SkelarmCanvas(replay.skeleton)
         self.canvas.show_com = show_com
@@ -395,11 +397,7 @@ class PlaybackWindow(QMainWindow):
             shortcut.setEnabled(False)
 
         controls.addWidget(QLabel("Playback speed"))
-        self.speed_spin = QDoubleSpinBox()
-        self.speed_spin.setDecimals(2)
-        self.speed_spin.setRange(0.1, 10.0)
-        self.speed_spin.setSingleStep(0.1)
-        self.speed_spin.setValue(speed)
+        self.speed_spin = SpeedSpinBox(speed=speed)
         self.speed_spin.valueChanged.connect(self._on_speed_changed)
         controls.addWidget(self.speed_spin)
 
@@ -440,8 +438,6 @@ class PlaybackWindow(QMainWindow):
         controls.addStretch()
         layout.addWidget(panel, stretch=1)
 
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self._on_timeout)
         self._switch_to(replay, name)
 
     def load_log(self, log: StateLog, *, name: str | None = None) -> None:
@@ -510,16 +506,16 @@ class PlaybackWindow(QMainWindow):
     @property
     def is_playing(self) -> bool:
         """Whether the timeline is currently advancing."""
-        return self._timer.isActive()
+        return self._clock.is_running
 
     @property
     def speed(self) -> float:
         """Playback speed multiplier (log seconds per real second)."""
-        return self._speed
+        return self._clock.speed
 
     @speed.setter
     def speed(self, value: float) -> None:
-        self._speed = float(value)
+        self._clock.speed = value
 
     def set_frame(self, index: int) -> None:
         """Jump to ``index`` and sync the playback clock to that frame's time."""
@@ -533,7 +529,11 @@ class PlaybackWindow(QMainWindow):
         Reaching the last frame pauses; if the timeline was playing, that is the natural
         end and :attr:`playback_finished` fires (a one-frame log ends on its first tick).
         """
-        self._play_time += seconds * self._speed
+        self._advance_timeline(seconds * self.speed)
+
+    def _advance_timeline(self, seconds: float) -> None:
+        """Advance the timeline by ``seconds`` of log time (already scaled by the speed), as each clock tick does."""
+        self._play_time += seconds
         if self._play_time >= self._times[-1]:
             self._play_time = float(self._times[-1])
             self._show_frame(self._n - 1)
@@ -549,12 +549,12 @@ class PlaybackWindow(QMainWindow):
         """Start (or restart from the beginning) playback."""
         if self._frame >= self._n - 1:
             self.set_frame(0)
-        self._timer.start(_TIMER_MS)
+        self._clock.start()
         self.transport_bar.set_playing(True)
 
     def pause(self) -> None:
         """Pause playback."""
-        self._timer.stop()
+        self._clock.stop()
         self.transport_bar.set_playing(False)
 
     def build_channel_figure(self):  # noqa: ANN201  # matplotlib Figure (lazy import)
@@ -647,7 +647,7 @@ class PlaybackWindow(QMainWindow):
         times = self._times
         t0, t_end = float(times[0]), float(times[-1])
         span = t_end - t0
-        speed = max(self._speed, 1e-9)  # guard against a zero/negative --speed
+        speed = max(self.speed, 1e-9)  # guard against a zero/negative --speed
         # One output frame per 1/fps of real time; the log clock advances by `speed` per real second.
         n_frames = 1 if span <= 0 else int(np.floor(span / speed * fps)) + 1
         # The ffmpeg (mp4) backend takes a frame rate; the pillow (gif) backend takes a per-frame
@@ -709,10 +709,6 @@ class PlaybackWindow(QMainWindow):
         current = self._times[self._frame] if self._n else 0.0
         self.time_label.setText(f"t = {current:.2f} s   (frame {self._frame + 1}/{self._n})")
 
-    def _on_timeout(self) -> None:
-        """Advance one render tick of playback."""
-        self.advance(_TIMER_MS / 1000.0)
-
     def _on_play_toggled(self, playing: bool) -> None:  # noqa: FBT001
         """Start or pause playback when the transport toggle changes."""
         if playing:
@@ -742,7 +738,7 @@ class PlaybackWindow(QMainWindow):
 
     def _on_speed_changed(self, value: float) -> None:
         """Apply the speed spin box to playback."""
-        self._speed = value
+        self.speed = value
 
     def _on_show_com_toggled(self) -> None:
         """Toggle the center-of-mass overlay."""

@@ -89,7 +89,7 @@ from .scenario import (
 from .simulator import SimulatorCanvas, SkelarmSimulator
 from .skeleton import Link, LinkProp, Skeleton
 from .trajectory import Trajectory, evaluate_schedule
-from .widgets import TransportBar, bind_quit_key, make_icon
+from .widgets import PlaybackClock, SpeedSpinBox, TransportBar, bind_quit_key, make_icon
 
 __all__ = [
     "FILTERS",
@@ -108,6 +108,7 @@ __all__ = [
     "LinkProp",
     "OnlineReferenceShaping",
     "PeriodicTaskReference",
+    "PlaybackClock",
     "PositionDependentShaping",
     "SampledJointReference",
     "SampledTaskReference",
@@ -118,6 +119,7 @@ __all__ = [
     "SkelarmSimulator",
     "SkelarmViewer",
     "Skeleton",
+    "SpeedSpinBox",
     "StateLog",
     "Task",
     "TaskReference",

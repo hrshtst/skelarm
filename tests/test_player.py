@@ -679,6 +679,20 @@ def test_playback_finished_fires_only_at_a_natural_end(qapp) -> None:  # noqa: A
     assert window.is_playing is False
 
 
+def test_playing_runs_the_timeline_on_its_own_to_the_end(qapp) -> None:  # noqa: ANN001, ARG001
+    """While playing, the window's own timer advances the timeline until the natural end."""
+    from PyQt6.QtTest import QSignalSpy
+
+    window = PlaybackWindow(_log())  # five frames over 0.4 s
+    window.speed = 10.0  # a 20 ms tick advances 0.2 s of log time
+    finished = QSignalSpy(window.playback_finished)
+    window.play()
+    assert finished.wait(5000)
+    assert window.frame == len(window.log) - 1
+    assert window.is_playing is False
+    assert window.play_button.isChecked() is False
+
+
 def test_file_name_is_shown_in_the_side_panel(qapp) -> None:  # noqa: ANN001, ARG001
     """The playing file's name is shown in the panel (and the title); without one the label is hidden."""
     named = PlaybackWindow(_log(), name="take_001.sklog.npz")
