@@ -54,7 +54,7 @@ from typing import TYPE_CHECKING, NoReturn, cast
 
 import numpy as np
 from PyQt6.QtCore import QSignalBlocker, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QCloseEvent, QKeySequence, QShortcut
+from PyQt6.QtGui import QCloseEvent, QKeySequence, QResizeEvent, QShortcut
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -845,8 +845,8 @@ class PlaylistDock(QDockWidget):
         self.setWidget(content)
 
         player.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self)
-        self._room = 0  # the window width the dock takes (its width plus the separator); 0 when it takes none
-        self._width = _PLAYLIST_WIDTH_PX  # the dock's width, restored when it docks or shows again
+        self._takes_room = False  # whether the window currently makes room for the docked playlist
+        self._width = _PLAYLIST_WIDTH_PX  # the docked width, followed as the user drags it, restored on return
         self._fit_window()  # widen the window for the dock, so the canvas keeps its size
         self.visibilityChanged.connect(self._fit_window)
         self.topLevelChanged.connect(self._fit_window)
@@ -914,26 +914,29 @@ class PlaylistDock(QDockWidget):
             item.setText(f"{_PLAYING_MARK}{path.name}" if row == self._current else path.name)
         self.list_widget.setCurrentRow(self._current)
 
+    def resizeEvent(self, a0: QResizeEvent | None) -> None:  # noqa: N802
+        """Follow the docked width (the user may drag the separator), so leaving gives back exactly that room."""
+        super().resizeEvent(a0)
+        if not self.isFloating() and not self.isHidden():
+            self._width = self.width()
+
     def _fit_window(self, _changed: bool = False) -> None:  # noqa: FBT001, FBT002  # also a bool-signal slot
         """Narrow or widen the player window by the dock's room as the dock leaves or takes it."""
         takes_room = not self.isHidden() and not self.isFloating()
-        if takes_room == (self._room > 0):
+        if takes_room == self._takes_room:
             return
+        self._takes_room = takes_room
         window = self.player
         style = window.style()
         assert style is not None  # every widget has a style
-        separator = style.pixelMetric(QStyle.PixelMetric.PM_DockWidgetSeparatorExtent, None, window)
+        room = self._width + style.pixelMetric(QStyle.PixelMetric.PM_DockWidgetSeparatorExtent, None, window)
         resizable = not (window.isMaximized() or window.isFullScreen())  # the desktop owns those sizes
         if takes_room:
-            self._room = self._width + separator
             if resizable:
-                window.resize(window.width() + self._room, window.height())
+                window.resize(window.width() + room, window.height())
             window.resizeDocks([self], [self._width], Qt.Orientation.Horizontal)
-        else:
-            self._width = self.width()  # keep a width the user dragged the dock to
-            if resizable:
-                window.resize(window.width() - self._room, window.height())
-            self._room = 0
+        elif resizable:
+            window.resize(window.width() - room, window.height())
 
     def _on_item_activated(self, item: QListWidgetItem) -> None:
         """Load and play the activated entry."""

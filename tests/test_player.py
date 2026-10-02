@@ -1197,3 +1197,34 @@ def test_a_maximized_player_keeps_its_size_when_the_playlist_hides(qapp, tmp_pat
     QApplication.processEvents()
     assert player.width() == width
     player.close()
+
+
+@pytest.mark.parametrize("leave", ["hide", "float"])
+def test_a_widened_playlist_still_keeps_the_canvas_size(qapp, tmp_path: Path, leave: str) -> None:  # noqa: ANN001, ARG001
+    """After the user drags the dock wider, leaving and returning still keep the canvas and the window size."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QApplication
+
+    from tools.player import open_playlist
+
+    player, playlist = open_playlist(_write_logs(tmp_path, _log(5), _force_log(7)))
+    _activate(player)
+    player.resizeDocks([playlist], [480], Qt.Orientation.Horizontal)  # as dragging the separator does
+    QApplication.processEvents()
+    assert playlist.width() == 480  # noqa: PLR2004
+    window, central = player.width(), _central_width(player)
+    if leave == "hide":
+        player.playlist_button.click()
+    else:
+        playlist.setFloating(True)
+    QApplication.processEvents()
+    assert _central_width(player) == central
+    assert player.width() < window - 480 + 1
+    if leave == "hide":
+        player.playlist_button.click()
+    else:
+        playlist.setFloating(False)
+    QApplication.processEvents()
+    assert player.width() == window
+    assert _central_width(player) == central
+    assert playlist.width() == 480  # noqa: PLR2004
