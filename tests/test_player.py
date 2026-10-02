@@ -1228,3 +1228,48 @@ def test_a_widened_playlist_still_keeps_the_canvas_size(qapp, tmp_path: Path, le
     assert player.width() == window
     assert _central_width(player) == central
     assert playlist.width() == 480  # noqa: PLR2004
+
+
+_DELETE_PLAYER = """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, sys.argv[1])
+from PyQt6 import sip
+from PyQt6.QtWidgets import QApplication
+
+from tools.player import open_playlist
+
+app = QApplication([])
+player, playlist = open_playlist([Path(path) for path in sys.argv[3:]])
+player.show()
+app.processEvents()
+if sys.argv[2] == "floating":
+    playlist.setFloating(True)
+elif sys.argv[2] == "hidden":
+    player.playlist_button.click()
+app.processEvents()
+sip.delete(player)  # what the garbage collector does to a window nobody holds any more
+app.processEvents()
+print("deleted cleanly")
+"""
+
+
+@pytest.mark.parametrize("dock", ["shown", "floating", "hidden"])
+def test_deleting_the_player_with_its_playlist_does_not_abort(tmp_path: Path, dock: str) -> None:
+    """Destroying a player (as garbage collection or app exit does) never runs playlist slots on a dead window.
+
+    A slot raising inside Qt aborts the whole process, so this runs in a subprocess.
+    """
+    paths = _write_logs(tmp_path, _log(5), _force_log(7))
+    repo = Path(__file__).resolve().parents[1]
+    result = subprocess.run(  # noqa: S603  # trusted: our own interpreter and inline script
+        [sys.executable, "-c", _DELETE_PLAYER, str(repo), dock, *map(str, paths)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+    )
+    assert result.returncode == 0, result.stderr
+    assert "deleted cleanly" in result.stdout
+    assert "has been deleted" not in result.stderr

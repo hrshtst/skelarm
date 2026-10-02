@@ -53,6 +53,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn, cast
 
 import numpy as np
+from PyQt6 import sip
 from PyQt6.QtCore import QSignalBlocker, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QCloseEvent, QKeySequence, QResizeEvent, QShortcut
 from PyQt6.QtWidgets import (
@@ -922,6 +923,8 @@ class PlaylistDock(QDockWidget):
 
     def _fit_window(self, _changed: bool = False) -> None:  # noqa: FBT001, FBT002  # also a bool-signal slot
         """Narrow or widen the player window by the dock's room as the dock leaves or takes it."""
+        if sip.isdeleted(self.player):  # the player is being destroyed and takes this dock with it
+            return
         takes_room = not self.isHidden() and not self.isFloating()
         if takes_room == self._takes_room:
             return
