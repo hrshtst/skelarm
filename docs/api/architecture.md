@@ -184,6 +184,18 @@ click or drag, unless its `drag_to_pose` attribute is `False`. It is extended by
 [`SimulatorCanvas`](simulator.md), whose drag applies a tip force instead;
 `SkelarmViewer` and `SkelarmSimulator` are the `QMainWindow` shells that host them.
 
+The building blocks the tools share live in [`skelarm.widgets`](widgets.md) and
+are exported at the package top level, so a tool of your own can reuse them:
+
+- `TransportBar` — the play/pause, step, and reset buttons and their keys.
+- `PlaybackClock` — a timer that, while running, emits `ticked` with the
+  timeline seconds to advance on each tick (its period times its `speed`).
+  Start and stop it with the play button, and keep the button in step with
+  `TransportBar.set_playing`.
+- `SpeedSpinBox` — the player's speed control: 0.1× to 10× in steps of 0.1.
+
+The replay player (`tools/player.py`) is built from these three.
+
 !!! note "Value types not shown"
     A few standalone value types are omitted from the diagram to keep it
     readable: `IKResult` (returned by `compute_inverse_kinematics`) and
