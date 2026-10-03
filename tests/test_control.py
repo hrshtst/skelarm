@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import warnings
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
@@ -19,9 +20,14 @@ from skelarm.control import (
     resolved_rate_joint_reference,
     simulate_controlled,
 )
+from skelarm.dynamics import integrate_with_limits
+from skelarm.kinematics import compute_jacobian
 from skelarm.recording import StateLog
 from skelarm.skeleton import LinkProp, Skeleton
 from skelarm.trajectory import Trajectory
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def _two_link() -> Skeleton:
@@ -191,3 +197,115 @@ def test_controller_is_callable_as_a_torque_function() -> None:
     assert isinstance(controller, Controller)
     tau = controller(0.0, _two_link())
     assert tau.shape == (2,)
+
+
+class _ConstantTorque(Controller):
+    """A controller that always applies the same joint torque."""
+
+    def __init__(self, tau: np.ndarray) -> None:
+        self.tau = tau
+
+    def control(self, t: float, skeleton: Skeleton) -> np.ndarray:  # noqa: ARG002
+        return self.tau
+
+
+def test_simulate_controlled_applies_the_tip_force_through_the_jacobian() -> None:
+    """A scripted tip force acts as ``J^T F`` on top of the controller's torque at every step."""
+    skeleton = _two_link()
+    tau = np.array([0.5, -0.2])
+    force = np.array([3.0, -2.0])
+    dt = 0.01
+
+    log = simulate_controlled(
+        skeleton, _ConstantTorque(tau), duration=0.2, dt=dt, external_force=lambda _t, _skeleton: force
+    )
+
+    model = skeleton.clone()
+    lower = np.array([link.prop.qmin for link in model.links[1:]])
+    upper = np.array([link.prop.qmax for link in model.links[1:]])
+    expected = [model.q.copy()]
+    for _ in range(20):
+        integrate_with_limits(model, tau + compute_jacobian(model).T @ force, dt, lower, upper)
+        expected.append(model.q.copy())
+    assert log.channel("q") == pytest.approx(np.array(expected), abs=1e-12)
+    assert log.channel("tau") == pytest.approx(np.tile(tau, (21, 1)))  # the controller's torque alone
+
+
+def test_a_tip_force_alone_pushes_the_tip_its_way() -> None:
+    """Starting at rest without control, the tip first moves partly along the force.
+
+    The tip accelerates by ``J H^-1 J^T F``, and ``J H^-1 J^T`` is positive definite,
+    so the motion has a positive component along the force (not necessarily all of it).
+    """
+    skeleton = _two_link()
+    force = np.array([0.0, 5.0])
+
+    log = simulate_controlled(
+        skeleton, _ConstantTorque(np.zeros(2)), duration=0.05, dt=0.002, external_force=lambda _t, _skeleton: force
+    )
+
+    displacement = _tip_at(skeleton, log.channel("q")[-1]) - _tip(skeleton)
+    assert displacement @ force > 0.0
+
+
+def test_simulate_controlled_records_the_tip_force_for_replay() -> None:
+    """The force of every frame, the final one included, is recorded as the ``ext_force`` channel."""
+    skeleton = _two_link()
+    seen: list[float] = []
+
+    onset, end = 0.025, 0.065
+
+    def pulse(t: float, _skeleton: Skeleton) -> np.ndarray:
+        seen.append(t)
+        return np.array([4.0, 1.0]) if onset < t < end else np.zeros(2)
+
+    log = simulate_controlled(skeleton, _ConstantTorque(np.zeros(2)), duration=0.1, dt=0.01, external_force=pulse)
+
+    times = np.asarray(log.times)
+    expected = np.where(((times > onset) & (times < end))[:, np.newaxis], [4.0, 1.0], 0.0)
+    assert log.channel("ext_force") == pytest.approx(expected)
+    assert seen == pytest.approx(times.tolist())
+    assert log.channel_meta["ext_force"]["columns"] == ["fx", "fy"]
+    assert log.channel_meta["ext_force"]["unit"] == "N"
+
+
+def test_simulate_controlled_without_a_tip_force_records_none() -> None:
+    """Without a tip force, the log has no ``ext_force`` channel, as before."""
+    log = simulate_controlled(_two_link(), _ConstantTorque(np.zeros(2)), duration=0.05, dt=0.01)
+
+    assert "ext_force" not in log.channel_names
+
+
+def test_a_state_dependent_tip_force_can_hold_the_tip() -> None:
+    """The force sees the current state, so a stiff spring-damper can hold the tip against the controller."""
+    skeleton = _two_link()
+    skeleton.q = np.array([0.3, 1.5])  # bent, so the tip spring constrains both joints firmly
+    held = _tip(skeleton)
+    reference = Trajectory(skeleton.q, skeleton.q + np.array([0.4, -0.3]), duration=0.5)
+
+    def hold(_t: float, state: Skeleton) -> np.ndarray:
+        velocity = compute_jacobian(state) @ state.dq
+        return -5000.0 * (_tip(state) - held) - 100.0 * velocity
+
+    def tip_travel(external_force: Callable[[float, Skeleton], np.ndarray] | None) -> tuple[float, StateLog]:
+        controller = JointPD(reference, kp=20.0, kd=5.0)
+        log = simulate_controlled(skeleton, controller, duration=1.0, dt=0.002, external_force=external_force)
+        tips = np.array([_tip_at(skeleton, q) for q in log.channel("q")])
+        return float(np.max(np.linalg.norm(tips - held, axis=1))), log
+
+    free, _ = tip_travel(None)
+    blocked, log = tip_travel(hold)
+    assert blocked < 0.02 * free
+    assert np.abs(log.channel("error")[-1]).max() > 0.3  # noqa: PLR2004  # the controller kept pulling
+
+
+def test_a_tip_force_must_be_two_dimensional() -> None:
+    """A force that is not ``(fx, fy)`` is rejected."""
+    with pytest.raises(ValueError, match="fx, fy"):
+        simulate_controlled(
+            _two_link(),
+            _ConstantTorque(np.zeros(2)),
+            duration=0.05,
+            dt=0.01,
+            external_force=lambda _t, _skeleton: np.zeros(3),
+        )

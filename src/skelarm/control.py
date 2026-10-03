@@ -31,7 +31,7 @@ from skelarm.kinematics import compute_inverse_kinematics, compute_jacobian
 from skelarm.recording import StateLog
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
     from typing import Any
 
     from numpy.typing import ArrayLike, NDArray
@@ -357,13 +357,20 @@ def simulate_controlled(
     grav_vec: NDArray[np.float64] | None = None,
     enforce_limits: bool = True,
     extra: Mapping[str, Any] | None = None,
+    external_force: Callable[[float, Skeleton], ArrayLike] | None = None,
 ) -> StateLog:
     """Run a controller against the dynamics with a fixed time step.
 
     Uses semi-implicit (symplectic) Euler, the same integration as the GUI
     simulator. A clone of ``skeleton`` is simulated, so the caller's skeleton is
-    not mutated. Each frame records ``q``, ``dq``, the applied ``tau``, and any
+    not mutated. Each frame records ``q``, ``dq``, the controller's ``tau``, and any
     channels from ``controller.log_channels()``.
+
+    An ``external_force`` scripts a disturbance at the arm's tip, such as a push or
+    a hand that holds the arm. It is a tip force acting in addition to the
+    controller's torque, mapped to the joints as ``J^T F`` like the mouse force of
+    the GUI simulator, and recorded as the ``ext_force`` channel, which
+    ``tools/player.py`` draws as an arrow.
 
     Parameters
     ----------
@@ -384,11 +391,21 @@ def simulate_controlled(
     extra : Mapping[str, Any] | None, optional
         Free-form metadata to embed in the returned log's ``[extra]`` table (e.g.
         the scenario config that produced the run, for later reproduction).
+    external_force : Callable[[float, Skeleton], ArrayLike] | None, optional
+        ``f(t, skeleton) -> (fx, fy)``: the tip force (N, base frame) at time ``t``
+        and the current state, called once per step after the controller. It must
+        not modify the skeleton. ``None`` (the default) applies none and records no
+        ``ext_force`` channel.
 
     Returns
     -------
     StateLog
         The recorded run (``duration / dt`` rounded, plus the initial frame).
+
+    Raises
+    ------
+    ValueError
+        If ``external_force`` returns anything but a force ``(fx, fy)``.
     """
     model = skeleton.clone()
     lower = upper = None
@@ -401,19 +418,34 @@ def simulate_controlled(
         "dq": {"unit": "rad/s", "label": "joint velocity", "columns": joints},
         "tau": {"unit": "N*m", "label": "applied joint torque", "columns": joints},
     }
+    if external_force is not None:
+        channel_meta["ext_force"] = {"unit": "N", "label": "external tip force", "columns": ["fx", "fy"]}
     log = StateLog(model, producer=type(controller).__name__, channel_meta=channel_meta, extra=extra)
     controller.reset(model)
+
+    def tip_force(t: float) -> dict[str, NDArray[np.float64]]:
+        """The scripted tip force at time ``t`` as a log channel (none without a script)."""
+        if external_force is None:
+            return {}
+        force = np.asarray(external_force(t, model), dtype=np.float64)
+        if force.shape != (2,):
+            msg = f"external_force must return a tip force (fx, fy), got shape {force.shape}"
+            raise ValueError(msg)
+        return {"ext_force": force}
 
     t = 0.0
     for _ in range(round(duration / dt)):
         controller.update(t, model, dt)
         tau = controller.control(t, model)
-        log.record(t, q=model.q, dq=model.dq, tau=tau, **controller.log_channels())
+        force = tip_force(t)
+        log.record(t, q=model.q, dq=model.dq, tau=tau, **force, **controller.log_channels())
 
+        if force:
+            tau = tau + compute_jacobian(model).T @ force["ext_force"]
         integrate_with_limits(model, tau, dt, lower, upper, grav_vec)
         t += dt
 
     # Final frame: record the settled state with the torque that would be applied next.
     tau = controller.control(t, model)
-    log.record(t, q=model.q, dq=model.dq, tau=tau, **controller.log_channels())
+    log.record(t, q=model.q, dq=model.dq, tau=tau, **tip_force(t), **controller.log_channels())
     return log

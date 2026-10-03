@@ -70,6 +70,29 @@ use the fixed-step `simulate_controlled` loop instead — adaptive `solve_ivp` m
 call the torque callback several times per output interval, which breaks
 controller state.
 
+`simulate_controlled` can also script a disturbance at the tip: `external_force`
+is called as `f(t, skeleton) -> (fx, fy)` once per step, and its force acts on top
+of the controller's torque (mapped to the joints as `J^T F`, like the mouse force
+of the dynamics simulator). The force is recorded as the `ext_force` channel, so
+`tools/player.py` replays it as an arrow at the tip:
+
+```python
+import numpy as np
+from skelarm import compute_jacobian
+
+
+def push(t, skeleton):  # a 20 N push along +x from 0.4 s to 0.5 s
+    return np.array([20.0, 0.0]) if 0.4 <= t < 0.5 else np.zeros(2)
+
+
+def grip(t, skeleton, held=np.array([0.5, 1.0])):  # a stiff hand holding the tip still
+    tip = np.array([skeleton.links[-1].xe, skeleton.links[-1].ye])
+    return -5000.0 * (tip - held) - 100.0 * (compute_jacobian(skeleton) @ skeleton.dq)
+
+
+log = simulate_controlled(skeleton, controller, duration=2.0, dt=0.002, external_force=push)
+```
+
 ## Lower-level building blocks
 
 ```python

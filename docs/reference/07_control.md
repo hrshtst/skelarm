@@ -364,7 +364,9 @@ The trajectory-tracking layer described above is implemented across
 4. `JointPD`, `InverseDynamicsFeedforwardPD`, and `ComputedTorque` (in
    `skelarm.control`) implement the three torque controllers.
 5. `simulate_controlled` is the fixed-step (semi-implicit Euler) loop for stateful
-   controllers; it returns a `StateLog` for replay and analysis.
+   controllers; it returns a `StateLog` for replay and analysis. Its optional
+   `external_force` scripts a tip force acting on top of the control torque
+   ($\tau + J^\top F$), recorded as the `ext_force` channel.
 6. `JointSpaceMPC` (in `skelarm.mpc`) is the joint-space MPC tracker with torque
    bounds, soft joint-limit penalties, and warm starts.
 7. The behaviors are tested in `tests/test_trajectory.py`, `tests/test_control.py`,
