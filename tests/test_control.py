@@ -269,6 +269,19 @@ def test_simulate_controlled_records_the_tip_force_for_replay() -> None:
     assert log.channel_meta["ext_force"]["unit"] == "N"
 
 
+def test_a_tip_force_returned_in_a_reused_buffer_is_recorded_as_it_was() -> None:
+    """A callback may fill and return the same array every step; each frame keeps its own force."""
+    buffer = np.zeros(2)
+
+    def pulse(t: float, _skeleton: Skeleton) -> np.ndarray:
+        buffer[:] = [5.0, 0.0] if t < 0.035 else [0.0, 0.0]  # noqa: PLR2004
+        return buffer
+
+    log = simulate_controlled(_two_link(), _ConstantTorque(np.zeros(2)), duration=0.1, dt=0.01, external_force=pulse)
+
+    assert log.channel("ext_force")[:, 0] == pytest.approx([5.0] * 4 + [0.0] * 7)
+
+
 def test_simulate_controlled_without_a_tip_force_records_none() -> None:
     """Without a tip force, the log has no ``ext_force`` channel, as before."""
     log = simulate_controlled(_two_link(), _ConstantTorque(np.zeros(2)), duration=0.05, dt=0.01)

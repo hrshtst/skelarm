@@ -427,7 +427,8 @@ def simulate_controlled(
         """The scripted tip force at time ``t`` as a log channel (none without a script)."""
         if external_force is None:
             return {}
-        force = np.asarray(external_force(t, model), dtype=np.float64)
+        # A copy, since a callback may return the same buffer every step and the log keeps each frame's array.
+        force = np.array(external_force(t, model), dtype=np.float64)
         if force.shape != (2,):
             msg = f"external_force must return a tip force (fx, fy), got shape {force.shape}"
             raise ValueError(msg)
