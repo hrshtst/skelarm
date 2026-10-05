@@ -29,9 +29,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
-from PyQt6.QtWidgets import QApplication, QCheckBox, QDoubleSpinBox, QFileDialog, QLabel, QPushButton
+from PyQt6.QtWidgets import QApplication, QCheckBox, QFileDialog, QLabel, QPushButton
 
 from skelarm import (
+    ShortcutFriendlySpinBox,
     SkelarmSimulator,
     Skeleton,
     compute_endpoint_velocity,
@@ -67,7 +68,7 @@ class DynamicsSimulator(SkelarmSimulator):
         self._trajectory_y: list[float] = []
 
         self.add_control(QLabel("Viscous friction (N·m·s/rad)"))
-        self.friction_spin = QDoubleSpinBox()
+        self.friction_spin = ShortcutFriendlySpinBox()  # leaves Space and the letters to the shortcuts
         self.friction_spin.setDecimals(3)
         self.friction_spin.setRange(0.0, _FRICTION_MAX)
         self.friction_spin.setSingleStep(0.01)

@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QKeySequence
 from PyQt6.QtWidgets import QApplication, QCheckBox, QComboBox, QLabel, QPushButton
 
@@ -54,6 +55,8 @@ class KinematicsInspector(SkelarmViewer):
         if skeleton.num_joints == 2:  # noqa: PLR2004
             methods.append("nr")
         self.method_combo.addItems(methods)
+        # Picked with the mouse only: a focused combo box would take R (reset) for its type-ahead search.
+        self.method_combo.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.method_combo.currentTextChanged.connect(self._on_method_changed)
         self.add_control(self.method_combo)
 

@@ -237,3 +237,12 @@ def test_q_shortcut_closes_the_window(qapp) -> None:  # noqa: ANN001, ARG001
     QTest.keyClick(inspector, Qt.Key.Key_Q)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
     QApplication.processEvents()
     assert not inspector.isVisible()
+
+
+def test_the_method_box_never_keeps_the_reset_key(qapp) -> None:  # noqa: ANN001, ARG001
+    """The method box is picked with the mouse and never takes the keyboard focus, so R always resets."""
+    from PyQt6.QtCore import Qt
+
+    inspector = _inspector(2)
+
+    assert inspector.method_combo.focusPolicy() == Qt.FocusPolicy.NoFocus

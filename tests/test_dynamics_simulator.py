@@ -287,3 +287,21 @@ def test_export_toml_round_trips(qapp, tmp_path) -> None:  # noqa: ANN001, ARG00
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     assert data["producer"] == "skelarm_simulator"
     assert "q" in data["data"]
+
+
+def test_space_runs_the_simulator_while_the_friction_box_has_focus(qapp) -> None:  # noqa: ANN001, ARG001
+    """Focusing the friction box (by editing the friction) leaves Space to run and pause."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+    from PyQt6.QtWidgets import QApplication
+
+    sim = _simulator()
+    sim.show()
+    sim.activateWindow()
+    sim.friction_spin.setFocus()
+    QApplication.processEvents()
+
+    QTest.keyClick(sim.friction_spin, Qt.Key.Key_Space)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+
+    assert sim.running
+    sim.pause()
