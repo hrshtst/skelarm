@@ -216,6 +216,110 @@ def test_keys_drive_buttons_end_to_end(qapp) -> None:  # noqa: ANN001, ARG001
     assert reset_fired == [False]
 
 
+# === keyboard shortcuts past a focused number box ===
+
+
+def _bar_and_box(box_class: type) -> tuple:
+    """An active window with a transport bar and a number box of ``box_class``, the box focused."""
+    from PyQt6.QtWidgets import QApplication, QVBoxLayout, QWidget
+
+    from skelarm.widgets import TransportBar
+
+    window = QWidget()
+    layout = QVBoxLayout(window)
+    bar = TransportBar()
+    box = box_class()
+    layout.addWidget(bar)
+    layout.addWidget(box)
+    _activate(window)
+    box.setFocus()
+    QApplication.processEvents()
+    return window, bar, box
+
+
+def test_shortcut_friendly_spin_box_is_exported(qapp) -> None:  # noqa: ANN001, ARG001
+    """The shortcut-friendly number box is available at the package top level, and the speed box is one."""
+    import skelarm
+    from skelarm.widgets import ShortcutFriendlySpinBox, SpeedSpinBox
+
+    assert skelarm.ShortcutFriendlySpinBox is ShortcutFriendlySpinBox
+    assert "ShortcutFriendlySpinBox" in skelarm.__all__
+    assert issubclass(SpeedSpinBox, ShortcutFriendlySpinBox)
+
+
+def test_a_plain_spin_box_swallows_the_shortcuts(qapp) -> None:  # noqa: ANN001, ARG001
+    """The bug this guards against: a focused QDoubleSpinBox keeps Space from the window's shortcuts."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+    from PyQt6.QtWidgets import QDoubleSpinBox
+
+    _, bar, box = _bar_and_box(QDoubleSpinBox)
+
+    QTest.keyClick(box, Qt.Key.Key_Space)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    assert not bar.play_button.isChecked()
+
+
+def test_a_focused_number_box_leaves_space_and_letters_to_the_shortcuts(qapp) -> None:  # noqa: ANN001, ARG001
+    """Space and letter keys reach the window's shortcuts while the box keeps its focus."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+
+    from skelarm.widgets import ShortcutFriendlySpinBox
+
+    _, bar, box = _bar_and_box(ShortcutFriendlySpinBox)
+    reset_fired: list[bool] = []
+    bar.reset_button.clicked.connect(reset_fired.append)
+
+    QTest.keyClick(box, Qt.Key.Key_Space)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    assert bar.play_button.isChecked()
+    QTest.keyClick(box, Qt.Key.Key_R)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    assert reset_fired == [False]
+    assert box.hasFocus()
+
+
+def test_a_focused_number_box_still_takes_digits_and_cursor_keys(qapp) -> None:  # noqa: ANN001, ARG001
+    """Typing a number and moving the cursor still edit the box rather than firing shortcuts."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+
+    from skelarm.widgets import ShortcutFriendlySpinBox
+
+    _, bar, box = _bar_and_box(ShortcutFriendlySpinBox)
+    stepped: list[bool] = []
+    bar.step_button.clicked.connect(stepped.append)
+    line_edit = box.lineEdit()
+    assert line_edit is not None
+
+    line_edit.selectAll()
+    QTest.keyClicks(box, "2.5")  # type: ignore[call-arg, arg-type]  # PyQt6 stubs type QTest methods as bound
+    assert box.value() == pytest.approx(2.5)
+    QTest.keyClick(box, Qt.Key.Key_Home)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    QTest.keyClick(box, Qt.Key.Key_Right)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    assert line_edit.cursorPosition() == 1
+    assert stepped == []  # Right moved the cursor, not the timeline
+
+
+def test_enter_and_escape_hand_the_focus_back_to_the_window(qapp) -> None:  # noqa: ANN001, ARG001
+    """After Enter or Escape, the box lets go of the focus, so every shortcut works again."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+    from PyQt6.QtWidgets import QApplication
+
+    from skelarm.widgets import ShortcutFriendlySpinBox
+
+    window, bar, box = _bar_and_box(ShortcutFriendlySpinBox)
+    stepped: list[bool] = []
+    bar.step_button.clicked.connect(stepped.append)
+
+    for key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Escape):
+        box.setFocus()
+        QApplication.processEvents()
+        QTest.keyClick(box, key)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+        assert not box.hasFocus()
+    QTest.keyClick(window, Qt.Key.Key_Right)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+    assert stepped == [False]
+
+
 # === playback clock and speed spin box ===
 
 

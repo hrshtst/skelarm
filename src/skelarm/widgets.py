@@ -1,12 +1,18 @@
 # Copyright (C) 2025-2026 Hiroshi Atsuta <atsuta@ieee.org>
 # SPDX-License-Identifier: GPL-3.0-only
 
-"""Shared PyQt6 widgets for the skelarm GUI tools: QtAwesome icons, the transport bar, and the playback clock."""
+"""Shared PyQt6 widgets for the skelarm GUI tools: QtAwesome icons, the transport bar, and the playback clock.
+
+The tools bind their keys (Space, R, Q, ...) as window-wide shortcuts. A focused
+text field normally claims every key it could type, which silences those
+shortcuts until the user clicks another widget that takes the focus; number
+inputs should therefore be :class:`ShortcutFriendlySpinBox`.
+"""
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QObject, QSignalBlocker, QSize, QTimer, pyqtSignal
-from PyQt6.QtGui import QIcon, QKeySequence, QShortcut
+from PyQt6.QtCore import QEvent, QObject, QSignalBlocker, QSize, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QIcon, QKeyEvent, QKeySequence, QShortcut
 from PyQt6.QtWidgets import QDoubleSpinBox, QHBoxLayout, QToolButton, QWidget
 
 _PLAYBACK_PERIOD_MS = 20  # default playback/render tick
@@ -24,6 +30,33 @@ _STEP_KEYS = ("Right", "F")
 _BACK_KEYS = ("Left", "B")
 _RESET_KEYS = ("R",)
 _KEY_GLYPHS = {"Right": "→", "Left": "←"}
+# The keys a number box needs for editing; it leaves every other key to the window's shortcuts.
+_NUMBER_EDITING_KEYS = frozenset(
+    {getattr(Qt.Key, f"Key_{digit}") for digit in range(10)}
+    | {
+        Qt.Key.Key_Period,
+        Qt.Key.Key_Comma,
+        Qt.Key.Key_Minus,
+        Qt.Key.Key_Plus,
+        Qt.Key.Key_Backspace,
+        Qt.Key.Key_Delete,
+        Qt.Key.Key_Left,
+        Qt.Key.Key_Right,
+        Qt.Key.Key_Home,
+        Qt.Key.Key_End,
+        Qt.Key.Key_Up,
+        Qt.Key.Key_Down,
+        Qt.Key.Key_PageUp,
+        Qt.Key.Key_PageDown,
+        Qt.Key.Key_Return,
+        Qt.Key.Key_Enter,
+        Qt.Key.Key_Escape,
+    }
+)
+_DONE_KEYS = (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Escape)
+_COMMAND_MODIFIERS = (
+    Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier | Qt.KeyboardModifier.MetaModifier
+)
 
 
 def _hinted(label: str, keys: tuple[str, ...]) -> str:
@@ -268,7 +301,39 @@ class PlaybackClock(QObject):
         self.ticked.emit(self._period_ms / 1000.0 * self._speed)
 
 
-class SpeedSpinBox(QDoubleSpinBox):
+class ShortcutFriendlySpinBox(QDoubleSpinBox):
+    """A number box that leaves the window's keyboard shortcuts working.
+
+    A plain :class:`~PyQt6.QtWidgets.QDoubleSpinBox` claims every key it could
+    type while it has the focus, and keeps the focus until the user clicks another
+    widget that takes it, so shortcuts such as Space (play) or R (reset) stop
+    working after the user edits a value. This box claims only the keys that edit
+    a number: the digits, the decimal point, the signs, the cursor and deletion
+    keys, and the keys that step the value; Space, letters, and other keys reach
+    the shortcuts even while it has the focus. Enter or Escape commits the value
+    and hands the focus back to the window, so the keys it does claim (such as
+    Right or Home) work as shortcuts again. Key combinations with Ctrl, Alt, or
+    Meta behave as in any text field.
+    """
+
+    def event(self, event: QEvent | None) -> bool:
+        """Decline the keys a number does not need, so they reach the window's shortcuts."""
+        if event is not None and event.type() == QEvent.Type.ShortcutOverride and isinstance(event, QKeyEvent):
+            commanded = bool(event.modifiers() & _COMMAND_MODIFIERS)
+            if not commanded and Qt.Key(event.key()) not in _NUMBER_EDITING_KEYS:
+                event.ignore()
+                return False
+        return super().event(event)
+
+    def keyPressEvent(self, e: QKeyEvent | None) -> None:  # noqa: N802
+        """Commit on Enter or Escape and give the focus back to the window."""
+        super().keyPressEvent(e)
+        if e is not None and Qt.Key(e.key()) in _DONE_KEYS:
+            self.interpretText()
+            self.clearFocus()
+
+
+class SpeedSpinBox(ShortcutFriendlySpinBox):
     """A spin box for a playback speed multiplier, as the replay player shows it.
 
     It offers 0.1x to 10x in steps of 0.1, with two decimals. Handle its

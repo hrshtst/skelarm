@@ -180,7 +180,9 @@ trajectory-tracking tasks load a recorded reference — each converted via
 
 The interactive tools subclass PyQt6 base classes. [`SkelarmCanvas`](canvas.md)
 (a `QWidget`) renders a `Skeleton` and poses it by inverse kinematics on a left
-click or drag, unless its `drag_to_pose` attribute is `False`. It is extended by
+click or drag, unless its `drag_to_pose` attribute is `False`. A click on it also
+takes the keyboard focus from any text field, so the keys go back to the window's
+shortcuts. It is extended by
 [`SimulatorCanvas`](simulator.md), whose drag applies a tip force instead;
 `SkelarmViewer` and `SkelarmSimulator` are the `QMainWindow` shells that host them.
 
@@ -193,6 +195,12 @@ are exported at the package top level, so a tool of your own can reuse them:
   Start and stop it with the play button, and keep the button in step with
   `TransportBar.set_playing`.
 - `SpeedSpinBox` — the player's speed control: 0.1× to 10× in steps of 0.1.
+- `ShortcutFriendlySpinBox` — a number box that leaves the window's keyboard
+  shortcuts working: it claims only the keys that edit a number, so Space and
+  the letters still play, reset, or quit while it has the focus, and Enter or
+  Escape hands the focus back. `SpeedSpinBox` is one; use it for any number
+  input of a tool, since a plain `QDoubleSpinBox` silences the shortcuts once
+  it is edited.
 
 The replay player (`tools/player.py`) is built from these three.
 

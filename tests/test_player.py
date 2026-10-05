@@ -1287,3 +1287,19 @@ def test_deleting_the_player_with_its_playlist_does_not_abort(tmp_path: Path, do
     assert result.returncode == 0, result.stderr
     assert "deleted cleanly" in result.stdout
     assert "has been deleted" not in result.stderr
+
+
+def test_space_plays_while_the_speed_box_has_focus(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Focusing the speed box (by editing the speed) leaves Space to play and pause."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+    from PyQt6.QtWidgets import QApplication
+
+    window = PlaybackWindow(_log())
+    _activate(window)
+    window.speed_spin.setFocus()
+    QApplication.processEvents()
+
+    QTest.keyClick(window.speed_spin, Qt.Key.Key_Space)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+
+    assert window.is_playing
