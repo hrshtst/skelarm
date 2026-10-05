@@ -163,6 +163,9 @@ class SkelarmCanvas(QWidget):
     def __init__(self, skeleton: Skeleton, parent: QWidget | None = None) -> None:
         """Initialize the canvas."""
         super().__init__(parent)
+        # A click on the arm takes the keyboard focus from any text field, whose keys
+        # then go back to the window's shortcuts.
+        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.skeleton = skeleton
         self.scale_factor = _DEFAULT_SCALE  # Pixels per meter; re-fit on each paint.
         self.show_com = False  # whether to overlay each link's center of mass

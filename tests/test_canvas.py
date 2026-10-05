@@ -457,3 +457,29 @@ def test_trail_overlays_are_drawn_solid_and_toggleable(qapp) -> None:  # noqa: A
     canvas.show_trails = True
     canvas.trails = [TrailOverlay(points[:1], QColor(200, 30, 120, 230), 2.0)]  # a lone point is not a path
     assert canvas.grab().toImage() == plain
+
+
+def test_clicking_the_canvas_takes_the_focus_from_an_input(qapp) -> None:  # noqa: ANN001, ARG001
+    """A click on the arm moves the keyboard focus off a number box, so its keys go back to the shortcuts."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtTest import QTest
+    from PyQt6.QtWidgets import QApplication, QDoubleSpinBox, QVBoxLayout, QWidget
+
+    from skelarm.canvas import SkelarmCanvas
+
+    window = QWidget()
+    layout = QVBoxLayout(window)
+    canvas = SkelarmCanvas(Skeleton([LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi)]))
+    canvas.setMinimumSize(200, 200)
+    box = QDoubleSpinBox()
+    layout.addWidget(canvas)
+    layout.addWidget(box)
+    window.show()
+    window.activateWindow()
+    box.setFocus()
+    QApplication.processEvents()
+
+    QTest.mouseClick(canvas, Qt.MouseButton.LeftButton)  # type: ignore[call-overload]  # PyQt6 stubs type QTest methods as bound
+
+    assert not box.hasFocus()
+    assert canvas.hasFocus()
