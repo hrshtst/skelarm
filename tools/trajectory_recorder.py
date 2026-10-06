@@ -333,7 +333,8 @@ class RecorderWindow(QMainWindow):
         self._ticks = 0
         self.log = self._new_log()
         self._history: list[SavedTrail] = []  # saved takes of this session only, in save order
-        self._grab_offset: NDArray[np.float64] | None = None  # tip minus cursor when the current IK drag began
+        self._grab_offset: NDArray[np.float64] | None = None  # tip minus the point pressed, for the current IK drag
+        self._grab_gesture: int | None = None  # the canvas's drag gesture that offset belongs to
 
         self.canvas = SimulatorCanvas(skeleton)
         self.canvas.show_com = show_com
@@ -560,16 +561,20 @@ class RecorderWindow(QMainWindow):
     def _step_ik(self) -> None:
         """One IK solve that moves the tip as the cursor has moved since the grab (the pose update of this tick).
 
-        The tick that first sees a drag keeps the offset between the tip and the
-        cursor, so a grab off the tip's center never makes the tip jump to the cursor.
+        The first tick of every new drag gesture takes the offset between the tip and
+        the point pressed (the tip has not moved since), so a grab off the tip's center
+        never makes the tip jump to the cursor, not even when the previous drag ended and
+        this one began between two ticks.
         """
         cursor = self.canvas.drag_point
         if cursor is None:
             self._grab_offset = None
             return
-        tip = self.skeleton.links[-1]
-        if self._grab_offset is None:
-            self._grab_offset = np.array([tip.xe - cursor[0], tip.ye - cursor[1]], dtype=np.float64)
+        if self._grab_offset is None or self._grab_gesture != self.canvas.drag_gesture:
+            tip = self.skeleton.links[-1]
+            origin = self.canvas.drag_origin or cursor
+            self._grab_offset = np.array([tip.xe - origin[0], tip.ye - origin[1]], dtype=np.float64)
+            self._grab_gesture = self.canvas.drag_gesture
         target = np.asarray(cursor, dtype=np.float64) + self._grab_offset
         compute_inverse_kinematics(self.skeleton, target, method=self._method, q0=self.skeleton.q)
 
@@ -703,6 +708,7 @@ class RecorderWindow(QMainWindow):
         self.skeleton.dq = np.zeros(self.skeleton.num_joints, dtype=np.float64)
         self.canvas.drag_point = None
         self._grab_offset = None
+        self._grab_gesture = None
         self.log = self._new_log()
         self.time = 0.0
         self._ticks = 0

@@ -55,6 +55,8 @@ class SimulatorCanvas(SkelarmCanvas):
         """Initialize the simulator canvas."""
         super().__init__(skeleton)
         self._drag_world: tuple[float, float] | None = None
+        self._drag_origin: tuple[float, float] | None = None  # where the current drag began
+        self._drag_gesture = 0  # how many drags have begun
         self.target: NDArray[np.float64] | None = None  # optional task-space goal marker (the active one)
         self.target_color = _GOAL_COLOR  # marker color
         self.target_tolerance: float | None = None  # success radius (m); sizes the ring
@@ -80,7 +82,40 @@ class SimulatorCanvas(SkelarmCanvas):
 
     @drag_point.setter
     def drag_point(self, value: tuple[float, float] | None) -> None:
-        self._drag_world = None if value is None else (float(value[0]), float(value[1]))
+        if value is None:
+            self._end_drag()
+            return
+        point = (float(value[0]), float(value[1]))
+        if self._drag_world is None:
+            self._begin_drag(point)  # a drag set with none active begins a gesture
+        else:
+            self._drag_world = point
+            self.update()
+
+    @property
+    def drag_origin(self) -> tuple[float, float] | None:
+        """Where the current drag began: the world point pressed (or first set), else ``None``."""
+        return self._drag_origin
+
+    @property
+    def drag_gesture(self) -> int:
+        """How many drags have begun: it changes with every new press that grabs (or new programmatic drag).
+
+        A consumer that keeps state per drag, such as the offset between the tip and
+        the cursor, can tell from it that a new drag began, even when the previous one
+        ended and the new one began between two of its updates.
+        """
+        return self._drag_gesture
+
+    def _begin_drag(self, point: tuple[float, float]) -> None:
+        self._drag_world = point
+        self._drag_origin = point
+        self._drag_gesture += 1
+        self.update()
+
+    def _end_drag(self) -> None:
+        self._drag_world = None
+        self._drag_origin = None
         self.update()
 
     def external_force(self, stiffness: float) -> NDArray[np.float64]:
@@ -109,8 +144,7 @@ class SimulatorCanvas(SkelarmCanvas):
                 tip = self.skeleton.links[-1]
                 if math.hypot(world[0] - tip.xe, world[1] - tip.ye) > self.grab_radius:
                     return
-            self._drag_world = world
-            self.update()
+            self._begin_drag(world)
 
     def mouseMoveEvent(self, a0: QMouseEvent | None) -> None:  # noqa: N802
         """Move the force target along while a drag is active (begun by a press that grabbed).
@@ -124,8 +158,7 @@ class SimulatorCanvas(SkelarmCanvas):
 
     def mouseReleaseEvent(self, a0: QMouseEvent | None) -> None:  # noqa: ARG002, N802
         """Stop applying the force on release."""
-        self._drag_world = None
-        self.update()
+        self._end_drag()
 
     def paintEvent(self, a0: QPaintEvent | None) -> None:  # noqa: N802
         """Draw the arm, then the task target (if any) and the drag force arrow."""

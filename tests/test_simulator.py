@@ -75,6 +75,63 @@ def _move_held(canvas, target: tuple[float, float]) -> None:  # noqa: ANN001
     )
 
 
+def _release(canvas) -> None:  # noqa: ANN001
+    """Dispatch a left-button release."""
+    from PyQt6.QtCore import QEvent, QPointF, Qt
+    from PyQt6.QtGui import QMouseEvent
+
+    canvas.mouseReleaseEvent(
+        QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            QPointF(0.0, 0.0),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+    )
+
+
+def test_each_grab_begins_a_new_drag_gesture(qapp) -> None:  # noqa: ANN001, ARG001
+    """Every press that grabs begins a new gesture, remembered with the point pressed; a release ends it."""
+    sim = _simulator()
+    canvas = sim.canvas
+    canvas.grab_radius = 0.1
+    tip = sim.skeleton.links[-1]
+    first = canvas.drag_gesture
+    assert canvas.drag_origin is None
+
+    _press(canvas, (tip.xe + 0.02, tip.ye))
+    assert canvas.drag_gesture == first + 1
+    assert canvas.drag_origin == pytest.approx((tip.xe + 0.02, tip.ye), abs=1e-6)
+    _move_held(canvas, (tip.xe + 0.05, tip.ye))
+    assert canvas.drag_gesture == first + 1  # a move continues the gesture
+    assert canvas.drag_origin == pytest.approx((tip.xe + 0.02, tip.ye), abs=1e-6)
+
+    _release(canvas)
+    assert canvas.drag_origin is None
+    _press(canvas, (tip.xe + 0.5, tip.ye))  # too far: grabs nothing, so begins no gesture
+    assert canvas.drag_gesture == first + 1
+    _press(canvas, (tip.xe - 0.02, tip.ye))
+    assert canvas.drag_gesture == first + 2
+    assert canvas.drag_origin == pytest.approx((tip.xe - 0.02, tip.ye), abs=1e-6)
+
+
+def test_a_programmatic_drag_begins_a_gesture_when_none_is_active(qapp) -> None:  # noqa: ANN001, ARG001
+    """Setting the drag point with no drag active begins a gesture there; setting it again moves the drag."""
+    sim = _simulator()  # keeps the window, and so the canvas, alive
+    canvas = sim.canvas
+    first = canvas.drag_gesture
+
+    canvas.drag_point = (0.4, 0.5)
+    canvas.drag_point = (0.45, 0.5)
+    assert canvas.drag_gesture == first + 1
+    assert canvas.drag_origin == pytest.approx((0.4, 0.5))
+    canvas.drag_point = None
+    assert canvas.drag_origin is None
+    canvas.drag_point = (0.3, 0.5)
+    assert canvas.drag_gesture == first + 2
+
+
 def test_external_force_is_zero_without_drag(qapp) -> None:  # noqa: ANN001, ARG001
     """With no active drag the tip force is exactly zero."""
     sim = _simulator()

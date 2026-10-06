@@ -496,23 +496,28 @@ def test_start_on_grab_ignores_a_button_held_through_a_reset(qapp, tmp_path: Pat
     assert window.state == "ready"
 
 
-def _press_at(window: RecorderWindow, target: tuple[float, float]) -> None:
-    """Press the left mouse button on the canvas at the world point ``target``."""
+def _mouse(window: RecorderWindow, kind: str, target: tuple[float, float] = (0.0, 0.0)) -> None:
+    """Dispatch a left-button ``"press"``, held ``"move"``, or ``"release"`` at the world point ``target``."""
     from PyQt6.QtCore import QEvent, QPointF, Qt
     from PyQt6.QtGui import QMouseEvent
 
     canvas = window.canvas
-    canvas.resize(400, 400)
     px = canvas.width() / 2 + target[0] * canvas.scale_factor
     py = canvas.height() / 2 - target[1] * canvas.scale_factor
-    press = QMouseEvent(
-        QEvent.Type.MouseButtonPress,
-        QPointF(px, py),
-        Qt.MouseButton.LeftButton,
-        Qt.MouseButton.LeftButton,
-        Qt.KeyboardModifier.NoModifier,
-    )
-    canvas.mousePressEvent(press)
+    left, none = Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton
+    event_type, button, buttons = {
+        "press": (QEvent.Type.MouseButtonPress, left, left),
+        "move": (QEvent.Type.MouseMove, none, left),
+        "release": (QEvent.Type.MouseButtonRelease, left, none),
+    }[kind]
+    event = QMouseEvent(event_type, QPointF(px, py), button, buttons, Qt.KeyboardModifier.NoModifier)
+    {"press": canvas.mousePressEvent, "move": canvas.mouseMoveEvent, "release": canvas.mouseReleaseEvent}[kind](event)
+
+
+def _press_at(window: RecorderWindow, target: tuple[float, float]) -> None:
+    """Press the left mouse button on the canvas at the world point ``target``."""
+    window.canvas.resize(400, 400)
+    _mouse(window, "press", target)
 
 
 def test_the_tip_is_grabbed_only_within_the_grab_radius(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
@@ -569,6 +574,45 @@ def test_an_ik_grab_never_makes_the_tip_jump(qapp, tmp_path: Path) -> None:  # n
     window.canvas.drag_point = (held[0] - 0.04, held[1])
     _tick(window, 1)
     assert np.array([tip.xe, tip.ye]) == pytest.approx(held, abs=1e-6)
+
+
+def _bent_and_recording(tmp_path: Path) -> tuple[RecorderWindow, NDArray[np.float64]]:
+    """A recording window with the arm bent away from the stretched-out singularity, and its tip position."""
+    window = _window(tmp_path)
+    window.canvas.resize(400, 400)
+    window.skeleton.q = np.radians([30.0, 30.0, 30.0, 30.0])
+    window.start()
+    tip = window.skeleton.links[-1]
+    return window, np.array([tip.xe, tip.ye])
+
+
+def test_a_release_and_regrab_between_ticks_never_makes_the_tip_jump(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Grabbing again before the next tick takes the new grab's offset, not the last one's."""
+    window, start = _bent_and_recording(tmp_path)
+    tip = window.skeleton.links[-1]
+
+    _mouse(window, "press", (start[0] + 0.03, start[1]))
+    _tick(window, 1)
+    _mouse(window, "release")
+    _mouse(window, "press", (start[0] - 0.03, start[1]))  # no tick in between
+    _tick(window, 1)
+    assert np.array([tip.xe, tip.ye]) == pytest.approx(start, abs=1e-6)
+
+    window.canvas.drag_point = None  # the same, driven programmatically
+    window.canvas.drag_point = (start[0] + 0.03, start[1] + 0.02)
+    _tick(window, 1)
+    assert np.array([tip.xe, tip.ye]) == pytest.approx(start, abs=1e-6)
+
+
+def test_a_move_between_the_press_and_the_first_tick_is_followed(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The offset is taken at the press, so a move made before the next tick moves the tip by as much."""
+    window, start = _bent_and_recording(tmp_path)
+    tip = window.skeleton.links[-1]
+
+    _mouse(window, "press", (start[0] + 0.03, start[1]))
+    _mouse(window, "move", (start[0] + 0.04, start[1]))
+    _tick(window, 1)
+    assert np.array([tip.xe, tip.ye]) == pytest.approx(start + np.array([0.01, 0.0]), abs=1e-4)
 
 
 def test_grab_tick_only_starts_the_take(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
