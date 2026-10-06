@@ -12,6 +12,12 @@ in task space ``(x, y)``; two modes turn that into per-joint angles:
   - ``dynamics`` : apply a spring force at the tip and integrate forward dynamics
                    (with viscous friction), like ``tools/dynamics_simulator.py``.
 
+Grabbing: a left press grabs the tip only within ``--grab-radius`` of it (5 cm by
+default), the dashed circle drawn around the tip; a press farther away grabs nothing.
+In ``ik`` mode the tip then moves as the cursor moves from where it was pressed, so a
+grab off the tip's center never makes the tip jump to the cursor. In ``dynamics`` mode
+the spring pulls the tip toward the cursor itself.
+
 Controls are window-wide keyboard shortcuts mirrored by buttons:
 
   - **Space** starts a take from the ready (reset) posture: the reset state is logged at
@@ -73,6 +79,7 @@ Usage::
 
     uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml
     uv run python tools/trajectory_recorder.py robot.toml --mode dynamics --sample-rate 100
+    uv run python tools/trajectory_recorder.py robot.toml --grab-radius 0.03   # grab only within 3 cm of the tip
     uv run python tools/trajectory_recorder.py robot.toml --output reach.sklog.npz --multi-take
     uv run python tools/trajectory_recorder.py robot.toml --multi-take --show-tip-trail --show-past-trails
     uv run python tools/trajectory_recorder.py robot.toml --multi-take --show-past-trails --past-trail-history last
@@ -130,6 +137,7 @@ _DISPLAY_MS = 20  # target repaint period (ms), rounded to whole ticks; sampling
 _PANEL_WIDTH_PX = 300  # fixed side-panel width so its content can't resize it
 _SUBSTEPS = 4  # dynamics-mode physics substeps per sample period
 _MAX_CATCH_UP_PERIODS = 3  # after a stall, simulate at most this many periods in one tick
+_GRAB_RADIUS = 0.05  # m: a press grabs the tip only this close to it
 _DRAG_STIFFNESS = 30.0  # N/m for the mouse drag (dynamics mode)
 _FRICTION = 0.2  # joint viscous friction (dynamics mode; "some by default")
 _SAMPLE_RATE = 50.0  # requested logger sampling rate (Hz), best effort; one timer tick per sample
@@ -264,6 +272,7 @@ class RecorderWindow(QMainWindow):
         show_past_trails: bool = False,
         past_trail_history: Literal["all", "last"] = "all",
         method: str = "lm_sugihara",
+        grab_radius: float = _GRAB_RADIUS,
         stiffness: float = _DRAG_STIFFNESS,
         friction: float = _FRICTION,
         task: Task | None = None,
@@ -285,6 +294,9 @@ class RecorderWindow(QMainWindow):
             msg = f"past_trail_history must be one of {', '.join(_PAST_TRAIL_HISTORIES)}, got {past_trail_history!r}"
             raise ValueError(msg)
         self._past_trail_history: Literal["all", "last"] = past_trail_history
+        if grab_radius <= 0:
+            msg = f"grab_radius must be positive, got {grab_radius}"
+            raise ValueError(msg)
         self._duration = duration if duration > 0 else None  # None: record until saved
         self._output = normalized_output(Path(output))
         if self._output != Path(output):
@@ -319,13 +331,14 @@ class RecorderWindow(QMainWindow):
         self._ticks = 0
         self.log = self._new_log()
         self._history: list[SavedTrail] = []  # saved takes of this session only, in save order
+        self._grab_offset: NDArray[np.float64] | None = None  # tip minus cursor when the current IK drag began
 
         self.canvas = SimulatorCanvas(skeleton)
         self.canvas.show_com = show_com
         self.canvas.show_drag_arrow = mode == "dynamics"  # no force cue for the kinematic IK drag
         self.canvas.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        reach = sum(link.prop.length for link in skeleton.links)
-        self.canvas.grab_radius = max(0.12 * reach, 0.05)  # grab near the tip
+        self.canvas.grab_radius = grab_radius  # a press grabs the tip only this close to it
+        self.canvas.show_grab_range = True
         if task is not None and task.target is not None:
             self.canvas.target = np.asarray(task.target, dtype=np.float64)
             self.canvas.target_color = QColor(task.color)
@@ -347,11 +360,12 @@ class RecorderWindow(QMainWindow):
         controls.addWidget(QLabel(f"<b>Trajectory recorder</b> — {mode} mode, {sample_rate:g} Hz"))
         hint = QLabel(
             "Space starts a take from the reset posture (the still pre-roll is recorded). "
-            "Drag the tip (left-drag) to teach. S saves and keeps the take visible; "
+            "Drag the tip (left-drag, starting within the dashed circle) to teach. S saves and keeps the take visible; "
             "Shift+S saves and prepares the next take; R resets, discarding only an unsaved take; "
             "Q closes."
             if not start_on_grab
-            else "Recording starts on the first grab (--start-on-grab). Drag the tip (left-drag) to teach. "
+            else "Recording starts on the first grab (--start-on-grab). "
+            "Drag the tip (left-drag, starting within the dashed circle) to teach. "
             "S saves; Shift+S saves and prepares the next take; R resets, discarding only an unsaved take; "
             "Q closes."
         )
@@ -542,12 +556,20 @@ class RecorderWindow(QMainWindow):
             self.save_take()
 
     def _step_ik(self) -> None:
-        """One IK solve toward the current cursor (the pose update of this tick)."""
-        target = self.canvas.drag_point
-        if target is not None:
-            compute_inverse_kinematics(
-                self.skeleton, np.asarray(target, dtype=np.float64), method=self._method, q0=self.skeleton.q
-            )
+        """One IK solve that moves the tip as the cursor has moved since the grab (the pose update of this tick).
+
+        The tick that first sees a drag keeps the offset between the tip and the
+        cursor, so a grab off the tip's center never makes the tip jump to the cursor.
+        """
+        cursor = self.canvas.drag_point
+        if cursor is None:
+            self._grab_offset = None
+            return
+        tip = self.skeleton.links[-1]
+        if self._grab_offset is None:
+            self._grab_offset = np.array([tip.xe - cursor[0], tip.ye - cursor[1]], dtype=np.float64)
+        target = np.asarray(cursor, dtype=np.float64) + self._grab_offset
+        compute_inverse_kinematics(self.skeleton, target, method=self._method, q0=self.skeleton.q)
 
     def _step_dynamics(self, elapsed: float) -> None:
         """Integrate forward dynamics under the tip force over the ``elapsed`` real time since the last sample.
@@ -676,6 +698,7 @@ class RecorderWindow(QMainWindow):
         self.skeleton.q = self._reset_q.copy()
         self.skeleton.dq = np.zeros(self.skeleton.num_joints, dtype=np.float64)
         self.canvas.drag_point = None
+        self._grab_offset = None
         self.log = self._new_log()
         self.time = 0.0
         self._ticks = 0
@@ -813,6 +836,15 @@ def _sample_rate_argument(text: str) -> float:
     return rate
 
 
+def _grab_radius_argument(text: str) -> float:
+    """Parse ``--grab-radius``, a distance that must be positive."""
+    radius = float(text)
+    if radius <= 0:
+        msg = f"the grab radius must be positive, got {radius:g}"
+        raise argparse.ArgumentTypeError(msg)
+    return radius
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the command-line argument parser for the tool."""
     parser = argparse.ArgumentParser(description="Interactively teach and record joint-trajectory takes.")
@@ -863,6 +895,12 @@ def build_parser() -> argparse.ArgumentParser:
         "zero or negative records until saved (default: 10)",
     )
     parser.add_argument("--method", default="lm_sugihara", help="IK solver method (ik mode; default: lm_sugihara)")
+    parser.add_argument(
+        "--grab-radius",
+        type=_grab_radius_argument,
+        default=_GRAB_RADIUS,
+        help=f"a press grabs the tip only within this distance of it, in meters (default: {_GRAB_RADIUS:g})",
+    )
     parser.add_argument(
         "--stiffness", type=float, default=_DRAG_STIFFNESS, help="drag force per meter in N/m (dynamics mode)"
     )
@@ -953,6 +991,7 @@ def main() -> None:
         show_past_trails=args.show_past_trails,
         past_trail_history=args.past_trail_history,
         method=args.method,
+        grab_radius=args.grab_radius,
         stiffness=args.stiffness,
         friction=args.friction,
         task=task,

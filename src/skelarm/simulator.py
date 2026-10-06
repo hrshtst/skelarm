@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent
+from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPen
 from PyQt6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
@@ -40,6 +40,7 @@ _TIMER_MS = 20  # target GUI/render period in milliseconds
 _DEFAULT_DT = 0.005  # physics step preserving the legacy 20 ms / 4-substep loop
 _DEFAULT_STIFFNESS = 0.1  # N/m: external tip force = stiffness * (cursor - tip)
 _ARROW_COLOR = QColor(220, 0, 0)  # red
+_GRAB_RANGE_COLOR = QColor(120, 120, 120, 140)  # translucent gray
 _PANEL_WIDTH_PX = 300  # fixed side-panel width so the varying time readout can't resize it
 
 
@@ -64,6 +65,9 @@ class SimulatorCanvas(SkelarmCanvas):
         self.grab_radius: float | None = None
         # Whether to draw the red drag arrow (a force cue); off for kinematic drags.
         self.show_drag_arrow = True
+        # Whether to draw the grab range: a dashed circle of radius grab_radius around the
+        # tip, shown while no drag is active, so the user sees where a press grabs.
+        self.show_grab_range = False
 
     @property
     def drag_point(self) -> tuple[float, float] | None:
@@ -146,6 +150,16 @@ class SimulatorCanvas(SkelarmCanvas):
                 tolerance=self.target_tolerance,
                 active=True,
             )
+
+        # Where a press grabs the tip: a dashed circle around it while nothing is dragged.
+        if self.show_grab_range and self.grab_radius is not None and self._drag_world is None:
+            tip = self.skeleton.links[-1]
+            center = self._world_to_screen(tip.xe, tip.ye, center_x, center_y)
+            radius = self.grab_radius * self.scale_factor
+            pen = QPen(_GRAB_RANGE_COLOR, 1.0, Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(center, radius, radius)
 
         # Interactive drag force: a red arrow from the tip to the cursor.
         if self._drag_world is not None and self.show_drag_arrow:

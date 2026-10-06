@@ -261,7 +261,11 @@ def test_any_positive_sample_rate_is_accepted_as_best_effort(qapp, tmp_path: Pat
 
 
 def test_one_pose_update_per_sample(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
-    """At 100 Hz every logged sample carries its own pose update: no repeated frames, 10 ms apart."""
+    """At 100 Hz every logged sample carries its own pose update: no repeated frames, 10 ms apart.
+
+    The tick that sees the grab keeps the tip where it is (an IK grab never jumps), so
+    the pose first changes at the next tick, and at every tick after that.
+    """
     window = _window(tmp_path)
     window.start()
     _move(window, 40)
@@ -269,7 +273,8 @@ def test_one_pose_update_per_sample(qapp, tmp_path: Path) -> None:  # noqa: ANN0
     assert len(times) == 41  # noqa: PLR2004  # t = 0 plus one sample per tick
     assert np.allclose(np.diff(times), 0.01)
     q = window.log.channel("q")
-    assert not np.any(np.all(np.isclose(q[1:], q[:-1]), axis=1))  # a moving cursor never repeats a pose
+    assert np.allclose(q[1], q[0])  # the grab tick holds the pose
+    assert not np.any(np.all(np.isclose(q[2:], q[1:-1]), axis=1))  # then a moving cursor never repeats a pose
 
 
 def test_display_refresh_is_throttled_independently_of_sampling(qapp, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001, ARG001
@@ -489,6 +494,81 @@ def test_start_on_grab_ignores_a_button_held_through_a_reset(qapp, tmp_path: Pat
     _tick(window, 5)
     assert canvas.drag_point is None
     assert window.state == "ready"
+
+
+def _press_at(window: RecorderWindow, target: tuple[float, float]) -> None:
+    """Press the left mouse button on the canvas at the world point ``target``."""
+    from PyQt6.QtCore import QEvent, QPointF, Qt
+    from PyQt6.QtGui import QMouseEvent
+
+    canvas = window.canvas
+    canvas.resize(400, 400)
+    px = canvas.width() / 2 + target[0] * canvas.scale_factor
+    py = canvas.height() / 2 - target[1] * canvas.scale_factor
+    press = QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        QPointF(px, py),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    canvas.mousePressEvent(press)
+
+
+def test_the_tip_is_grabbed_only_within_the_grab_radius(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """A press grabs the tip only within ``grab_radius`` of it (5 cm by default), and the range is drawn."""
+    window = _window(tmp_path)
+    tip = window.skeleton.links[-1]
+    assert window.canvas.grab_radius == pytest.approx(0.05)
+    assert window.canvas.show_grab_range
+
+    _press_at(window, (tip.xe + 0.07, tip.ye))
+    assert window.canvas.drag_point is None  # too far: nothing is grabbed
+    _press_at(window, (tip.xe + 0.03, tip.ye))
+    assert window.canvas.drag_point is not None
+
+    narrow = _window(tmp_path, grab_radius=0.02)
+    _press_at(narrow, (tip.xe + 0.03, tip.ye))
+    assert narrow.canvas.drag_point is None
+    narrow.canvas.grab()  # the range draws without error
+
+
+def test_the_grab_radius_must_be_positive(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """A grab radius of zero or less is rejected, by the window and on the command line."""
+    with pytest.raises(ValueError, match="grab_radius"):
+        _window(tmp_path, grab_radius=0.0)
+    parser = build_parser()
+    assert parser.parse_args([str(_FOUR_DOF)]).grab_radius == pytest.approx(0.05)
+    assert parser.parse_args([str(_FOUR_DOF), "--grab-radius", "0.08"]).grab_radius == pytest.approx(0.08)
+    with pytest.raises(SystemExit):
+        parser.parse_args([str(_FOUR_DOF), "--grab-radius", "-0.01"])
+
+
+def test_an_ik_grab_never_makes_the_tip_jump(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """In IK mode the tip stays where it is when grabbed off-center, then moves as the cursor moves."""
+    window = _window(tmp_path)
+    window.skeleton.q = np.radians([30.0, 30.0, 30.0, 30.0])  # bent, away from the stretched-out singularity
+    window.start()
+    tip = window.skeleton.links[-1]
+    start = np.array([tip.xe, tip.ye])
+    grab = start + np.array([0.03, -0.02])  # off-center, within the grab radius
+
+    window.canvas.drag_point = (grab[0], grab[1])
+    _tick(window, 1)
+    assert np.array([tip.xe, tip.ye]) == pytest.approx(start, abs=1e-6)
+
+    for k in range(1, 6):  # the cursor moves 5 cm to the left and 2.5 cm down, in steps
+        cursor = grab + k * np.array([-0.01, -0.005])
+        window.canvas.drag_point = (cursor[0], cursor[1])
+        _tick(window, 1)
+    assert np.array([tip.xe, tip.ye]) == pytest.approx(start + np.array([-0.05, -0.025]), abs=1e-4)
+
+    window.canvas.drag_point = None  # let go, and grab again elsewhere: no jump either
+    _tick(window, 1)
+    held = np.array([tip.xe, tip.ye])
+    window.canvas.drag_point = (held[0] - 0.04, held[1])
+    _tick(window, 1)
+    assert np.array([tip.xe, tip.ye]) == pytest.approx(held, abs=1e-6)
 
 
 def test_grab_tick_only_starts_the_take(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001

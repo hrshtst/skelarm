@@ -20,6 +20,19 @@ uv run python tools/player.py reach_001.sklog.npz                               
 uv run python tools/player.py reach_*.sklog.npz                                          # replay every take as a playlist
 ```
 
+### Grabbing the tip
+
+A left press grabs the tip only within `--grab-radius` of it (5 cm by default),
+shown as a dashed circle around the tip while nothing is grabbed; a press farther
+away grabs nothing. In `ik` mode the tip then moves as the cursor moves from where
+you pressed, so grabbing slightly off the tip's center never makes the tip jump to
+the cursor, and the take holds no such jump. In `dynamics` mode the spring pulls the
+tip toward the cursor itself.
+
+```bash
+uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --grab-radius 0.03   # grab only within 3 cm
+```
+
 ### Controls
 
 | Key | Action | Result |
