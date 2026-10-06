@@ -210,6 +210,48 @@ def _registries():  # noqa: ANN202
     scenario_mod._TASK_TYPES.update(types)  # noqa: SLF001
 
 
+@pytest.mark.usefixtures("_registries")
+@pytest.mark.parametrize(
+    "section",
+    [
+        {"type": "reaching", "target": [0.5, 0.4]},
+        {
+            "type": "reaching",
+            "target": {"pos": [0.0, 1.2], "label": "goal", "color": "green", "tolerance": 0.02},
+            "duration": 4.0,
+            "schedule": "quintic",
+            "radius": 0.3,
+        },
+        {"type": "waypoints", "points": [[0.1, 0.2], [0.3, 0.4]], "duration": 3.0},
+    ],
+)
+def test_task_to_dict_round_trips_through_from_dict(section: dict[str, object]) -> None:
+    """``to_dict`` gives the [task] mapping that ``from_dict`` builds the same task from."""
+    register_task_type("waypoints")
+    task = Task.from_dict(section)
+
+    again = Task.from_dict(task.to_dict())
+
+    assert again.type == task.type
+    if task.target is None:
+        assert again.target is None
+    else:
+        assert again.target == pytest.approx(task.target)
+    assert (again.label, again.color, again.tolerance) == (task.label, task.color, task.tolerance)
+    assert (again.duration, again.schedule, again.params) == (task.duration, task.schedule, task.params)
+
+
+def test_task_to_dict_holds_plain_values() -> None:
+    """The mapping holds plain lists, numbers, and strings, as a TOML table would."""
+    task = Task.from_dict({"type": "reaching", "target": {"pos": [0.0, 1.2], "tolerance": 0.02}})
+
+    section = task.to_dict()
+
+    assert section["target"] == {"pos": [0.0, 1.2], "color": "purple", "tolerance": 0.02}
+    assert type(section["target"]["pos"]) is list
+    assert "label" not in section["target"]  # unset attributes are left out, as from_dict defaults them
+
+
 def test_task_from_dict_captures_extra_keys_as_params() -> None:
     """Unrecognized [task] keys are preserved on ``task.params`` for custom tasks/controllers."""
     task = Task.from_dict({"type": "reaching", "target": [0.5, 0.4], "radius": 0.3, "period": 2.0})

@@ -160,6 +160,31 @@ class Task:
             raise ValueError(msg)
         return self.target
 
+    def to_dict(self) -> dict[str, Any]:
+        """Return the ``[task]`` mapping that :meth:`from_dict` builds this task from.
+
+        The inverse of :meth:`from_dict`: the target becomes a table with its
+        position, color, and (when set) label and tolerance; the duration, the
+        schedule, and the :attr:`params` follow. Values are plain lists, numbers,
+        and strings, so the mapping can be written to TOML or stored in a log.
+
+        Returns
+        -------
+        dict[str, Any]
+            The ``[task]`` table.
+        """
+        section: dict[str, Any] = {"type": self.type}
+        if self.target is not None:
+            target: dict[str, Any] = {"pos": [float(value) for value in self.target], "color": self.color}
+            if self.label is not None:
+                target["label"] = self.label
+            if self.tolerance is not None:
+                target["tolerance"] = self.tolerance
+            section["target"] = target
+        section["duration"] = self.duration
+        section["schedule"] = self.schedule
+        return section | self.params
+
     @classmethod
     def from_toml(cls, file_path: str | Path) -> Task:
         """Build a Task from the ``[task]`` table of a TOML file."""
