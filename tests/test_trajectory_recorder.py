@@ -971,6 +971,37 @@ def test_q_key_runs_the_close_check(qapp, tmp_path: Path) -> None:  # noqa: ANN0
 # ----------------------------------------------------------------------------------------------
 
 
+def test_a_saved_take_carries_the_task_for_playback(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """With a task, each saved take stores its [task] table, so the player draws the target."""
+    from skelarm.scenario import Task
+    from tools.player import _task_overlays_of
+
+    task = Task.from_dict({"type": "reaching", "target": {"pos": [0.55, 0.21], "tolerance": 0.02}, "duration": 4.0})
+    out = tmp_path / "with_task.sklog.npz"
+    window = _window(tmp_path, output=out, multi_take=False, task=task)
+    window.start()
+    _move(window, 5)
+    assert window.save_take()
+
+    log = StateLog.load(out)
+    assert log.extra["playback"]["task"] == task.to_dict()
+    targets, _ = _task_overlays_of(log, log.build_skeleton())
+    assert len(targets) == 1
+    assert targets[0][0] == pytest.approx([0.55, 0.21])
+    assert targets[0][2] == pytest.approx(0.02)
+
+
+def test_a_saved_take_without_a_task_has_no_playback_table(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Without a task, nothing is stored for playback and the player draws no target."""
+    out = tmp_path / "no_task.sklog.npz"
+    window = _window(tmp_path, output=out, multi_take=False)
+    window.start()
+    _move(window, 5)
+    assert window.save_take()
+
+    assert "playback" not in StateLog.load(out).extra
+
+
 def test_ik_mode_records_q_and_tip_and_replays(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
     """IK mode records joint angles + tip at the sample rate; the log replays."""
     out = tmp_path / "ik.sklog.npz"

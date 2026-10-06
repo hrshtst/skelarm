@@ -73,7 +73,9 @@ of that base already present, and a number taken meanwhile (e.g. by another sess
 skipped, never overwritten. Each take is written straight to its
 name, and a failed write removes the partial file. A take with no samples beyond
 ``t = 0`` is never written and consumes no number. Saving opens no dialog and no plot;
-``--plot`` plots the last visible take after the window closes.
+``--plot`` plots the last visible take after the window closes. When the config (or
+``--task``) has a ``[task]``, each take stores it under ``[extra.playback.task]``, so
+the player draws the target when replaying or exporting the take.
 
 Usage::
 
@@ -639,6 +641,8 @@ class RecorderWindow(QMainWindow):
             self._report_save_failure(f"not saved: {path} already exists (the take is kept; move that file, then save)")
             return False
         self.log.extra["acquisition"] = self._acquisition_meta()
+        if self._task is not None:  # so the player draws the target when replaying the take
+            self.log.extra["playback"] = {"task": self._task.to_dict()}
         try:
             self._write_take(path)
         except OSError as exc:

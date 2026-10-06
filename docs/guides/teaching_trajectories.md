@@ -63,7 +63,9 @@ refused, reported in the status area and on the terminal, and the take stays for
 a retry. Each take is written straight to its name, and a failed write removes
 the partial file. A take holding nothing beyond the `t = 0` frame is never
 written and consumes no number. File names enumerate attempts; whether a take
-qualifies for an experiment is decided offline.
+qualifies for an experiment is decided offline. When the config (or `--task`) has a
+`[task]`, each take stores it under `[extra.playback.task]`, so the player draws the
+target when replaying or exporting the take.
 
 ### Trails
 
