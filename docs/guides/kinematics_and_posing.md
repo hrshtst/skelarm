@@ -15,6 +15,11 @@ uv run python tools/kinematics_inspector.py examples/four_dof_robot.toml
 Useful flags: `--method <ik-method>` selects the IK solver, `--show-com` draws
 the link centers of mass, and the start pose comes from `--pose 20,45,60,30`
 (degrees) or `--initial pose.toml` (a TOML file with an `[initial]` table).
+If the config has a `[task]` table, the inspector draws it, as the simulators
+do: its targets with their tolerance rings and its reference path. The status
+readout then gives the tip's distance to the target, which helps place a target
+within reach while you adjust the links. `--task task.toml` draws the `[task]`
+of another file instead.
 Press `R` to reset the pose and `Q` to quit (see the
 [tool reference](tools_reference.md) for all shortcuts).
 

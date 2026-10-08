@@ -14,8 +14,9 @@ import pytest
 # Importing the tool pulls in PyQt6; run headless.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from skelarm import Task
 from skelarm.skeleton import LinkProp, Skeleton
-from tools.kinematics_inspector import KinematicsInspector, build_parser, load_skeleton
+from tools.kinematics_inspector import KinematicsInspector, build_parser, load_skeleton, load_task
 
 pytestmark = pytest.mark.integration
 
@@ -28,14 +29,17 @@ def qapp():  # noqa: ANN201
     return QApplication.instance() or QApplication([])
 
 
-def _inspector(num_links: int) -> KinematicsInspector:
+_REACHING_TASK = '[task]\ntype = "reaching"\ntarget = { pos = [0.5, 1.2], tolerance = 0.02 }\n'
+
+
+def _inspector(num_links: int, task: Task | None = None) -> KinematicsInspector:
     """Build a KinematicsInspector for a uniform arm, seeded at a non-singular pose."""
     link_props = [
         LinkProp(length=1.0, m=1.0, i=0.1, rgx=0.5, rgy=0.0, qmin=-np.pi, qmax=np.pi) for _ in range(num_links)
     ]
     skeleton = Skeleton(link_props)
     skeleton.q = np.full(num_links, 0.3)  # bent (non-singular) seed
-    return KinematicsInspector(skeleton)
+    return KinematicsInspector(skeleton, task=task)
 
 
 def _combo_methods(inspector: KinematicsInspector) -> list[str]:
@@ -127,6 +131,61 @@ def test_load_skeleton_missing_config_raises(tmp_path: Path) -> None:
 
     with pytest.raises(FileNotFoundError):
         load_skeleton(args)
+
+
+def test_load_task_reads_the_config_task(tmp_path: Path) -> None:
+    """The config's [task] table is the task the inspector draws."""
+    config = tmp_path / "robot.toml"
+    _write_two_joint_config(config)
+    config.write_text(config.read_text(encoding="utf-8") + _REACHING_TASK, encoding="utf-8")
+
+    task = load_task(build_parser().parse_args([str(config)]))
+
+    assert task is not None
+    assert task.target == pytest.approx([0.5, 1.2])
+    assert task.tolerance == pytest.approx(0.02)
+
+
+def test_load_task_without_a_task_table_is_none(tmp_path: Path) -> None:
+    """A config without a [task] table draws no task."""
+    config = tmp_path / "robot.toml"
+    _write_two_joint_config(config)
+
+    assert load_task(build_parser().parse_args([str(config)])) is None
+
+
+def test_task_file_overrides_the_config_task(tmp_path: Path) -> None:
+    """--task draws the [task] of a separate file instead of the config's."""
+    config = tmp_path / "robot.toml"
+    _write_two_joint_config(config)
+    config.write_text(config.read_text(encoding="utf-8") + _REACHING_TASK, encoding="utf-8")
+    other = tmp_path / "task.toml"
+    other.write_text('[task]\ntype = "reaching"\ntarget = { pos = [-0.3, 0.9] }\n', encoding="utf-8")
+
+    task = load_task(build_parser().parse_args([str(config), "--task", str(other)]))
+
+    assert task is not None
+    assert task.target == pytest.approx([-0.3, 0.9])
+
+
+def test_task_file_without_a_task_table_raises(tmp_path: Path) -> None:
+    """A --task file must hold a [task] table."""
+    config = tmp_path / "robot.toml"
+    _write_two_joint_config(config)
+    other = tmp_path / "task.toml"
+    other.write_text("[initial]\nq = [15.0, 25.0]\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"\[task\]"):
+        load_task(build_parser().parse_args([str(config), "--task", str(other)]))
+
+
+def test_missing_task_file_raises(tmp_path: Path) -> None:
+    """A missing --task file raises FileNotFoundError."""
+    config = tmp_path / "robot.toml"
+    _write_two_joint_config(config)
+
+    with pytest.raises(FileNotFoundError):
+        load_task(build_parser().parse_args([str(config), "--task", str(tmp_path / "nope.toml")]))
 
 
 # === KinematicsInspector (the tool's feature-rich viewer) ===
@@ -246,3 +305,52 @@ def test_the_method_box_never_keeps_the_reset_key(qapp) -> None:  # noqa: ANN001
     inspector = _inspector(2)
 
     assert inspector.method_combo.focusPolicy() == Qt.FocusPolicy.NoFocus
+
+
+def test_the_inspector_draws_the_task_target(qapp) -> None:  # noqa: ANN001, ARG001
+    """A reaching task's target is drawn with its tolerance ring, and no path."""
+    task = Task.from_dict({"type": "reaching", "target": {"pos": [0.5, 1.2], "tolerance": 0.02}})
+
+    inspector = _inspector(2, task=task)
+
+    ((pos, _, tolerance, active),) = inspector.canvas.overlay_targets
+    assert pos == pytest.approx([0.5, 1.2])
+    assert tolerance == pytest.approx(0.02)
+    assert active
+    assert inspector.canvas.overlay_path is None
+
+
+def test_the_inspector_draws_the_task_path(qapp) -> None:  # noqa: ANN001, ARG001
+    """A task with a reference path, such as a periodic curve, has it drawn."""
+    task = Task.from_dict(
+        {"type": "periodic_curve", "curve": "ellipse", "center": [0.9, 0.0], "a": 0.4, "b": 0.25, "period": 2.0}
+    )
+
+    inspector = _inspector(2, task=task)
+
+    path = inspector.canvas.overlay_path
+    assert path is not None
+    assert path[:, 0].max() == pytest.approx(1.3)  # the center plus the x semi-axis
+    assert path[:, 1].max() == pytest.approx(0.25, abs=1e-3)  # the y semi-axis, between two samples
+
+
+def test_the_inspector_without_a_task_draws_none(qapp) -> None:  # noqa: ANN001, ARG001
+    """Without a task, no target or path is drawn."""
+    inspector = _inspector(2)
+
+    assert inspector.canvas.overlay_targets == []
+    assert inspector.canvas.overlay_path is None
+
+
+def test_status_label_reports_the_tip_distance_to_the_target(qapp) -> None:  # noqa: ANN001, ARG001
+    """The status label shows the target and how far the tip is from it, as the pose changes."""
+    task = Task.from_dict({"type": "reaching", "target": {"pos": [0.5, 1.2], "tolerance": 0.02}})
+    inspector = _inspector(2, task=task)
+    tip = inspector.skeleton.links[-1]
+    distance = np.hypot(tip.xe - 0.5, tip.ye - 1.2)
+
+    assert f"Target: (0.500, 1.200) m, {distance:.3f} m from the tip" in inspector.status_label.text()
+
+    inspector.canvas.solve_to_world(0.5, 1.2)
+
+    assert "Target: (0.500, 1.200) m, 0.000 m from the tip" in inspector.status_label.text()

@@ -7,7 +7,9 @@ Interactive kinematics tool for skelarm.
 Load a robot arm from a TOML config given on the command line and pose it
 interactively: drag the joint sliders to set joint angles (forward kinematics),
 or click (and drag) in the canvas to move the tip to that point (inverse
-kinematics).
+kinematics). If the config (or ``--task``) has a ``[task]`` table, its targets and
+reference path are drawn, and the status readout gives the tip's distance to the
+target.
 
 Usage::
 
@@ -15,12 +17,14 @@ Usage::
     uv run python tools/kinematics_inspector.py robot.toml --method sr_inverse --show-com
     uv run python tools/kinematics_inspector.py robot.toml --pose 20,45,60,30
     uv run python tools/kinematics_inspector.py robot.toml --initial pose.toml
+    uv run python tools/kinematics_inspector.py robot.toml --task task.toml
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+import tomllib
 from pathlib import Path
 
 import numpy as np
@@ -28,21 +32,28 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QKeySequence
 from PyQt6.QtWidgets import QApplication, QCheckBox, QComboBox, QLabel, QPushButton
 
-from skelarm import SkelarmViewer, Skeleton, make_icon
+from skelarm import SkelarmViewer, Skeleton, Task, make_icon
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # allow `tools.` imports when run as a script
+from tools._scenario_cli import task_overlays
 
 
 class KinematicsInspector(SkelarmViewer):
     """A SkelarmViewer with extra inspection controls.
 
     Adds a center-of-mass overlay toggle, an IK-method selector, a reset-pose
-    button, and a live status readout (endpoint position and the latest IK
-    result) on top of the minimal slider/canvas viewer.
+    button, and a live status readout (endpoint position, the distance to the
+    task's target, and the latest IK result) on top of the minimal slider/canvas
+    viewer. A given task is drawn: its target markers and its reference path.
     """
 
-    def __init__(self, skeleton: Skeleton) -> None:
-        """Build the inspector controls on top of the base viewer."""
+    def __init__(self, skeleton: Skeleton, *, task: Task | None = None) -> None:
+        """Build the inspector controls on top of the base viewer, drawing ``task`` if given."""
         super().__init__(skeleton)
         self._initial_q = skeleton.q.copy()  # pose to restore on reset
+        self._task = task
+        if task is not None:
+            self.canvas.overlay_targets, self.canvas.overlay_path = task_overlays(task, skeleton)
 
         self.com_checkbox = QCheckBox("Show center of mass")
         self.com_checkbox.toggled.connect(self._on_show_com_toggled)
@@ -93,6 +104,10 @@ class KinematicsInspector(SkelarmViewer):
         """Refresh the status label with the endpoint position and latest IK result."""
         tip = self.skeleton.links[-1]
         text = f"Tip: ({tip.xe:.3f}, {tip.ye:.3f}) m"
+        if self._task is not None and self._task.target is not None:
+            x, y = self._task.target
+            distance = float(np.hypot(tip.xe - x, tip.ye - y))
+            text += f"\nTarget: ({x:.3f}, {y:.3f}) m, {distance:.3f} m from the tip"
         result = self.canvas.last_ik_result
         if result is not None:
             text += f"\nIK: {result.status}, residual={result.residual_norm:.3g}"
@@ -110,6 +125,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--pose",
         default=None,
         help="initial joint angles in degrees, e.g. 20,45,60,30 (overrides --initial)",
+    )
+    parser.add_argument(
+        "--task", type=Path, default=None, help="TOML file whose [task] is drawn instead of the config's"
     )
     return parser
 
@@ -158,17 +176,54 @@ def load_skeleton(args: argparse.Namespace) -> Skeleton:
     return skeleton
 
 
+def load_task(args: argparse.Namespace) -> Task | None:
+    """Load the task to draw: the ``[task]`` of ``--task`` if given, else the config's, if any.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed command-line arguments.
+
+    Returns
+    -------
+    Task | None
+        The task, or ``None`` when the config has no ``[task]`` table and no ``--task`` is given.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the ``--task`` file does not exist.
+    ValueError
+        If the ``--task`` file has no ``[task]`` table, or the table is not a valid task.
+    """
+    if args.task is not None:
+        path: Path = args.task
+        if not path.exists():
+            msg = f"task file not found: {path}"
+            raise FileNotFoundError(msg)
+        with path.open("rb") as f:
+            data = tomllib.load(f)
+        if "task" not in data:
+            msg = f"no [task] section in {path}"
+            raise ValueError(msg)
+        return Task.from_dict(data["task"])
+    with args.config.open("rb") as f:
+        data = tomllib.load(f)
+    return Task.from_dict(data["task"]) if "task" in data else None
+
+
 def main() -> None:
     """Parse arguments, build the viewer, and run the interactive application."""
     parser = build_parser()
     args = parser.parse_args()
     try:
         skeleton = load_skeleton(args)
+        task = load_task(args)
     except (FileNotFoundError, ValueError) as exc:
         parser.error(str(exc))
 
     app = QApplication(sys.argv)
-    viewer = KinematicsInspector(skeleton)
+    viewer = KinematicsInspector(skeleton, task=task)
 
     if args.method is not None:
         available = [viewer.method_combo.itemText(i) for i in range(viewer.method_combo.count())]

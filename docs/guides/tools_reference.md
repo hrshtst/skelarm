@@ -27,7 +27,7 @@ catalogue; each tool's workflow has its own guide.
 | `--show-com` | inspector, dynamics, recorder, player | Draw the link centers of mass. |
 | `--run` | all simulators | Start simulating immediately (windows open paused by default). |
 | `--no-joint-limits` | dynamics, scenario tools, recorder (`dynamics` mode) | Drop the dynamics hard stop; limits stay on the kinematics. Scenario tools record the resolved choice in the log's run metadata; the dynamics simulator and recorder apply it without embedding it. |
-| `--task FILE` / `--controller FILE` | scenario tools | Override the named section from a separate file. The recorder also takes `--task FILE`, only to draw its target. |
+| `--task FILE` / `--controller FILE` | scenario tools | Override the named section from a separate file. The recorder and the inspector also take `--task FILE`, only to draw it. |
 | `--save PATH` | scenario tools | Headless run (no GUI); write the log directly. |
 | `--duration S` | scenario tools (with `--save`), recorder | Override the task's simulated duration / cap the recording length (recorder: a reached cap stops and saves the take but keeps the window open; `0` or negative records until you save). |
 | `--show-tip-trail` / `--show-past-trails` | recorder | Draw the current take's logged tip path / the faint tip paths of the takes saved in this session (also checkboxes in the panel). |
