@@ -30,6 +30,12 @@ def qapp():  # noqa: ANN201
 
 
 _REACHING_TASK = '[task]\ntype = "reaching"\ntarget = { pos = [0.5, 1.2], tolerance = 0.02 }\n'
+_MULTI_TARGET_TASK = (
+    '[task]\ntype = "multi_target_reaching"\nactive = 1\ntargets = [\n'
+    '  { pos = [1.2, 0.4], label = "A", tolerance = 0.03 },\n'
+    '  { pos = [0.3, 1.2], label = "B", tolerance = 0.03 },\n'
+    "]\n"
+)
 
 
 def _inspector(num_links: int, task: Task | None = None) -> KinematicsInspector:
@@ -177,6 +183,31 @@ def test_task_file_without_a_task_table_raises(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match=r"\[task\]"):
         load_task(build_parser().parse_args([str(config), "--task", str(other)]))
+
+
+def test_load_task_applies_the_active_target_of_a_multi_target_task(tmp_path: Path) -> None:
+    """A multi-target task's configured active candidate becomes its target, as when a scenario is loaded."""
+    config = tmp_path / "robot.toml"
+    _write_two_joint_config(config)
+    config.write_text(config.read_text(encoding="utf-8") + _MULTI_TARGET_TASK, encoding="utf-8")
+
+    task = load_task(build_parser().parse_args([str(config)]))
+
+    assert task is not None
+    assert task.target == pytest.approx([0.3, 1.2])
+    assert task.label == "B"
+    assert task.tolerance == pytest.approx(0.03)
+
+
+def test_load_task_rejects_an_active_target_out_of_range(tmp_path: Path) -> None:
+    """A multi-target task whose active index names no candidate is rejected."""
+    config = tmp_path / "robot.toml"
+    _write_two_joint_config(config)
+    task_table = _MULTI_TARGET_TASK.replace("active = 1", "active = 2")
+    config.write_text(config.read_text(encoding="utf-8") + task_table, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="out of range"):
+        load_task(build_parser().parse_args([str(config)]))
 
 
 def test_missing_task_file_raises(tmp_path: Path) -> None:
@@ -354,3 +385,16 @@ def test_status_label_reports_the_tip_distance_to_the_target(qapp) -> None:  # n
     inspector.canvas.solve_to_world(0.5, 1.2)
 
     assert "Target: (0.500, 1.200) m, 0.000 m from the tip" in inspector.status_label.text()
+
+
+def test_status_label_reports_the_distance_to_the_active_target(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """With a multi-target task, every candidate is drawn and the distance is to the active one."""
+    config = tmp_path / "robot.toml"
+    _write_two_joint_config(config)
+    config.write_text(config.read_text(encoding="utf-8") + _MULTI_TARGET_TASK, encoding="utf-8")
+    inspector = _inspector(2, task=load_task(build_parser().parse_args([str(config)])))
+
+    assert [active for _, _, _, active in inspector.canvas.overlay_targets] == [False, True]
+    inspector.canvas.solve_to_world(0.3, 1.2)
+
+    assert "Target: (0.300, 1.200) m, 0.000 m from the tip" in inspector.status_label.text()

@@ -32,7 +32,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QKeySequence
 from PyQt6.QtWidgets import QApplication, QCheckBox, QComboBox, QLabel, QPushButton
 
-from skelarm import SkelarmViewer, Skeleton, Task, make_icon
+from skelarm import SkelarmViewer, Skeleton, Task, apply_active_target, make_icon
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # allow `tools.` imports when run as a script
 from tools._scenario_cli import task_overlays
@@ -179,6 +179,9 @@ def load_skeleton(args: argparse.Namespace) -> Skeleton:
 def load_task(args: argparse.Namespace) -> Task | None:
     """Load the task to draw: the ``[task]`` of ``--task`` if given, else the config's, if any.
 
+    A multi-target task's configured active candidate becomes its target, as when a
+    scenario is loaded, so that the status readout measures the distance to it.
+
     Parameters
     ----------
     args : argparse.Namespace
@@ -194,7 +197,8 @@ def load_task(args: argparse.Namespace) -> Task | None:
     FileNotFoundError
         If the ``--task`` file does not exist.
     ValueError
-        If the ``--task`` file has no ``[task]`` table, or the table is not a valid task.
+        If the ``--task`` file has no ``[task]`` table, the table is not a valid task, or a
+        multi-target task's active index is out of range.
     """
     if args.task is not None:
         path: Path = args.task
@@ -206,10 +210,15 @@ def load_task(args: argparse.Namespace) -> Task | None:
         if "task" not in data:
             msg = f"no [task] section in {path}"
             raise ValueError(msg)
-        return Task.from_dict(data["task"])
-    with args.config.open("rb") as f:
-        data = tomllib.load(f)
-    return Task.from_dict(data["task"]) if "task" in data else None
+    else:
+        with args.config.open("rb") as f:
+            data = tomllib.load(f)
+        if "task" not in data:
+            return None
+    task = Task.from_dict(data["task"])
+    if task.type == "multi_target_reaching":
+        apply_active_target(task)
+    return task
 
 
 def main() -> None:
