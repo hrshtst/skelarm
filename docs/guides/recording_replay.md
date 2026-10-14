@@ -142,7 +142,11 @@ again = simulate_controlled(skeleton, other_controller, duration=2.0, dt=0.002, 
 
 Each sample acts until the next one, as `simulate_controlled` applies a force, and
 no force acts before the first sample or from the last one on. Replaying a run's
-own force with its own controller and step reproduces the run exactly.
+own force with its own controller and step reproduces its motion exactly: the
+joint angles, velocities, and torques, and the force applied at every step. The
+log's final frame is the one exception: it records the force that would act next,
+which no step applies, and since the record ends there, the replay's final frame
+records no force.
 
 - **Another clock:** `RecordedForce.from_log(log, time_offset=...)` shifts every
   sample, for a log whose clock starts elsewhere.

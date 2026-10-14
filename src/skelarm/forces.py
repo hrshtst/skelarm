@@ -13,7 +13,10 @@ whatever the arm does, so that runs of different controllers meet the same pushe
 The record is a zero-order hold, as :func:`~skelarm.control.simulate_controlled`
 applies a force: the sample recorded at ``t_k`` acts over ``[t_k, t_k+1)``. The last
 sample marks the end of the record, as a run's final frame does, so no force acts
-from it on, nor before the first sample.
+from it on, nor before the first sample. Replaying a run's own force with its own
+controller and step therefore reproduces its motion and every force it applied
+exactly, but not the force its final frame records, which no step applied: the
+replay's final frame records none.
 
 Example::
 

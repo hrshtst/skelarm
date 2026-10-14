@@ -225,3 +225,26 @@ def test_stepping_through_a_long_record_does_not_slow_with_its_length() -> None:
     elapsed = time.perf_counter() - started
 
     assert elapsed < 0.5  # noqa: PLR2004  # 2000 steps; scanning the whole record took about 3 s
+
+
+def test_a_force_still_acting_at_the_end_replays_all_but_the_final_frame() -> None:
+    """The final frame records the force that would act next, which no step applies; the replay ends with none.
+
+    The motion and every applied force are reproduced; only the final frame's recorded force differs.
+    """
+    skeleton = _two_link()
+
+    def steady(_t: float, _skeleton: Skeleton) -> np.ndarray:
+        return np.array([3.0, -1.0])
+
+    original = simulate_controlled(skeleton, _controller(skeleton), duration=0.4, dt=0.002, external_force=steady)
+    again = simulate_controlled(
+        skeleton, _controller(skeleton), duration=0.4, dt=0.002, external_force=RecordedForce.from_log(original)
+    )
+
+    assert np.array_equal(again.channel("q"), original.channel("q"))
+    assert np.array_equal(again.channel("dq"), original.channel("dq"))
+    assert np.array_equal(again.channel("tau"), original.channel("tau"))
+    assert np.array_equal(again.channel("ext_force")[:-1], original.channel("ext_force")[:-1])
+    assert original.channel("ext_force")[-1] == pytest.approx([3.0, -1.0])
+    assert again.channel("ext_force")[-1] == pytest.approx([0.0, 0.0])
