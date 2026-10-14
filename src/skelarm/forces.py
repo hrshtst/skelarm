@@ -156,12 +156,18 @@ class RecordedForce:
         if end <= begin:
             msg = f"the interval must end after it begins, got [{begin}, {end})"
             raise ValueError(msg)
-        overlap = np.minimum(self.times[1:], end) - np.maximum(self.times[:-1], begin)
+        # Only the samples whose spans can overlap the interval: from the one acting at its beginning to the one
+        # acting at its end, so that each call costs the same however long the record.
+        first = max(int(np.searchsorted(self.times, begin, side="right")) - 1, 0)
+        last = min(int(np.searchsorted(self.times, end, side="left")), self.times.size - 1)
+        if last <= first:
+            return np.zeros(_PLANAR)
+        overlap = np.minimum(self.times[first + 1 : last + 1], end) - np.maximum(self.times[first:last], begin)
         overlap[overlap < _TOLERANCE] = 0.0  # a sliver from the clock's rounding is no overlap
         acting = np.flatnonzero(overlap)
         if acting.size == 1 and overlap[acting[0]] >= end - begin - _TOLERANCE:
-            return self.forces[acting[0]].copy()
-        return (overlap[:, np.newaxis] * self.forces[:-1]).sum(axis=0) / (end - begin)
+            return self.forces[first + acting[0]].copy()
+        return (overlap[:, np.newaxis] * self.forces[first:last]).sum(axis=0) / (end - begin)
 
     def stepped(self, dt: float) -> Callable[[float, Skeleton], NDArray[np.float64]]:
         """An external force for a simulation that steps by ``dt``: the mean recorded force over each step.

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import math
+import time
 
 import numpy as np
 import pytest
@@ -184,3 +185,43 @@ def test_a_recorded_force_round_trips_through_a_saved_log(tmp_path) -> None:  # 
 
     assert loaded(0.2) == pytest.approx([3.0, -1.0])
     assert loaded(0.55) == pytest.approx([-2.0, 2.5])
+
+
+def _mean_over_every_sample(recorded: RecordedForce, begin: float, end: float) -> np.ndarray:
+    """The mean over ``[begin, end)``, summed over every recorded sample: the plain definition."""
+    overlap = np.clip(np.minimum(recorded.times[1:], end) - np.maximum(recorded.times[:-1], begin), 0.0, None)
+    return (overlap[:, np.newaxis] * recorded.forces[:-1]).sum(axis=0) / (end - begin)
+
+
+@settings(max_examples=60, deadline=None)
+@given(
+    begin=st.floats(min_value=-0.05, max_value=0.25),
+    length=st.floats(min_value=1e-4, max_value=0.1),
+    seed=st.integers(min_value=0, max_value=10_000),
+)
+def test_the_mean_is_the_plain_mean_over_the_samples(begin: float, length: float, seed: int) -> None:
+    """The mean over any interval, record edges included, is the overlap-weighted mean of the samples."""
+    rng = np.random.default_rng(seed)
+    times = np.sort(rng.uniform(0.0, 0.2, size=40))
+    apart = 1e-6  # s: increasing, a micro-second apart at least
+    times = times[np.diff(times, prepend=-1.0) > apart]
+    recorded = RecordedForce(times, rng.normal(size=(times.size, 2)))
+
+    assert recorded.mean(begin, begin + length) == pytest.approx(
+        _mean_over_every_sample(recorded, begin, begin + length), abs=1e-9
+    )
+
+
+def test_stepping_through_a_long_record_does_not_slow_with_its_length() -> None:
+    """Each step looks only at the samples it overlaps, so a long record replays as fast as a short one."""
+    times = 0.002 * np.arange(100_001)  # 200 s at 2 ms
+    recorded = RecordedForce(times, np.random.default_rng(0).normal(size=(times.size, 2)))
+    stepped = recorded.stepped(0.0025)
+    arm = _two_link()
+
+    started = time.perf_counter()
+    for k in range(2000):
+        stepped(50.0 + k * 0.0025, arm)
+    elapsed = time.perf_counter() - started
+
+    assert elapsed < 0.5  # noqa: PLR2004  # 2000 steps; scanning the whole record took about 3 s
