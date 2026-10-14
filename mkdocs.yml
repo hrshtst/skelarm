@@ -106,6 +106,7 @@ nav:
       - MPC: api/mpc.md
       - Scenario: api/scenario.md
       - Recording: api/recording.md
+      - Forces: api/forces.md
       - Plotting: api/plotting.md
       - Canvas: api/canvas.md
       - Simulator: api/simulator.md

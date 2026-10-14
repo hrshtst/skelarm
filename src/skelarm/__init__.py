@@ -39,6 +39,7 @@ from .filtering import (
     savitzky_golay,
     smooth,
 )
+from .forces import RecordedForce
 from .interpolation import INTERPOLATORS, interpolate, resample_with_derivatives
 from .kinematics import (
     IKResult,
@@ -110,6 +111,7 @@ __all__ = [
     "PeriodicTaskReference",
     "PlaybackClock",
     "PositionDependentShaping",
+    "RecordedForce",
     "SampledJointReference",
     "SampledTaskReference",
     "Scenario",

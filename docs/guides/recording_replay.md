@@ -124,6 +124,40 @@ recorded channels **exactly** on the same machine. MPC calls
 same `scipy` / BLAS build, so an MPC re-run matches within a small numerical
 tolerance rather than exactly.
 
+## Replay a recorded force
+
+A run pushed by hand in an interactive simulator, or by a force that
+`simulate_controlled` scripted, records the tip force in its `ext_force`
+channel. `RecordedForce` replays that history by time as an `external_force`, so
+that another controller meets the same pushes, at the same times, whatever its arm
+does:
+
+```python
+from skelarm import RecordedForce, simulate_controlled
+from skelarm.recording import StateLog
+
+pushes = RecordedForce.from_log(StateLog.load("pushed.sklog.npz"))
+again = simulate_controlled(skeleton, other_controller, duration=2.0, dt=0.002, external_force=pushes)
+```
+
+Each sample acts until the next one, as `simulate_controlled` applies a force, and
+no force acts before the first sample or from the last one on. Replaying a run's
+own force with its own controller and step reproduces the run exactly.
+
+- **Another clock:** `RecordedForce.from_log(log, time_offset=...)` shifts every
+  sample, for a log whose clock starts elsewhere.
+- **Another step:** `pushes.stepped(dt)` gives each step `[t, t + dt)` the mean
+  recorded force over it, which keeps every push's impulse; with the recording's
+  own step it gives back each sample exactly.
+- **When the pushes act:** `pushes.spans(threshold, min_gap)` lists the spans of
+  time the force's magnitude exceeds `threshold`, joining spans a lull shorter than
+  `min_gap` separates.
+
+The GUI simulator records one frame per render tick, while its mouse force, a
+spring toward the cursor, changes with every substep, so replaying a GUI log
+reproduces its pushes only to within a tick. A log recorded at every simulation
+step, as `simulate_controlled` records one, replays exactly.
+
 ## Export an editable config for comparison
 
 To tweak parameters and compare, export the embedded config to an editable TOML
@@ -166,3 +200,4 @@ uv run python tools/reaching_simulator.py edited.toml --save edited.sklog.npz   
 - [Teach and Track Trajectories](teaching_trajectories.md) — logs as motion
   references.
 - [Recording API](../api/recording.md) — `StateLog` itself.
+- [Forces API](../api/forces.md) — `RecordedForce`.
