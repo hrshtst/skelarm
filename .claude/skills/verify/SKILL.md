@@ -18,7 +18,7 @@ execute the real script with `runpy`:
 import os, runpy, sys
 
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
-sys.argv = ["dynamics_simulator.py", "examples/four_dof_robot.toml", "--no-plot"]
+sys.argv = ["dynamics_simulator.py", "examples/four_dof_robot.toml"]
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication
 
@@ -46,7 +46,8 @@ Run with `uv run python <driver>.py` from the repo root (tools import `tools._sc
   WindowShortcut QShortcuts silently never fire. `QPushButton.setShortcut` uses
   `animateClick`, so `clicked` arrives ~100 ms after the key: `QTest.qWait(200)`.
 
-- Pass `--no-plot` to the dynamics simulator or it opens a matplotlib window after `exec()`.
+- Leave out `--plot` (dynamics simulator, trajectory recorder): it opens a matplotlib window
+  after `exec()` that blocks the driver. Plotting is opt-in, so no flag is needed to suppress it.
 - Avoid clicking **Export…** in a driver — it opens a modal `QFileDialog` and hangs.
 - To exercise the player's auto-pause-at-end, raise `speed_spin` (e.g. `setValue(10.0)`)
   before playing, or a 10 s log won't finish within the driver's wait.
