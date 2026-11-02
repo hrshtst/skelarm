@@ -65,6 +65,11 @@ Documentation = "https://hrshtst.github.io/skelarm/"
 requires = ["uv_build>=0.9.16,<0.14.0"]
 build-backend = "uv_build"
 
+[tool.uv]
+# Lock-only (not published metadata). PyQt6 6.12.0 ships a QtGui.pyi that isn't valid Python
+# (`*args, /`), which aborts mypy; the runtime is fine. Drop this once a later release fixes it.
+constraint-dependencies = ["pyqt6!=6.12.0"]
+
 [tool.uv.build-backend]
 source-include = ["examples/**", "tools/**"]
 
