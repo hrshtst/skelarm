@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import ArrayLike, NDArray
 
+    from skelarm.dynamics import StopModel
     from skelarm.skeleton import Skeleton
 
 
@@ -356,6 +357,7 @@ def simulate_controlled(
     dt: float = 1e-3,
     grav_vec: NDArray[np.float64] | None = None,
     enforce_limits: bool = True,
+    stops: StopModel = "projected",
     extra: Mapping[str, Any] | None = None,
     external_force: Callable[[float, Skeleton], ArrayLike] | None = None,
 ) -> StateLog:
@@ -388,6 +390,10 @@ def simulate_controlled(
         Apply the joint limits as hard stops in the dynamics (default). When
         ``False``, the limits no longer constrain the simulation, so they apply
         only to the kinematics (posing and inverse kinematics).
+    stops : {"projected", "locked"}, optional
+        The model of the hard stops, as :func:`~skelarm.dynamics.integrate_with_limits`
+        takes it: ``"projected"`` (the default) clamps a joint at its stop and zeroes its
+        velocity; ``"locked"`` holds it there by the stop's reaction, which does no work.
     extra : Mapping[str, Any] | None, optional
         Free-form metadata to embed in the returned log's ``[extra]`` table (e.g.
         the scenario config that produced the run, for later reproduction).
@@ -443,7 +449,7 @@ def simulate_controlled(
 
         if force:
             tau = tau + compute_jacobian(model).T @ force["ext_force"]
-        integrate_with_limits(model, tau, dt, lower, upper, grav_vec)
+        integrate_with_limits(model, tau, dt, lower, upper, grav_vec, stops=stops)
         t += dt
 
     # Final frame: record the settled state with the torque that would be applied next.

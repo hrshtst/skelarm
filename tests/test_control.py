@@ -231,6 +231,31 @@ def test_simulate_controlled_applies_the_tip_force_through_the_jacobian() -> Non
     assert log.channel("tau") == pytest.approx(np.tile(tau, (21, 1)))  # the controller's torque alone
 
 
+def test_simulate_controlled_steps_with_the_stop_model_it_is_given() -> None:
+    """``stops="locked"`` runs every step of the loop with the locked stops."""
+    skeleton = Skeleton(
+        [
+            LinkProp(length=1.0, m=1.5, i=0.1, rgx=0.5, rgy=0.0, qmin=0.0, qmax=np.pi / 2),
+            LinkProp(length=0.8, m=1.0, i=0.05, rgx=0.4, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+        ]
+    )
+    skeleton.q = np.array([0.0, 1.0])  # joint 1 at its stop, pressed into it by joint 2's torque
+    tau, dt = np.array([0.0, 1.0]), 0.01
+
+    log = simulate_controlled(skeleton, _ConstantTorque(tau), duration=0.2, dt=dt, stops="locked")
+    projected = simulate_controlled(skeleton, _ConstantTorque(tau), duration=0.2, dt=dt)
+
+    model = skeleton.clone()
+    lower = np.array([link.prop.qmin for link in model.links[1:]])
+    upper = np.array([link.prop.qmax for link in model.links[1:]])
+    expected = [model.q.copy()]
+    for _ in range(20):
+        integrate_with_limits(model, tau, dt, lower, upper, stops="locked")
+        expected.append(model.q.copy())
+    np.testing.assert_array_equal(log.channel("q"), np.array(expected))
+    assert not np.allclose(log.channel("q"), projected.channel("q"), rtol=0.0, atol=0.01)  # joint 2 apart
+
+
 def test_a_tip_force_alone_pushes_the_tip_its_way() -> None:
     """Starting at rest without control, the tip first moves partly along the force.
 

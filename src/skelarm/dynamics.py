@@ -5,9 +5,10 @@
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Callable
 from copy import deepcopy
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from scipy.integrate import solve_ivp
@@ -18,6 +19,9 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from skelarm.skeleton import Skeleton
+
+StopModel = Literal["projected", "locked"]
+STOP_MODELS: tuple[StopModel, ...] = ("projected", "locked")
 
 
 def _cross_2d(a: NDArray[np.float64], b: NDArray[np.float64]) -> float:
@@ -238,6 +242,8 @@ def integrate_with_limits(
     lower: NDArray[np.float64] | None = None,
     upper: NDArray[np.float64] | None = None,
     grav_vec: NDArray[np.float64] | None = None,
+    *,
+    stops: StopModel = "projected",
 ) -> None:
     """Advance one semi-implicit Euler step under ``tau``, optionally with joint limits.
 
@@ -246,12 +252,23 @@ def integrate_with_limits(
     (bypassing the clamping setter), and refreshes forward kinematics. The skeleton is
     updated in place.
 
-    When ``lower`` / ``upper`` are given, each joint is clamped to ``[lower, upper]`` and
-    the velocity of any joint that hit a bound is zeroed. This is a simple projection,
-    not an impact model: the other joints keep their velocities, so the total kinetic
-    energy is not guaranteed to drop (with coupled inertias it can rise). Both
-    ``None`` (the default) integrates **without** joint limits, so the limits then apply
-    only to the kinematics setters and inverse kinematics.
+    When ``lower`` / ``upper`` are given, they are hard stops, of one of two models:
+
+    - ``"projected"`` (the default): each joint is clamped to ``[lower, upper]`` and the
+      velocity of any joint that hit a bound is zeroed. This is a simple projection,
+      not an impact model: the other joints keep their velocities, and they keep
+      accelerating as if the stopped joint were free, so the total kinetic energy is
+      not guaranteed to drop (with coupled inertias it can rise, at the impact and
+      while a joint is pressed into its stop).
+    - ``"locked"``: a stop holds the joint pressed into it, with whatever torque it
+      takes to keep it there, and lets it go once that torque would have to pull it;
+      the other joints move as if the held joints were welded, so a stop does no work.
+      A joint that reaches its stop stops as in a plastic impact: the other joints
+      keep their momentum, and the kinetic energy drops. Away from the stops, the step
+      is the projected one to the bit.
+
+    Both ``None`` (the default) integrates **without** joint limits, so the limits
+    then apply only to the kinematics setters and inverse kinematics.
 
     Parameters
     ----------
@@ -265,18 +282,97 @@ def integrate_with_limits(
         Per-joint angle limits (radians). Both ``None`` disables the hard stop.
     grav_vec : NDArray[np.float64] | None, optional
         Gravity vector; defaults to zero (planar motion).
+    stops : {"projected", "locked"}, optional
+        The model of the hard stops (see above); ignored without limits.
+
+    Raises
+    ------
+    ValueError
+        If ``stops`` is neither ``"projected"`` nor ``"locked"``.
     """
-    ddq = compute_forward_dynamics(skeleton, tau, grav_vec)
-    dq = skeleton.dq + ddq * dt
-    q = skeleton.q + dq * dt
-    if lower is not None or upper is not None:
-        q_clamped = np.clip(q, lower, upper)
-        dq = np.where(q_clamped != q, 0.0, dq)
-        q = q_clamped
+    if stops not in STOP_MODELS:
+        msg = f"stops must be one of {', '.join(STOP_MODELS)}, got {stops!r}"
+        raise ValueError(msg)
+    if stops == "locked" and (lower is not None or upper is not None):
+        q, dq = _step_with_locked_stops(skeleton, tau, dt, lower, upper, grav_vec)
+    else:
+        ddq = compute_forward_dynamics(skeleton, tau, grav_vec)
+        dq = skeleton.dq + ddq * dt
+        q = skeleton.q + dq * dt
+        if lower is not None or upper is not None:
+            q_clamped = np.clip(q, lower, upper)
+            dq = np.where(q_clamped != q, 0.0, dq)
+            q = q_clamped
     for link, q_value, dq_value in zip(skeleton.links[1:], q, dq, strict=True):
         link.q = float(q_value)
         link.dq = float(dq_value)
     compute_forward_kinematics(skeleton)
+
+
+def _step_with_locked_stops(
+    skeleton: Skeleton,
+    tau: NDArray[np.float64],
+    dt: float,
+    lower: NDArray[np.float64] | None,
+    upper: NDArray[np.float64] | None,
+    grav_vec: NDArray[np.float64] | None,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """The joint angles and velocities after a step of :func:`integrate_with_limits` with ``stops="locked"``."""
+    n = skeleton.num_joints
+    low = np.full(n, -np.inf) if lower is None else np.asarray(lower, dtype=np.float64)
+    high = np.full(n, np.inf) if upper is None else np.asarray(upper, dtype=np.float64)
+    q, dq = skeleton.q, skeleton.dq
+    mass_matrix = compute_mass_matrix(skeleton)
+    rhs = tau - compute_coriolis_gravity_vector(skeleton, grav_vec=grav_vec)
+    # Each joint's stop: -1 at (or past) its lower one, 1 at its upper one, 0 between them.
+    side = np.where(q <= low, -1.0, np.where(q >= high, 1.0, 0.0))
+    at_stop = np.flatnonzero((side != 0.0) & (side * dq >= 0.0))  # at a stop and not leaving it
+    ddq = _accelerations_at_stops(mass_matrix, rhs, side, at_stop)
+    dq = dq + ddq * dt
+    q = q + dq * dt
+    clamped = np.clip(q, low, high)
+    hit = clamped != q
+    if hit.any():
+        # A plastic impact on the joints that reached their stops: they stop, and the
+        # others keep their generalized momentum, H dq.
+        free = ~hit
+        momentum = mass_matrix @ dq
+        dq = np.zeros(n)
+        dq[free] = np.linalg.solve(mass_matrix[np.ix_(free, free)], momentum[free])
+    return clamped, dq
+
+
+def _accelerations_at_stops(
+    mass_matrix: NDArray[np.float64],
+    rhs: NDArray[np.float64],
+    side: NDArray[np.float64],
+    at_stop: NDArray[np.intp],
+) -> NDArray[np.float64]:
+    """The joint accelerations with the stops holding some of the joints ``at_stop``, ``H ddq = rhs + reaction``.
+
+    The stops hold the joints that they push away from themselves, and only those: a
+    held joint does not accelerate, and its stop's reaction points away from it; a
+    joint they let go does not accelerate into its stop. Of every set of joints the
+    stops could hold, the one that meets this (it is unique, ``H`` being positive
+    definite), or, should round-off leave none that meets it exactly, the one that
+    misses it least.
+    """
+    n = len(rhs)
+    best, least = np.zeros(n), np.inf
+    for size in range(len(at_stop) + 1):
+        for held in itertools.combinations(at_stop, size):
+            free = np.ones(n, dtype=bool)
+            free[list(held)] = False
+            ddq = np.zeros(n)
+            ddq[free] = np.linalg.solve(mass_matrix[np.ix_(free, free)], rhs[free])
+            reaction = mass_matrix @ ddq - rhs
+            let_go = [i for i in at_stop if free[i]]
+            miss = max([0.0, *(side[list(held)] * reaction[list(held)]), *(side[let_go] * ddq[let_go])])
+            if miss == 0.0:
+                return ddq
+            if miss < least:
+                best, least = ddq, miss
+    return best
 
 
 def compute_kinetic_energy(skeleton: Skeleton) -> float:

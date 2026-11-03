@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pytest
 from hypothesis import given, settings
@@ -22,6 +24,9 @@ from skelarm.dynamics import (
 )
 from skelarm.kinematics import compute_forward_kinematics
 from skelarm.skeleton import LinkProp, Skeleton
+
+if TYPE_CHECKING:
+    from skelarm.dynamics import StopModel
 
 
 # Define strategies for generating LinkProp and Skeleton data
@@ -574,3 +579,146 @@ def test_integrate_with_limits_omitting_limits_disables_the_hard_stop() -> None:
 
     assert skeleton.q[0] == pytest.approx(0.99 + 5.0 * 0.1)  # sails past 1.0
     assert skeleton.dq[0] == pytest.approx(5.0)  # velocity not zeroed
+
+
+# === Locked stops: a joint at its stop held by the stop's reaction ===
+
+
+def _arm_on_a_stop(q: list[float], dq: list[float]) -> Skeleton:
+    """A two-link arm with coupled inertia whose first joint stops at 0 and pi/2 rad."""
+    skeleton = Skeleton(
+        [
+            LinkProp(length=1.0, m=1.5, i=0.1, rgx=0.5, rgy=0.0, qmin=0.0, qmax=np.pi / 2),
+            LinkProp(length=0.8, m=1.0, i=0.05, rgx=0.4, rgy=0.0, qmin=-np.pi, qmax=np.pi),
+        ]
+    )
+    skeleton.q = np.array(q)
+    skeleton.dq = np.array(dq)
+    return skeleton
+
+
+def _limits(skeleton: Skeleton) -> tuple[np.ndarray, np.ndarray]:
+    """The arm's joint limits, as the integrators take them."""
+    return (
+        np.array([link.prop.qmin for link in skeleton.links[1:]]),
+        np.array([link.prop.qmax for link in skeleton.links[1:]]),
+    )
+
+
+def test_locked_stops_step_as_projected_ones_away_from_the_stops() -> None:
+    """Between the stops, both stop models are the unconstrained step, to the bit."""
+    tau = np.array([0.7, -0.3])
+    projected, locked = _arm_on_a_stop([0.6, 1.0], [0.3, -0.2]), _arm_on_a_stop([0.6, 1.0], [0.3, -0.2])
+
+    integrate_with_limits(projected, tau, 1e-3, *_limits(projected))
+    integrate_with_limits(locked, tau, 1e-3, *_limits(locked), stops="locked")
+
+    np.testing.assert_array_equal(locked.q, projected.q)
+    np.testing.assert_array_equal(locked.dq, projected.dq)
+
+
+def test_a_locked_stop_holds_a_joint_pressed_into_it() -> None:
+    """A joint pressed into its stop stays there, and the others move as if it were welded."""
+    skeleton = _arm_on_a_stop([0.0, 1.0], [0.0, 0.0])
+    tau = np.array([0.0, 1.0])  # through the coupled inertia, it pulls joint 1 below its stop
+    assert np.linalg.solve(compute_mass_matrix(skeleton), tau)[0] < 0.0
+    welded = compute_mass_matrix(skeleton)[1, 1]  # joint 2's inertia with joint 1 held
+
+    integrate_with_limits(skeleton, tau, 1e-3, *_limits(skeleton), stops="locked")
+
+    assert skeleton.q[0] == 0.0
+    assert skeleton.dq[0] == 0.0
+    assert skeleton.dq[1] == pytest.approx(1e-3 * tau[1] / welded, rel=1e-12)
+
+
+def _work_and_energy(stops: StopModel) -> tuple[float, float]:
+    """The motors' work on the arm pressed into its stop over 0.1 s from rest, and its kinetic energy then."""
+    skeleton = _arm_on_a_stop([0.0, 1.0], [0.0, 0.0])
+    tau, work = np.array([0.0, 1.0]), 0.0
+    for _ in range(100):
+        q = skeleton.q
+        integrate_with_limits(skeleton, tau, 1e-3, *_limits(skeleton), stops=stops)
+        work += float(tau @ (skeleton.q - q))
+    assert skeleton.q[0] == 0.0  # joint 1 stays at its stop under either model
+    return work, compute_kinetic_energy(skeleton)
+
+
+def test_a_locked_stop_does_no_work() -> None:
+    """Held at its stop, the arm gains the motors' work as kinetic energy; projected, far more."""
+    work, energy = _work_and_energy("locked")
+    assert energy == pytest.approx(work, rel=0.02)  # less by semi-implicit Euler's O(dt) only
+
+    work, energy = _work_and_energy("projected")
+    assert energy > 1.5 * work  # joint 2 accelerates as if joint 1 were free: energy from nowhere
+
+
+def test_a_locked_stop_stops_a_joint_hitting_it_as_a_plastic_impact() -> None:
+    """A joint that reaches its stop stops; the others keep their momentum, and the energy drops."""
+    q, dq, dt = [2e-4, 1.0], [-0.5, 2.0], 1e-3
+    projected, locked = _arm_on_a_stop(q, dq), _arm_on_a_stop(q, dq)
+    energy = compute_kinetic_energy(locked)
+    momentum = (compute_mass_matrix(locked) @ locked.dq)[1]
+
+    integrate_with_limits(projected, np.zeros(2), dt, *_limits(projected))
+    integrate_with_limits(locked, np.zeros(2), dt, *_limits(locked), stops="locked")
+
+    assert locked.q[0] == 0.0
+    assert locked.dq[0] == 0.0
+    assert (compute_mass_matrix(locked) @ locked.dq)[1] == pytest.approx(momentum, rel=1e-2)
+    assert compute_kinetic_energy(locked) < energy
+    assert compute_kinetic_energy(projected) > energy  # zeroing joint 1's velocity alone adds energy
+
+
+def test_a_locked_stop_lets_go_of_a_joint_pulled_away() -> None:
+    """A joint at its stop that the torque pulls away leaves it as if there were no stop."""
+    tau = np.array([1.0, 0.0])
+    free, locked = _arm_on_a_stop([0.0, 1.0], [0.0, 0.0]), _arm_on_a_stop([0.0, 1.0], [0.0, 0.0])
+
+    integrate_with_limits(free, tau, 1e-3)
+    integrate_with_limits(locked, tau, 1e-3, *_limits(locked), stops="locked")
+
+    assert locked.dq[0] > 0.0
+    np.testing.assert_array_equal(locked.q, free.q)
+    np.testing.assert_array_equal(locked.dq, free.dq)
+
+
+def test_integrate_with_limits_rejects_an_unknown_stop_model() -> None:
+    """``stops`` is ``"projected"`` or ``"locked"``."""
+    skeleton = _arm_on_a_stop([0.0, 1.0], [0.0, 0.0])
+    with pytest.raises(ValueError, match="stops"):
+        integrate_with_limits(skeleton, np.zeros(2), 1e-3, *_limits(skeleton), stops="bouncy")  # type: ignore[arg-type]
+
+
+@given(
+    sides=st.lists(st.sampled_from([-1, 0, 1]), min_size=3, max_size=3),
+    tau=arrays(np.float64, 3, elements=st.floats(min_value=-5.0, max_value=5.0)),
+)
+@settings(max_examples=200, deadline=None)
+def test_locked_stops_only_push_and_hold_only_the_joints_they_push(sides: list[int], tau: np.ndarray) -> None:
+    """At rest with joints at their stops, a step leaves each such joint held or moving away.
+
+    The stops' reaction, ``H ddq + b - tau``, is zero at every joint they let go and pushes
+    each joint they hold away from its stop: up at a lower stop, down at an upper one.
+    """
+    lower, upper = np.array([-0.5, 0.0, -1.0]), np.array([0.5, 2.0, 1.5])
+    skeleton = Skeleton(
+        [
+            LinkProp(length=0.6, m=1.0, i=0.02, rgx=0.3, rgy=0.0, qmin=lower[0], qmax=upper[0]),
+            LinkProp(length=0.5, m=0.8, i=0.01, rgx=0.2, rgy=0.0, qmin=lower[1], qmax=upper[1]),
+            LinkProp(length=0.3, m=0.4, i=0.005, rgx=0.15, rgy=0.0, qmin=lower[2], qmax=upper[2]),
+        ]
+    )
+    side = np.array(sides, dtype=np.float64)
+    skeleton.q = np.where(side < 0, lower, np.where(side > 0, upper, 0.4 * (lower + upper)))
+    skeleton.dq = np.zeros(3)
+    rhs = tau - compute_coriolis_gravity_vector(skeleton)
+    mass_matrix = compute_mass_matrix(skeleton)
+    dt, round_off = 1e-4, 1e-9
+
+    integrate_with_limits(skeleton, tau, dt, lower, upper, stops="locked")
+
+    reaction = mass_matrix @ (skeleton.dq / dt) - rhs
+    held = (side != 0) & (skeleton.dq == 0.0)
+    assert np.all(side[side != 0] * skeleton.dq[side != 0] <= 0.0)  # held, or moving away
+    assert np.all(side[held] * reaction[held] <= round_off)  # pushing away from the stop
+    assert reaction[~held] == pytest.approx(np.zeros(int((~held).sum())), abs=round_off)
