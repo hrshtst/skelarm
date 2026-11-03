@@ -48,6 +48,7 @@ from skelarm.control import (
     simulate_controlled,
 )
 from skelarm.curves import PeriodicTaskReference, build_curve
+from skelarm.dynamics import STOP_MODELS
 from skelarm.filtering import smooth
 from skelarm.interpolation import resample_with_derivatives
 from skelarm.mpc import JointSpaceMPC
@@ -64,6 +65,8 @@ from skelarm.trajectory import Trajectory
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
+
+    from skelarm.dynamics import StopModel
 
 _REFERENCE_DT = 0.02  # sampling step for the IK-converted joint reference (interpolated)
 _TASK_DIM = 2  # planar endpoint target (x, y)
@@ -318,17 +321,33 @@ class Simulator:
         Apply the joint limits as hard stops in the dynamics (default). When ``False``,
         the limits constrain only the kinematics (posing and inverse kinematics), not the
         simulated motion.
+    stops : {"projected", "locked"}
+        The model of the hard stops (see :func:`~skelarm.dynamics.integrate_with_limits`):
+        ``"projected"`` (default) clamps a joint at its stop and zeroes its velocity;
+        ``"locked"`` holds it there by the stop's reaction, which does no work.
     """
 
     dt: float = 0.002
     enforce_limits: bool = True
+    stops: StopModel = "projected"
 
     @classmethod
     def from_dict(cls, section: Mapping[str, Any]) -> Simulator:
-        """Build a Simulator from a ``[simulator]`` mapping (defaults when keys are absent)."""
+        """Build a Simulator from a ``[simulator]`` mapping (defaults when keys are absent).
+
+        Raises
+        ------
+        ValueError
+            If ``stops`` names no stop model.
+        """
+        stops = section.get("stops", "projected")
+        if stops not in STOP_MODELS:
+            msg = f"[simulator] stops must be one of {', '.join(STOP_MODELS)}, got {stops!r}"
+            raise ValueError(msg)
         return cls(
             dt=float(section.get("dt", 0.002)),
             enforce_limits=bool(section.get("enforce_limits", True)),
+            stops=stops,
         )
 
 
@@ -786,6 +805,7 @@ def scenario_run_metadata(
     *,
     dt: float,
     enforce_limits: bool,
+    stops: StopModel = "projected",
     duration: float | None = None,
     grav_vec: NDArray[np.float64] | None = None,
 ) -> dict[str, Any] | None:
@@ -794,8 +814,8 @@ def scenario_run_metadata(
     Embeds the resolved scenario config (the editable ``[skeleton]`` / ``[initial]`` /
     ``[task]`` / ``[simulator]`` / ``[controller]`` tables as the run used them —
     section overrides merged and file-based reference samples inlined), the
-    actual run parameters (including the resolved ``enforce_limits``, so a call-time
-    override is captured), and the package versions. Returns ``None`` when the
+    actual run parameters (including the resolved ``enforce_limits`` and ``stops``, so a
+    call-time override is captured), and the package versions. Returns ``None`` when the
     scenario carries no ``source_config`` (e.g. a programmatically built controller).
 
     Parameters
@@ -806,6 +826,8 @@ def scenario_run_metadata(
         The control / integration step actually used.
     enforce_limits : bool
         The resolved joint-limit hard-stop setting actually used.
+    stops : {"projected", "locked"}, optional
+        The model of the hard stops actually used.
     duration : float | None, optional
         Simulated duration (seconds). ``None`` — for open-ended runs such as the
         interactive simulators — omits the key; :func:`scenario_from_log` then
@@ -825,6 +847,7 @@ def scenario_run_metadata(
         "dt": float(dt),
         "grav_vec": grav.tolist(),
         "enforce_limits": bool(enforce_limits),
+        "stops": stops,
     }
     if duration is not None:
         run["duration"] = float(duration)
@@ -842,6 +865,7 @@ def run_scenario(
     dt: float | None = None,
     grav_vec: NDArray[np.float64] | None = None,
     enforce_limits: bool | None = None,
+    stops: StopModel | None = None,
 ) -> StateLog:
     """Simulate a scenario and embed its full config for later reproduction.
 
@@ -865,6 +889,10 @@ def run_scenario(
         uses the scenario's ``simulator.enforce_limits``; an explicit value overrides it
         (e.g. a ``--no-joint-limits`` CLI flag). The resolved value is recorded in
         the run metadata so the override is reproduced on re-run.
+    stops : {"projected", "locked"} | None, optional
+        The model of the hard stops. ``None`` (the default) uses the scenario's
+        ``simulator.stops``; the resolved value is recorded in the run metadata, as is
+        ``enforce_limits``.
 
     Returns
     -------
@@ -875,8 +903,14 @@ def run_scenario(
     run_dt = scenario.simulator.dt if dt is None else float(dt)
     grav = np.zeros(_TASK_DIM, dtype=np.float64) if grav_vec is None else np.asarray(grav_vec, dtype=np.float64)
     run_enforce_limits = scenario.simulator.enforce_limits if enforce_limits is None else bool(enforce_limits)
+    run_stops = scenario.simulator.stops if stops is None else stops
     extra = scenario_run_metadata(
-        scenario, duration=run_duration, dt=run_dt, grav_vec=grav, enforce_limits=run_enforce_limits
+        scenario,
+        duration=run_duration,
+        dt=run_dt,
+        grav_vec=grav,
+        enforce_limits=run_enforce_limits,
+        stops=run_stops,
     )
     return simulate_controlled(
         scenario.skeleton,
@@ -885,6 +919,7 @@ def run_scenario(
         dt=run_dt,
         grav_vec=grav,
         enforce_limits=run_enforce_limits,
+        stops=run_stops,
         extra=extra,
     )
 
@@ -900,7 +935,7 @@ def scenario_from_log(log: StateLog) -> tuple[Scenario, Mapping[str, Any]]:
     -------
     tuple[Scenario, Mapping[str, Any]]
         The rebuilt scenario (skeleton posed at the recorded initial state) and the
-        ``run`` parameters (``duration`` / ``dt`` / ``grav_vec`` / ``enforce_limits``).
+        ``run`` parameters (``duration`` / ``dt`` / ``grav_vec`` / ``enforce_limits`` / ``stops``).
 
     Raises
     ------
@@ -913,13 +948,14 @@ def scenario_from_log(log: StateLog) -> tuple[Scenario, Mapping[str, Any]]:
         msg = "log has no reproduction metadata; it was recorded without an embedded scenario config"
         raise ValueError(msg)
     scenario = scenario_from_config(config)
-    # Merge key-by-key: a GUI log records dt / grav_vec / enforce_limits but no
-    # duration (the run is open-ended), and older logs may lack the table entirely.
+    # Merge key-by-key: a GUI log records dt / grav_vec / enforce_limits / stops but no
+    # duration (the run is open-ended), and older logs may lack the table or a key.
     defaults: dict[str, Any] = {
         "duration": scenario.task.duration,
         "dt": scenario.simulator.dt,
         "grav_vec": [0.0, 0.0],
         "enforce_limits": scenario.simulator.enforce_limits,
+        "stops": scenario.simulator.stops,
     }
     run = {**defaults, **dict(log.extra.get("run", {}))}
     return scenario, run
@@ -948,7 +984,12 @@ def rerun_log(log: StateLog) -> StateLog:
     # Older logs may predate the recorded enforce_limits; fall back to the simulator's value.
     enforce_limits = run.get("enforce_limits", scenario.simulator.enforce_limits)
     return run_scenario(
-        scenario, duration=run["duration"], dt=run["dt"], grav_vec=grav_vec, enforce_limits=enforce_limits
+        scenario,
+        duration=run["duration"],
+        dt=run["dt"],
+        grav_vec=grav_vec,
+        enforce_limits=enforce_limits,
+        stops=run["stops"],
     )
 
 

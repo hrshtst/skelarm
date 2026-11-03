@@ -96,6 +96,31 @@ def test_run_scenario_enforce_limits_override_is_recorded_and_reproduced(tmp_pat
     np.testing.assert_array_equal(replayed.channel("q"), original.channel("q"))
 
 
+def test_run_scenario_runs_records_and_reruns_the_simulator_stops(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+    """``[simulator].stops = "locked"`` reaches the integrator, the run metadata, and a re-run."""
+    from skelarm import scenario as scenario_module
+
+    config = tmp_path / "locked.toml"
+    _write_scenario(config, '[controller]\ntype = "computed_torque"\nkp = 200.0\nkd = 30.0\n', duration=0.2)
+    config.write_text(config.read_text().replace("[simulator]\n", '[simulator]\nstops = "locked"\n'))
+    used: list[str] = []
+    simulate = scenario_module.simulate_controlled
+
+    def spy(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+        used.append(kwargs["stops"])
+        return simulate(*args, **kwargs)
+
+    monkeypatch.setattr(scenario_module, "simulate_controlled", spy)
+    original = run_scenario(load_scenario(config))
+    replayed = rerun_log(original)
+    overridden = run_scenario(load_scenario(config), stops="projected")
+
+    assert used == ["locked", "locked", "projected"]
+    assert original.extra["run"]["stops"] == "locked"
+    assert overridden.extra["run"]["stops"] == "projected"  # the override, not the config
+    np.testing.assert_array_equal(replayed.channel("q"), original.channel("q"))
+
+
 def test_scenario_from_log_fills_missing_run_keys(tmp_path: Path) -> None:
     """A partial run table (e.g. a GUI log without duration) merges with scenario defaults."""
     config = tmp_path / "reach.toml"
@@ -108,6 +133,7 @@ def test_scenario_from_log_fills_missing_run_keys(tmp_path: Path) -> None:
     assert run["enforce_limits"] is False
     assert run["duration"] == pytest.approx(scenario.task.duration)  # missing keys filled
     assert run["grav_vec"] == pytest.approx([0.0, 0.0])
+    assert run["stops"] == "projected"  # a log from before the stop models: the scenario's
 
 
 def test_run_metadata_omits_duration_when_unknown(tmp_path: Path) -> None:

@@ -158,13 +158,13 @@ def test_save_scenario_run_writes_a_replayable_log(tmp_path: Path) -> None:
     assert log.extra["source_config"]["task"]["type"] == "periodic_curve"
 
 
-def _scenario_with_dt(tmp_path: Path, dt: float):  # noqa: ANN202
-    """Build a reaching scenario whose [simulator] table sets the given dt."""
+def _scenario_with_dt(tmp_path: Path, dt: float, stops: str = "projected"):  # noqa: ANN202
+    """Build a reaching scenario whose [simulator] table sets the given dt and stop model."""
     config = tmp_path / "scenario.toml"
     config.write_text(
         _SKELETON_TOML
         + '[task]\ntype = "reaching"\ntarget = { pos = [0.55, 1.21] }\nduration = 1.0\n'
-        + f"[simulator]\ndt = {dt}\n"
+        + f'[simulator]\ndt = {dt}\nstops = "{stops}"\n'
         + '[controller]\ntype = "computed_torque"\nkp = 200.0\nkd = 30.0\n'
     )
     return build_scenario(config)
@@ -192,6 +192,18 @@ def test_scenario_simulator_records_resolved_run_metadata(qapp, tmp_path: Path) 
     assert run["dt"] == pytest.approx(0.01)
     assert run["grav_vec"] == pytest.approx([0.0, 0.0])
     assert run["enforce_limits"] is False  # the resolved --no-joint-limits choice
+    assert run["stops"] == "projected"
     assert "duration" not in run  # a GUI run is open-ended
     assert sim.state_log.extra["source_config"]["task"]["type"] == "reaching"
     assert "skelarm" in sim.state_log.extra["provenance"]
+
+
+def test_scenario_simulator_steps_and_records_the_scenarios_stops(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The GUI steps the arm with the scenario's [simulator].stops and records the model."""
+    from tools._scenario_cli import ScenarioSimulator
+
+    sim = ScenarioSimulator(_scenario_with_dt(tmp_path, dt=0.01, stops="locked"))
+    sim.start_recording()
+    assert sim.state_log is not None
+    assert sim.state_log.extra["run"]["stops"] == "locked"
+    assert sim.stops == "locked"

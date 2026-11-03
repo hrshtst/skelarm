@@ -331,6 +331,30 @@ def test_enforce_limits_false_lets_the_arm_pass_its_joint_limits(qapp) -> None: 
     assert np.any(np.abs(sim.skeleton.q) > limit + 1e-3)  # at least one joint sailed past its bound
 
 
+def test_locked_stops_hold_a_joint_pressed_into_its_stop(qapp) -> None:  # noqa: ANN001, ARG001
+    """With ``stops="locked"`` each substep is :func:`integrate_with_limits` with the locked stops."""
+    from skelarm.control import Controller
+    from skelarm.dynamics import integrate_with_limits
+
+    tau = np.array([0.0, 1.0])  # through the coupled inertia, it presses joint 1 into its lower stop
+
+    class _Constant(Controller):
+        def control(self, t: float, skeleton) -> np.ndarray:  # noqa: ANN001, ARG002
+            return tau
+
+    sim = _simulator(qmin=0.0, qmax=np.pi / 2, q=(0.0, 1.0), controller=_Constant(), stops="locked")
+    model = sim.skeleton.clone()
+    lower, upper = np.zeros(2), np.full(2, np.pi / 2)
+    sim.step()
+    for _ in range(round(sim.time / sim.dt)):
+        integrate_with_limits(model, tau, sim.dt, lower, upper, stops="locked")
+
+    assert sim.stops == "locked"
+    assert sim.skeleton.q[0] == 0.0
+    np.testing.assert_array_equal(sim.skeleton.q, model.q)
+    np.testing.assert_array_equal(sim.skeleton.dq, model.dq)
+
+
 def test_add_control_inserts_widget_before_the_stretch(qapp) -> None:  # noqa: ANN001, ARG001
     """Subclasses can append controls, which land just above the trailing stretch."""
     from PyQt6.QtWidgets import QLabel

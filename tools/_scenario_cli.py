@@ -257,10 +257,13 @@ class ScenarioSimulator(SkelarmSimulator):
             target_tolerance=scenario.task.tolerance,
             stiffness=stiffness,
             enforce_limits=enforce_limits,
+            stops=scenario.simulator.stops,
             dt=scenario.simulator.dt,
-            # Resolved run settings (dt / gravity / joint limits) plus the source config;
-            # duration is omitted because an interactive run is open-ended.
-            log_extra=scenario_run_metadata(scenario, dt=scenario.simulator.dt, enforce_limits=enforce_limits),
+            # Resolved run settings (dt / gravity / joint limits and their stops) plus the
+            # source config; duration is omitted because an interactive run is open-ended.
+            log_extra=scenario_run_metadata(
+                scenario, dt=scenario.simulator.dt, enforce_limits=enforce_limits, stops=scenario.simulator.stops
+            ),
         )
         self._task = scenario.task
 

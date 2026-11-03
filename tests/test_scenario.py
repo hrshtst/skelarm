@@ -99,6 +99,16 @@ def test_simulator_from_dict_parses_and_defaults() -> None:
     assert sim.enforce_limits is False
 
 
+def test_simulator_from_dict_parses_the_stop_model() -> None:
+    """[simulator].stops picks the hard stops' model, projected by default."""
+    from skelarm.scenario import Simulator
+
+    assert Simulator.from_dict({}).stops == "projected"
+    assert Simulator.from_dict({"stops": "locked"}).stops == "locked"
+    with pytest.raises(ValueError, match=r"\[simulator\] stops"):
+        Simulator.from_dict({"stops": "bouncy"})
+
+
 def test_simulator_dt_wires_the_mpc_prediction_step() -> None:
     """[simulator].dt becomes the MPC prediction step (build_controller injects it)."""
     from skelarm.mpc import JointSpaceMPC

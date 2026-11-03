@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
 
     from skelarm.control import Controller
+    from skelarm.dynamics import StopModel
     from skelarm.skeleton import Skeleton
 
 _TIMER_MS = 20  # target GUI/render period in milliseconds
@@ -228,6 +229,7 @@ class SkelarmSimulator(QMainWindow):
         stiffness: float = _DEFAULT_STIFFNESS,
         friction: float = 0.0,
         enforce_limits: bool = True,
+        stops: StopModel = "projected",
         dt: float = _DEFAULT_DT,
         log_extra: Mapping[str, Any] | None = None,
     ) -> None:
@@ -257,6 +259,10 @@ class SkelarmSimulator(QMainWindow):
             Apply the joint limits as hard stops in the dynamics (default). When
             ``False``, the limits no longer constrain the simulation (they still
             apply to the kinematics setters and inverse kinematics).
+        stops : {"projected", "locked"}, optional
+            The model of the hard stops (see :func:`~skelarm.dynamics.integrate_with_limits`):
+            ``"projected"`` (default) clamps a joint at its stop and zeroes its velocity;
+            ``"locked"`` holds it there by the stop's reaction, which does no work.
         dt : float, optional
             Physics/control step in seconds (default 5 ms). Each render tick runs
             enough substeps of ``dt`` to fill the ~20 ms frame period; a ``dt``
@@ -281,6 +287,7 @@ class SkelarmSimulator(QMainWindow):
         self._stiffness = stiffness
         self._friction = friction
         self._dt = float(dt)
+        self._stops: StopModel = stops
         self._substeps = max(1, round(_TIMER_MS / 1000.0 / self._dt))  # physics steps per render tick
         self._interval_ms = max(1, round(self._substeps * self._dt * 1000.0))  # timer period ≈ wall clock
         self._log_extra = log_extra
@@ -402,6 +409,11 @@ class SkelarmSimulator(QMainWindow):
         """The physics/control step in seconds (each render tick advances substeps of it)."""
         return self._dt
 
+    @property
+    def stops(self) -> StopModel:
+        """The model of the hard stops, ``"projected"`` or ``"locked"``."""
+        return self._stops
+
     def pause(self) -> None:
         """Stop advancing the simulation (the state is frozen until :meth:`resume`)."""
         self._timer.stop()
@@ -505,7 +517,7 @@ class SkelarmSimulator(QMainWindow):
             tau = self._control_torque(dt)
             tau = tau + compute_jacobian(self.skeleton).T @ self.canvas.external_force(self._stiffness)
             tau = tau - self._friction * self.skeleton.dq
-            integrate_with_limits(self.skeleton, tau, dt, self._lower, self._upper)
+            integrate_with_limits(self.skeleton, tau, dt, self._lower, self._upper, stops=self._stops)
             self.time += dt
         if self._recording and self.state_log is not None:
             self.state_log.record(
