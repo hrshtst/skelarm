@@ -153,11 +153,13 @@ table is optional; an absent `[simulator]` uses the defaults.
 | --- | --- | --- | --- |
 | `dt` | float | `0.002` | The fixed control / integration step of the simulation loop ([`simulate_controlled`](../reference/07_control.md)). It is also the MPC prediction step. |
 | `enforce_limits` | bool | `true` | Apply the joint limits as hard stops in the dynamics. Set `false` to let the limits constrain only the kinematics. |
+| `stops` | string | `"projected"` | The model of the hard stops: `"projected"` clamps a joint at its stop and zeroes its velocity; `"locked"` holds it there by the stop's reaction, which does no work. |
 
 ```toml
 [simulator]
 dt = 0.002
 enforce_limits = true
+stops = "projected"
 ```
 
 Headless runs and the interactive simulators integrate with the same `dt`: the GUI
@@ -171,8 +173,10 @@ from the dynamics and apply only to the kinematics (posing and inverse kinematic
 Because it lives in the scenario config, the resolved value is embedded in the run's
 reproduction metadata, so a saved log re-runs with the same choice. The interactive
 simulators' `--no-joint-limits` flag overrides it off for a single run (and that resolved
-value is what gets recorded). See the [Joint Limits](joint_limits.md) guide for the
-underlying mechanics.
+value is what gets recorded). `stops` chooses how the stops act, and is embedded in the
+metadata the same way; the projected stops can feed energy into an arm with coupled
+joints, the locked ones cannot. See the [Joint Limits](joint_limits.md) guide for the
+underlying mechanics of both.
 
 ## The `[controller]` section
 

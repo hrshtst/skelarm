@@ -25,8 +25,8 @@ Coriolis helpers) solve the equations of motion with no knowledge of `qmin` /
 | Path | Limit handling |
 | --- | --- |
 | `Skeleton.q` / `set_state` (kinematics) | Clamp into range **with a warning** |
-| `simulate_controlled` (fixed step) | **Hard stop**: clip angle, zero velocity (toggleable via `enforce_limits`) |
-| `SkelarmSimulator` GUI (fixed step) | **Hard stop**: clip angle, zero velocity (toggleable via `enforce_limits`) |
+| `simulate_controlled` (fixed step) | **Hard stop**: clip angle, zero velocity, or lock the joint (`stops`); toggleable via `enforce_limits` |
+| `SkelarmSimulator` GUI (fixed step) | **Hard stop**: clip angle, zero velocity, or lock the joint (`stops`); toggleable via `enforce_limits` |
 | `simulate_robot` (adaptive `solve_ivp`) | **None** — unconstrained integration |
 | `JointSpaceMPC` | Soft penalty in the rollout (+ plant clamp via the driving loop) |
 
@@ -48,13 +48,53 @@ not model the impact: the other joints keep their velocities, and because the
 joints' inertias are coupled, zeroing one joint's velocity does not necessarily
 remove energy — the arm's total kinetic energy can even rise at the stop. Treat
 it as a way to keep the angles in range, not as an energy-dissipating contact
-model. These loops write `link.q` / `link.dq` directly, bypassing the
+model ([locked stops](#locked-stops) are one). These loops write `link.q` / `link.dq` directly, bypassing the
 warning-emitting setter, so a run that rides a limit does not flood the log with
 warnings.
 
 The shared one-step integrator `integrate_with_limits(skeleton, tau, dt, lower,
 upper)` takes the bounds as arguments; passing `lower=upper=None` (the default)
 **skips** the clamp/zero block entirely, integrating the unconstrained step.
+
+### Locked stops
+
+The projection also leaves the dynamics of the other joints as they were: while a
+joint is pressed into its stop, they keep the accelerations they would have with it
+free, $\ddot{q} = H^{-1}(\tau - b)$. With coupled inertias they then accelerate faster
+than the arm can, and it gains energy the motors never gave it. On a two-link arm
+held at joint 1's stop and driven at joint 2 alone, the kinetic energy after 0.1 s is
+1.6 times the motors' work. `stops = "locked"` models the stop as a constraint
+instead:
+
+- a stop **holds** the joint pressed into it: the joint does not accelerate, and the
+  stop's reaction $\lambda = H \ddot{q} + b - \tau$ is whatever keeps it there. The
+  other, free joints move by the reduced dynamics $H_{ff} \ddot{q}_f = (\tau - b)_f$, so
+  the stop does no work (in the example, the kinetic energy is the motors' work, less
+  semi-implicit Euler's 1%);
+- it **lets go** once holding the joint would take a pull: a stop only pushes, up at a
+  lower stop and down at an upper one;
+- a joint that **reaches** its stop stops as in a plastic impact: the free joints keep
+  their generalized momentum $(H \dot{q})_f$, and the kinetic energy drops.
+
+Which joints the stops hold is a small linear complementarity problem: a held joint
+has no acceleration and a reaction that pushes; a released one has no reaction and does
+not accelerate into its stop. With $H$ positive definite its solution is unique, and
+`integrate_with_limits` finds it among the subsets of the joints at their stops (one
+solve while no joint is at a stop, at most two while one is). Away from the stops, the
+locked step is the projected one to the bit.
+
+Choose the model in the scenario config, where it is part of the reproduction
+metadata:
+
+```toml
+[simulator]
+stops = "locked"  # the default is "projected"
+```
+
+or per call: `run_scenario(..., stops=...)`, `simulate_controlled(..., stops=...)`,
+`integrate_with_limits(..., stops=...)`, and `SkelarmSimulator(..., stops=...)`. The
+scenario simulators use the scenario's; the dynamics simulator and the trajectory
+recorder read no `[simulator]` table and keep the projected stops.
 
 ### Disabling the hard stop
 

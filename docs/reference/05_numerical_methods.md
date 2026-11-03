@@ -164,7 +164,8 @@ stability at a fixed step carries over in practice. That is why
 `integrate_with_limits` uses it as `skelarm`'s control-loop and GUI integrator —
 the fixed step keeps the controller cadence exact, and joint limits can be applied
 as hard stops between steps (clamping $q$ and zeroing the clamped joints'
-velocities; see the [Joint Limits guide](../guides/joint_limits.md)).
+velocities, or holding the joints at their stops by the stops' reactions; see the
+[Joint Limits guide](../guides/joint_limits.md)).
 
 ### Runge–Kutta (RK4)
 

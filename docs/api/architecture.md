@@ -91,7 +91,7 @@ classDiagram
     }
     class Simulator {
         <<dataclass>>
-        +dt  enforce_limits
+        +dt  enforce_limits  stops
     }
     Scenario *-- Skeleton
     Scenario *-- Task
@@ -165,8 +165,8 @@ chapter covers the smoothing (`skelarm.filtering`) and resampling
 
 [`Scenario`](scenario.md) is the runnable bundle assembled from one TOML file: a
 `Skeleton`, a `Task` (its required `type` plus the target / motion / type-specific
-`params`), a `Simulator` (the numerical-integration parameters `dt` / `enforce_limits`
-from `[simulator]`), and a ready-to-run `Controller`. The loader builds the joint
+`params`), a `Simulator` (the numerical-integration parameters `dt` / `enforce_limits` /
+`stops` from `[simulator]`), and a ready-to-run `Controller`. The loader builds the joint
 reference for the trackers by **dispatching on the task type** (a registry
 opened by `register_reference_builder`): `reaching` plans a point-to-point
 `Trajectory`, `periodic_curve` builds a `PeriodicTaskReference`, and the
