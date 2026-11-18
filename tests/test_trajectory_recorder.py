@@ -88,10 +88,13 @@ class _FakeClock:
 _CLOCKS: weakref.WeakKeyDictionary[RecorderWindow, _FakeClock] = weakref.WeakKeyDictionary()
 
 
-def _window(tmp_path: Path, pose: tuple[float, ...] | None = None, **overrides: object) -> RecorderWindow:
+def _window(
+    tmp_path: Path, pose: tuple[float, ...] | None = None, arm: Skeleton | None = None, **overrides: object
+) -> RecorderWindow:
     """Build a headless 4-DOF recorder in multi-take mode at 100 Hz on a fake clock, without the live timer.
 
-    ``pose`` (degrees) sets the arm's posture at construction, which is the first ready posture.
+    ``pose`` (degrees) sets the arm's posture at construction, which is the first ready posture;
+    ``arm`` replaces the 4-DOF arm.
     """
     clock = _FakeClock()
     options: dict[str, object] = {
@@ -104,7 +107,7 @@ def _window(tmp_path: Path, pose: tuple[float, ...] | None = None, **overrides: 
         "clock": clock,
     }
     options.update(overrides)
-    skeleton = Skeleton.from_toml(_FOUR_DOF)
+    skeleton = Skeleton.from_toml(_FOUR_DOF) if arm is None else arm
     if pose is not None:
         skeleton.q = np.radians(pose)
     window = RecorderWindow(skeleton, **options)  # type: ignore[arg-type]
@@ -1825,3 +1828,106 @@ def test_load_setup_applies_the_active_target_and_the_pose_sets_the_first_ready_
     bad.write_text(config.read_text(encoding="utf-8").replace("active = 0", "active = 5"), encoding="utf-8")
     with pytest.raises(ValueError, match="out of range"):
         load_setup(build_parser().parse_args([str(bad)]))
+
+
+# ----------------------------------------------------------------------------------------------
+# Leaving the preparation: each joint at the turn nearest zero, and the posture in the readout
+# ----------------------------------------------------------------------------------------------
+
+_TEN_TURNS = (-3600.0, 3600.0)  # degrees: the limits of an arm without joint limits
+
+
+def _two_link_arm(*limits: tuple[float, float], pose: tuple[float, float] = (30.0, 30.0)) -> Skeleton:
+    """A two-link arm (1.0 m and 0.8 m) with the given joint limits and posture, in degrees."""
+    links = [
+        {"length": length, "mass": 1.0, "inertia": 0.1, "com": [length / 2, 0.0], "limits": list(joint)}
+        for length, joint in zip((1.0, 0.8), limits, strict=True)
+    ]
+    return Skeleton.from_config({"skeleton": {"link": links}, "initial": {"q": list(pose)}})
+
+
+def _tip(window: RecorderWindow) -> NDArray[np.float64]:
+    tip = window.skeleton.links[-1]
+    return np.array([tip.xe, tip.ye])
+
+
+@pytest.mark.parametrize(
+    ("posed", "ready"),
+    [((30.0, 396.0), (30.0, 36.0)), ((-200.0, 750.0), (160.0, 30.0)), ((-180.0, -330.0), (180.0, 30.0))],
+)
+def test_leaving_the_preparation_brings_each_joint_to_the_turn_nearest_zero(
+    qapp,  # noqa: ANN001, ARG001
+    tmp_path: Path,
+    posed: tuple[float, float],
+    ready: tuple[float, float],
+) -> None:
+    """A joint posed whole turns away is ready within (-180, 180] deg, the tip where it was; takes start there."""
+    window = _window(tmp_path, prepare=True, arm=_two_link_arm(_TEN_TURNS, _TEN_TURNS))
+    window.toggle_prepare()
+    window.skeleton.q = np.radians(posed)
+    tip = _tip(window)
+
+    window.toggle_prepare()
+    assert window.state == "ready"
+    assert window.skeleton.q == pytest.approx(np.radians(ready))
+    assert _tip(window) == pytest.approx(tip, abs=1e-12)
+    start = window.skeleton.q.copy()
+
+    _recorded_take(window)
+    assert np.array_equal(window.log.channel("q")[0], start)
+    assert window.save_and_next()
+    assert np.array_equal(window.skeleton.q, start)  # and the following takes start there too
+    assert np.array_equal(StateLog.load(_saved_path(window)).channel("q")[0], start)
+
+
+def test_a_joint_whose_limits_exclude_the_turn_nearest_zero_keeps_its_angle(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Posed at 200 deg within limits of [0, 270] deg a joint stays at 200; the unlimited one comes back a turn."""
+    window = _window(tmp_path, prepare=True, arm=_two_link_arm((0.0, 270.0), _TEN_TURNS))
+    window.toggle_prepare()
+    window.skeleton.q = np.radians([200.0, 400.0])
+    tip = _tip(window)
+
+    window.toggle_prepare()
+    assert window.skeleton.q[0] == np.radians(200.0)
+    assert window.skeleton.q[1] == pytest.approx(np.radians(40.0))
+    assert _tip(window) == pytest.approx(tip, abs=1e-12)
+
+
+def test_a_take_and_the_posing_keep_their_whole_turns(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Only leaving the preparation brings joints back: a take a turn up is saved so, and E keeps where it ended."""
+    window = _window(tmp_path, prepare=True, arm=_two_link_arm(_TEN_TURNS, _TEN_TURNS, pose=(30.0, 396.0)))
+    _recorded_take(window)
+    assert window.log.channel("q")[0] == pytest.approx(np.radians([30.0, 396.0]))
+    assert window.save_take()
+    assert StateLog.load(_saved_path(window)).channel("q")[0] == pytest.approx(np.radians([30.0, 396.0]))
+    end = window.skeleton.q.copy()
+
+    window.toggle_prepare()
+    assert np.array_equal(window.skeleton.q, end)
+    window.toggle_prepare()
+    assert window.skeleton.q == pytest.approx(end - np.radians([0.0, 360.0]))
+
+
+def test_with_prepare_the_readout_gives_the_ready_posture_and_the_one_being_posed(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """With --prepare the status gives the joint angles in degrees when ready and while posing; without, none."""
+    window = _window(tmp_path, prepare=True, arm=_two_link_arm(_TEN_TURNS, _TEN_TURNS, pose=(30.0, -45.0)))
+    assert "q = (30, -45) deg" in window.status_label.text()  # ready
+    window.toggle_prepare()
+    assert "q = (30, -45) deg" in window.status_label.text()
+    window.skeleton.q = np.radians([30.0, 396.0])
+    _tick(window, 2)  # the readout follows the posing at the display rate
+    text = window.status_label.text()
+    assert "PREPARING" in text
+    assert "q = (30, 396) deg" in text  # a whole turn up is seen
+    window.toggle_prepare()
+    text = window.status_label.text()
+    assert "READY" in text
+    assert "q = (30, 36) deg" in text
+    _recorded_take(window, ticks=4)
+    assert "q =" not in window.status_label.text()  # the readout of a take is as before
+
+    plain = _window(tmp_path, arm=_two_link_arm(_TEN_TURNS, _TEN_TURNS, pose=(30.0, -45.0)))
+    text = plain.status_label.text()
+    assert "READY" in text
+    assert "q =" not in text
+    assert "deg" not in text

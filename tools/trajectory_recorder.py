@@ -50,8 +50,11 @@ is logged, the clock does not run, and Space, S, and Shift+S do nothing. With a
 ``multi_target_reaching`` task the keys 1 to 9 choose the active target, which no other
 state can change. E again makes the posed arm the ready posture of the following takes,
 until the next preparation; R instead cancels, back to the previous ready posture and
-target. During a take, or while a take is not saved, E is refused until it is saved (S)
-or discarded (R).
+target. Leaving brings each joint by whole turns into (-180, 180] deg where its limits
+hold that angle, so a joint dragged once around, which looks the same, does not start
+the takes a turn away; the hand does not move. The readout gives the ready posture, and
+while preparing the one being posed, in degrees. During a take, or while a take is not
+saved, E is refused until it is saved (S) or discarded (R).
 
 Acquisition clock: ``--sample-rate`` is a best-effort request. The recorder runs one
 timer tick per sample period (rounded to whole milliseconds), and every tick performs
@@ -246,6 +249,24 @@ def _targets_of(
     return multi_target_specs(task), active_target_index(task)
 
 
+def _turn_nearest_zero(skeleton: Skeleton) -> NDArray[np.float64]:
+    """Return the arm's posture with each joint moved by whole turns into (-180, 180] deg.
+
+    A joint whose limits do not hold that angle keeps its own. Whole turns leave the tip
+    where it is, and a joint already in that range keeps its angle exactly.
+    """
+    q = skeleton.q
+    wrapped = q - 2.0 * np.pi * np.ceil((q - np.pi) / (2.0 * np.pi))
+    lower = np.array([link.prop.qmin for link in skeleton.links[1:]], dtype=np.float64)
+    upper = np.array([link.prop.qmax for link in skeleton.links[1:]], dtype=np.float64)
+    return np.where((lower <= wrapped) & (wrapped <= upper), wrapped, q)
+
+
+def _posture_text(q: NDArray[np.float64]) -> str:
+    """Return the joint angles for the readout in whole degrees, ``q = (30, 396) deg``."""
+    return f"q = ({', '.join(str(round(float(angle))) for angle in np.rad2deg(q))}) deg"
+
+
 def tick_period_ms(sample_rate: float) -> int:
     """Return the timer period for ``sample_rate`` rounded to whole milliseconds (at least 1 ms).
 
@@ -300,7 +321,8 @@ class RecorderWindow(QMainWindow):
         Add the preparation phase (E and a Prepare button): the tip is dragged to pose
         the next take's start and, with a ``multi_target_reaching`` task, the keys 1 to 9
         and the target buttons choose its target. Leaving it makes the posed arm the
-        ready posture.
+        ready posture, each joint at the turn nearest zero that its limits hold. The
+        readout gives the ready posture and the one being posed.
     unsaved_prompt : callable, optional
         Replaces the modal unsaved-take warning (tests inject a stub); it must return
         a :class:`CloseChoice`.
@@ -805,10 +827,12 @@ class RecorderWindow(QMainWindow):
         Entering is allowed when ready, or when the visible take is saved: that take's log
         is dropped as a reset drops it, but the arm stays where it is, at rest. During a
         take or with a take not saved, E is refused and nothing changes. Leaving keeps the
-        posture and the chosen target for every take until the next preparation.
+        posture and the chosen target for every take until the next preparation, each
+        joint brought by whole turns into (-180, 180] deg where its limits hold that angle,
+        so the hand does not move.
         """
         if self._state == "preparing":
-            self._reset_q = self.skeleton.q.copy()
+            self._reset_q = _turn_nearest_zero(self.skeleton)
             self._ready_target = self._active
             target = "" if self._active is None else f", target {self._target_name(self._active)}"
             print(f"take {self._take_number:03d}: prepared at q = {np.rad2deg(self._reset_q).round(1)} deg{target}")
@@ -901,6 +925,7 @@ class RecorderWindow(QMainWindow):
         self._ticks += 1
         if self._ticks % self._display_every == 0:
             self.canvas.update_skeleton()
+            self.status_label.setText(self._status_text())  # the posture being posed
 
     # ----------------------------------------------------------------- close ---
 
@@ -991,16 +1016,17 @@ class RecorderWindow(QMainWindow):
 
     def _status_text(self) -> str:
         target = "" if self._active is None else f"; target {self._target_name(self._active)}"
+        posture = f"; {_posture_text(self.skeleton.q)}" if self._prepare else ""  # ready, or being posed
         if self._state == "preparing":
             keys = min(len(self._targets), _NUMBER_KEYS)
             choose = f"1-{keys} choose the target, " if self._targets else ""
             return (
                 f"PREPARING take {self._take_number:03d} — drag the tip to pose the start; "
-                f"{choose}E finishes, R cancels{target}"
+                f"{choose}E finishes, R cancels{posture}{target}"
             )
         if self._state == "ready":
             how = "grab the tip" if self._start_on_grab else "press Space"
-            return f"READY — take {self._take_number:03d} → {self.output_path.name}; {how} to start{target}"
+            return f"READY — take {self._take_number:03d} → {self.output_path.name}; {how} to start{posture}{target}"
         if self._state == "recording":
             cap = "" if self._duration is None else f" / {self._duration:.1f}"
             return (

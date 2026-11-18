@@ -71,9 +71,13 @@ choose the active target; outside the phase they do nothing, so a take's target 
 changes during it. **E** again ends the phase: the posed arm becomes the ready posture
 of the following takes, and **R** and **Shift+S** return to it until the next
 preparation. **R** during the phase cancels it, back to the previous ready posture and
-target. During a take, or while a take is not saved, E is refused until you save (S) or
-discard (R) it. The **Prepare (E)** button is pressed while the phase is on, and the
-status names the phase and the active target.
+target. Ending the phase also brings each joint by whole turns into (-180, 180] degrees
+where its limits hold that angle, without moving the hand: an arm without joint limits
+looks the same a whole turn away, and a joint dragged once around would otherwise start
+every later take a turn away. During a take, or while a take is not saved, E is refused
+until you save (S) or discard (R) it. The **Prepare (E)** button is pressed while the
+phase is on, and the status names the phase, the active target, and the joint angles in
+degrees: the ready posture, or while preparing the posture being posed.
 
 Each take of a multi-target task stores the task with `active` set to the target that
 was active during it, and its first sample is the prepared posture. The player draws
