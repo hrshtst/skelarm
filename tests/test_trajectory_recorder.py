@@ -16,8 +16,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
-# Importing the tool pulls in PyQt6; run headless.
+# Importing the tool pulls in PyQt6; run headless, and plot (``--plot``) without a display.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("MPLBACKEND", "Agg")
 
 from skelarm import Skeleton, Task, active_target_index, multi_target_specs
 from skelarm.recording import StateLog
@@ -42,6 +43,8 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.integration
 
 _FOUR_DOF = Path(__file__).resolve().parents[1] / "examples" / "four_dof_robot.toml"
+_PERIODIC_CURVE = Path(__file__).resolve().parents[1] / "examples" / "periodic_curve.toml"
+_ELLIPSE_TASK = {"type": "periodic_curve", "curve": "ellipse", "center": [0.9, 0.0], "a": 0.4, "b": 0.25, "period": 2.0}
 
 _SCENARIO_WITH_TASK = (
     "[skeleton]\n"
@@ -1156,6 +1159,88 @@ def test_control_panel_width_is_fixed(qapp, tmp_path: Path) -> None:  # noqa: AN
 
 
 # ----------------------------------------------------------------------------------------------
+# Task guide (a reaching task's target, a periodic task's curve)
+# ----------------------------------------------------------------------------------------------
+
+
+def test_a_periodic_curve_task_draws_its_closed_curve_as_the_guide(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The example periodic task's ellipse is the canvas's reference path, closed, and has no target."""
+    skeleton, task = load_setup(build_parser().parse_args([str(_PERIODIC_CURVE)]))
+    assert task is not None
+    window = RecorderWindow(skeleton, task=task, output=tmp_path / "loop.sklog.npz", run_timer=False)
+
+    path = window.canvas.overlay_path
+    assert path is not None
+    (cx, cy), a, b = task.params["center"], task.params["a"], task.params["b"]
+    assert np.allclose(((path[:, 0] - cx) / a) ** 2 + ((path[:, 1] - cy) / b) ** 2, 1.0)
+    assert path[0] == pytest.approx(path[-1])  # a closed loop
+    assert window.canvas.show_overlay_path
+    assert window.canvas.target is None
+
+
+def test_the_curve_stays_drawn_through_a_take_beside_the_trails(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Recording, saving, and resetting leave the curve as it is, and the trails are drawn as before."""
+    from skelarm.scenario import Task
+
+    window = _window(tmp_path, task=Task.from_dict(_ELLIPSE_TASK), show_tip_trail=True, show_past_trails=True)
+    curve = window.canvas.overlay_path
+    assert curve is not None
+
+    _recorded_take(window)
+    assert window.canvas.overlay_path is curve
+    assert len(window.canvas.trails) == 1
+    assert window.save_take()
+    window.reset_take()
+    assert window.canvas.overlay_path is curve
+    assert len(window.canvas.static_trails) == 1
+    assert window.canvas.trails == []
+
+
+def test_a_reaching_task_draws_its_target_and_no_curve(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """A reaching task keeps its target marker and tolerance ring, and draws no reference path."""
+    from skelarm.scenario import Task
+
+    task = Task.from_dict({"type": "reaching", "target": {"pos": [0.55, 0.21], "tolerance": 0.02}})
+    window = _window(tmp_path, task=task)
+
+    assert window.canvas.target == pytest.approx([0.55, 0.21])
+    assert window.canvas.target_tolerance == pytest.approx(0.02)
+    assert window.canvas.overlay_path is None
+    assert window.canvas.overlay_targets == []
+
+
+def test_without_a_task_no_target_or_curve_is_drawn(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Without a task, the canvas draws neither a target nor a reference path."""
+    window = _window(tmp_path)
+
+    assert window.canvas.target is None
+    assert window.canvas.overlay_path is None
+
+
+def test_the_plot_draws_a_periodic_task_s_curve_as_a_dashed_line(qapp, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001, ARG001
+    """``--plot`` draws the task's curve, dashed, beside the taught tip path."""
+    import matplotlib.pyplot as plt
+
+    from skelarm.scenario import Task
+
+    monkeypatch.setattr(plt, "show", lambda: None)
+    window = _window(tmp_path, task=Task.from_dict(_ELLIPSE_TASK))
+    curve = window.canvas.overlay_path
+    assert curve is not None
+    _recorded_take(window)
+    assert window.save_take()
+
+    window.show_plot()
+    try:
+        ax_path = plt.gcf().axes[0]
+        (reference,) = [line for line in ax_path.lines if line.get_label() == "reference"]
+        assert reference.get_linestyle() == "--"
+        assert np.allclose(reference.get_xydata(), curve)
+    finally:
+        plt.close("all")
+
+
+# ----------------------------------------------------------------------------------------------
 # Tip trails (current take and faint saved history)
 # ----------------------------------------------------------------------------------------------
 
@@ -1698,6 +1783,41 @@ def test_a_multi_target_task_draws_every_target_with_the_active_one_emphasized(q
     assert window.active_target is None
     assert window.canvas.target is None
     assert window.target_buttons == []
+
+
+def test_a_periodic_task_s_curve_stays_drawn_while_preparing_and_after_it(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The curve is drawn while the start is posed, after E and after R, and the phase has no target to choose."""
+    from PyQt6.QtCore import Qt
+
+    window = _window(tmp_path, prepare=True, pose=_BENT, task=Task.from_dict(_ELLIPSE_TASK))
+    curve = window.canvas.overlay_path
+    assert curve is not None
+    assert window.active_target is None
+    assert window.target_buttons == []
+
+    _press(window, Qt.Key.Key_E)
+    _move(window, 10)
+    assert window.state == "preparing"
+    assert window.canvas.overlay_path is curve
+    assert window.canvas.show_overlay_path
+    assert window.canvas.target is None
+    _press(window, Qt.Key.Key_R)  # cancelled
+    assert window.state == "ready"
+    assert window.canvas.overlay_path is curve
+
+    _press(window, Qt.Key.Key_E)
+    _move(window, 10)
+    _press(window, Qt.Key.Key_E)
+    assert window.state == "ready"
+    assert window.canvas.overlay_path is curve
+    assert window.canvas.show_overlay_path
+    _recorded_take(window)
+    assert window.save_take()
+    window.toggle_prepare()  # from the saved take
+    assert window.canvas.overlay_path is curve
+    window.toggle_prepare()
+    assert window.canvas.overlay_path is curve
+    assert window.canvas.show_overlay_path
 
 
 def test_the_target_is_chosen_only_while_preparing(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001

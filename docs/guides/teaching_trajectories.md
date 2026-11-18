@@ -109,9 +109,9 @@ the partial file. A take holding nothing beyond the `t = 0` frame is never
 written and consumes no number. File names enumerate attempts; whether a take
 qualifies for an experiment is decided offline. When the config (or `--task`) has a
 `[task]`, each take stores it under `[extra.playback.task]`, so the player draws the
-target when replaying or exporting the take. A `multi_target_reaching` task draws every
-target, the active one emphasized: the configuration's `active`, until a preparation
-chooses another.
+target or the curve when replaying or exporting the take. A `multi_target_reaching` task
+draws every target, the active one emphasized: the configuration's `active`, until a
+preparation chooses another.
 
 ### Trails
 
@@ -135,6 +135,17 @@ its take, and pressing **R** while already ready changes nothing. A new session
 always starts with an empty history, whatever files already exist on disk, so a
 practice session leaves no traces in a later one. The overlays are a drawing aid
 only and never enter the saved log.
+
+### Following a curve
+
+A `[task]` in the config (or `--task`) is drawn as a guide: a reaching task's
+target with its tolerance ring, and a `periodic_curve` task's closed curve as a
+gray line, so a periodic motion is taught by moving the tip around it. The guide
+stays in place through every take, and `--plot` draws it too.
+
+```bash
+uv run python tools/trajectory_recorder.py examples/periodic_curve.toml --show-tip-trail   # go around the gray ellipse
+```
 
 ### Acquisition clock
 
@@ -169,9 +180,8 @@ Two modes turn the task-space teaching into joint angles:
 less drops the time cap and records until you save); `--initial` / `--pose`
 set the start pose, which is also the reset posture of every take until a
 preparation (`--prepare`) poses another, and an optional `[task]` in the config
-draws a target. The log records the per-joint
-angles and the tip path (plus `dq`, the tip force, and the friction in
-`dynamics` mode).
+draws a target or a curve. The log records the per-joint angles and the tip path
+(plus `dq`, the tip force, and the friction in `dynamics` mode).
 
 ## Track the recording
 

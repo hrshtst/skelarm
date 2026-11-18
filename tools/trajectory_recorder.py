@@ -81,6 +81,11 @@ unsaved trail with its take, and a new session always starts with an empty histo
 whatever files exist on disk. The overlays are a drawing aid only: they never move the
 robot, change the logged samples, or enter the saved log.
 
+Task guide: a ``[task]`` in the config (or ``--task``) is drawn as a guide. A reaching
+task's target is drawn with its tolerance ring, and a ``periodic_curve`` task's closed
+curve as a gray line, so a periodic motion is taught by moving the tip around it.
+The guide stays in place through every take, and ``--plot`` draws it too.
+
 Outputs: ``--output`` names one exact file (the second take of a session is then refused
 rather than overwriting it); a name without the ``.npz`` suffix gets it appended, as
 NumPy would, so the file that is checked is the file that is written. With
@@ -92,7 +97,7 @@ name, and a failed write removes the partial file. A take with no samples beyond
 ``t = 0`` is never written and consumes no number. Saving opens no dialog and no plot;
 ``--plot`` plots the last visible take after the window closes. When the config (or
 ``--task``) has a ``[task]``, each take stores it under ``[extra.playback.task]``, so
-the player draws the target when replaying or exporting the take. A
+the player draws the target or the curve when replaying or exporting the take. A
 ``multi_target_reaching`` task draws every target, the active one emphasized, and each
 take stores the task with ``active`` set to the target that was active during it.
 
@@ -106,6 +111,7 @@ Usage::
     uv run python tools/trajectory_recorder.py robot.toml --multi-take --show-past-trails --past-trail-history last
     uv run python tools/trajectory_recorder.py robot.toml --duration 0 --plot   # no cap; plot afterward
     uv run python tools/trajectory_recorder.py examples/multi_target.toml --prepare --multi-take
+    uv run python tools/trajectory_recorder.py examples/periodic_curve.toml   # follow the gray curve
     uv run python tools/player.py reach_001.sklog.npz   # replay a recorded take
 """
 
@@ -155,6 +161,9 @@ from skelarm import (
 )
 from skelarm.canvas import TrailOverlay
 from skelarm.simulator import SimulatorCanvas
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # allow `tools.` imports when run as a script
+from tools._scenario_cli import task_overlays
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -425,6 +434,8 @@ class RecorderWindow(QMainWindow):
             self.canvas.target_color = QColor(task.color)
             self.canvas.target_tolerance = task.tolerance
         self._draw_targets()  # a multi-target task draws every target, the active one emphasized
+        # A periodic task's curve (or a tracked path) is drawn in gray, as a guide to follow.
+        self.canvas.overlay_path = None if task is None else task_overlays(task, skeleton)[1]
 
         self.setWindowTitle("Skelarm Trajectory Recorder")
         self.resize(1024, 768)
@@ -1041,7 +1052,7 @@ class RecorderWindow(QMainWindow):
         )
 
     def show_plot(self) -> None:
-        """Plot the taught tip path, final pose, and joint angles (blocking)."""
+        """Plot the taught tip path, final pose, the task's target or curve, and joint angles (blocking)."""
         import matplotlib.pyplot as plt
 
         from skelarm import draw_skeleton, draw_target, plot_trajectory
@@ -1055,6 +1066,10 @@ class RecorderWindow(QMainWindow):
         if self._task is not None and self._task.target is not None:
             target = np.asarray(self._task.target, dtype=np.float64)
             draw_target(ax_path, target, color=self._task.color, tolerance=self._task.tolerance, label="target")
+            ax_path.legend()
+        path = self.canvas.overlay_path
+        if path is not None:  # plotted directly: plot_trajectory would toggle the grid again
+            ax_path.plot(path[:, 0], path[:, 1], color="gray", linestyle="--", label="reference")
             ax_path.legend()
         for j in range(q.shape[1]):
             ax_q.plot(times, np.rad2deg(q[:, j]), label=f"j{j + 1}")
@@ -1157,7 +1172,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--pose", default=None, help="initial joint angles in degrees, e.g. 20,45,60,30 (overrides --initial)"
     )
-    parser.add_argument("--task", type=Path, default=None, help="TOML file whose [task] target is drawn")
+    parser.add_argument(
+        "--task",
+        type=Path,
+        default=None,
+        help="TOML file whose [task] is drawn as a guide: a target, or a periodic_curve task's curve",
+    )
     parser.add_argument("--show-com", action="store_true", help="overlay each link's center of mass")
     parser.add_argument("--plot", action="store_true", help="plot the last visible take after the window closes")
     parser.add_argument(
