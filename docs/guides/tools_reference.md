@@ -33,6 +33,7 @@ catalogue; each tool's workflow has its own guide.
 | `--show-tip-trail` / `--show-past-trails` | recorder | Draw the current take's logged tip path / the faint tip paths of the takes saved in this session (also checkboxes in the panel). |
 | `--past-trail-history {all,last}` | recorder | Which saved takes the faint overlay draws: every take saved in this session (`all`, default) or only the most recently saved one (`last`); saved files and the history are unchanged. |
 | `--multi-take` / `--start-on-grab` | recorder | Number the outputs from the `--output` base / start recording on the first grab instead of Space. |
+| `--prepare` | recorder | Add a preparation phase (`E`) between takes: drag the tip to pose the next take's start and, with a `multi_target_reaching` task, choose its target with `1` … `9`. |
 | `--output PATH` | recorder, `export_config.py` (`-o`) | Output file path (`teach.sklog.npz` / the log path with `.toml` by default). |
 | `--stiffness N` | dynamics, scenario tools, recorder | Spring constant (N/m) of the mouse drag force. |
 | `--friction C` | dynamics, recorder | Viscous joint damping (N·m·s/rad). |
@@ -65,7 +66,9 @@ Tool-specific:
 | `S` / `Shift+S` | recorder | Save the take and keep it visible / save and prepare the next take |
 | `R` | recorder | Reset; discards only an unsaved take |
 | `Q` | recorder | Close, warning first when unsaved samples exist |
+| `E` | recorder (`--prepare`) | Enter / leave the preparation phase: pose the next take's start and choose its target |
 | `1` … `9` | multi-target simulator | Switch the active target live |
+| `1` … `9` | recorder (`--prepare`) | Choose the active target, only while preparing |
 
 ## Timing
 

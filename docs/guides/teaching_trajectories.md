@@ -16,6 +16,7 @@ uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --mode d
 uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --output reach.sklog.npz --multi-take
 uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --multi-take --show-tip-trail --show-past-trails
 uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --multi-take --show-tip-trail --show-past-trails --past-trail-history last
+uv run python tools/trajectory_recorder.py examples/multi_target.toml --prepare --multi-take --output reach.sklog.npz
 uv run python tools/player.py reach_001.sklog.npz                                        # replay a take
 uv run python tools/player.py reach_*.sklog.npz                                          # replay every take as a playlist
 ```
@@ -41,6 +42,8 @@ uv run python tools/trajectory_recorder.py examples/four_dof_robot.toml --grab-r
 | S | Save | Stop and save the take, keeping it visible; no reset. |
 | Shift+S | Save and next take | Save, then reset posture, velocity, drag state, log, and clock, and wait for Space. An already-saved take is not written again. |
 | R | Reset | Discard an *unsaved* take (no file, no take number consumed); a saved take keeps its file. Reset and wait for Space. **S then R** equals **Shift+S**. |
+| E | Prepare (`--prepare`) | Enter the preparation phase from the ready state or after a saved take; press again to make the posed arm the ready posture. Refused during a take or while a take is not saved. |
+| 1 … 9 | Choose the target (`--prepare`) | Make that target of a `multi_target_reaching` task the active one; only while preparing. |
 | Q | Close | Warn when unsaved samples exist: *Save and close* / *Discard and close* / *Cancel* (default; dismissing the dialog cancels). Empty or saved takes close silently, writing nothing. |
 
 Each key has a matching button with the shortcut in its label; the shortcuts
@@ -48,6 +51,43 @@ work with the focus on the drawing canvas and never auto-repeat. There is no
 Finish action any more: a `--duration` cap stops **and saves** the take but
 leaves the window open, and `--start-on-grab` restores the legacy start on the
 first grab. Saving never opens a dialog or a plot.
+
+### Preparing each take
+
+With `--prepare`, **E** switches between recording and a preparation phase that sets
+the next take's start posture and, for a `multi_target_reaching` task, its target, so a
+session can record many takes from many starts:
+
+```bash
+uv run python tools/trajectory_recorder.py examples/multi_target.toml --prepare --multi-take --output reach.sklog.npz
+```
+
+E enters the phase from the ready state, or after the visible take is saved; the arm
+then stays where that take ended, so the next start can be posed from there. While
+preparing, grab the tip and drag it to pose the arm: inverse kinematics moves it, in
+both modes, at rest. Nothing is logged, the clock does not run, and Space, S, and
+Shift+S do nothing. The keys **1** to **9**, or the target buttons in the side panel,
+choose the active target; outside the phase they do nothing, so a take's target never
+changes during it. **E** again ends the phase: the posed arm becomes the ready posture
+of the following takes, and **R** and **Shift+S** return to it until the next
+preparation. **R** during the phase cancels it, back to the previous ready posture and
+target. During a take, or while a take is not saved, E is refused until you save (S) or
+discard (R) it. The **Prepare (E)** button is pressed while the phase is on, and the
+status names the phase and the active target.
+
+Each take of a multi-target task stores the task with `active` set to the target that
+was active during it, and its first sample is the prepared posture. The player draws
+the targets with that one active, and a script reads it back:
+
+```python
+from skelarm import StateLog, Task, active_target_index, multi_target_specs
+
+log = StateLog.load("reach_001.sklog.npz")
+task = Task.from_dict(log.extra["playback"]["task"])
+index = active_target_index(task)
+pos, label, color, tolerance = multi_target_specs(task)[index]
+start = log.channel("q")[0]  # the prepared start posture
+```
 
 ### Outputs
 
@@ -65,7 +105,9 @@ the partial file. A take holding nothing beyond the `t = 0` frame is never
 written and consumes no number. File names enumerate attempts; whether a take
 qualifies for an experiment is decided offline. When the config (or `--task`) has a
 `[task]`, each take stores it under `[extra.playback.task]`, so the player draws the
-target when replaying or exporting the take.
+target when replaying or exporting the take. A `multi_target_reaching` task draws every
+target, the active one emphasized: the configuration's `active`, until a preparation
+chooses another.
 
 ### Trails
 
@@ -121,8 +163,9 @@ Two modes turn the task-space teaching into joint angles:
 
 `--sample-rate` and `--duration` configure the logger (a `--duration` of `0` or
 less drops the time cap and records until you save); `--initial` / `--pose`
-set the start pose, which is also the reset posture of every take, and an
-optional `[task]` in the config draws a target. The log records the per-joint
+set the start pose, which is also the reset posture of every take until a
+preparation (`--prepare`) poses another, and an optional `[task]` in the config
+draws a target. The log records the per-joint
 angles and the tip path (plus `dq`, the tip force, and the friction in
 `dynamics` mode).
 

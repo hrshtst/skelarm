@@ -19,7 +19,7 @@ import pytest
 # Importing the tool pulls in PyQt6; run headless.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from skelarm import Skeleton
+from skelarm import Skeleton, Task, active_target_index, multi_target_specs
 from skelarm.recording import StateLog
 from tools.player import PlaybackWindow
 from tools.trajectory_recorder import (
@@ -88,8 +88,11 @@ class _FakeClock:
 _CLOCKS: weakref.WeakKeyDictionary[RecorderWindow, _FakeClock] = weakref.WeakKeyDictionary()
 
 
-def _window(tmp_path: Path, **overrides: object) -> RecorderWindow:
-    """Build a headless 4-DOF recorder in multi-take mode at 100 Hz on a fake clock, without the live timer."""
+def _window(tmp_path: Path, pose: tuple[float, ...] | None = None, **overrides: object) -> RecorderWindow:
+    """Build a headless 4-DOF recorder in multi-take mode at 100 Hz on a fake clock, without the live timer.
+
+    ``pose`` (degrees) sets the arm's posture at construction, which is the first ready posture.
+    """
     clock = _FakeClock()
     options: dict[str, object] = {
         "mode": "ik",
@@ -101,7 +104,10 @@ def _window(tmp_path: Path, **overrides: object) -> RecorderWindow:
         "clock": clock,
     }
     options.update(overrides)
-    window = RecorderWindow(Skeleton.from_toml(_FOUR_DOF), **options)  # type: ignore[arg-type]
+    skeleton = Skeleton.from_toml(_FOUR_DOF)
+    if pose is not None:
+        skeleton.q = np.radians(pose)
+    window = RecorderWindow(skeleton, **options)  # type: ignore[arg-type]
     _CLOCKS[window] = clock
     return window
 
@@ -1439,3 +1445,383 @@ def test_all_history_still_draws_every_saved_trail(qapp, tmp_path: Path) -> None
     assert len(past) == 3  # noqa: PLR2004
     assert all(np.array_equal(p.points, s.points) for p, s in zip(past, window.saved_trails(), strict=True))
     assert np.array_equal(current.points, window.log.channel("tip"))
+
+
+# ----------------------------------------------------------------------------------------------
+# Preparation phase (--prepare): pose the start and choose the target between takes
+# ----------------------------------------------------------------------------------------------
+
+_BENT = (10.0, 30.0, 30.0, 30.0)  # degrees: away from the stretched-out singularity, within the joint limits
+_TARGET_POSITIONS = ([0.45, 0.20], [0.30, 0.45], [0.10, 0.50])
+
+
+def _targets_task(active: int = 0) -> Task:
+    """A multi-target task of three targets for the 4-DOF arm; the third has no label."""
+    a, b, c = _TARGET_POSITIONS
+    return Task.from_dict(
+        {
+            "type": "multi_target_reaching",
+            "active": active,
+            "targets": [
+                {"pos": a, "label": "A", "color": "purple", "tolerance": 0.03},
+                {"pos": b, "label": "B", "color": "teal", "tolerance": 0.03},
+                {"pos": c, "color": "orange"},
+            ],
+        }
+    )
+
+
+def test_prepare_is_opt_in_and_adds_nothing_without_it(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Without --prepare there is no Prepare button and no E or number key: E and 2 change nothing."""
+    from PyQt6.QtCore import Qt
+
+    parser = build_parser()
+    assert parser.parse_args([str(_FOUR_DOF)]).prepare is False
+    assert parser.parse_args([str(_FOUR_DOF), "--prepare"]).prepare is True
+
+    window = _window(tmp_path, task=_targets_task())
+    assert set(window.buttons) == {"start", "save", "save_next", "reset"}
+    assert set(window.shortcuts) == {"start", "save", "save_next", "reset"}
+    assert window.target_buttons == []
+    _press(window, Qt.Key.Key_E)
+    _press(window, Qt.Key.Key_2)
+    assert window.state == "ready"
+    assert window.active_target == 0
+
+
+def test_e_and_the_prepare_button_toggle_the_preparation_phase(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """E enters the phase from ready and leaves it again; the checked Prepare (E) button shows the phase."""
+    from PyQt6.QtCore import Qt
+
+    window = _window(tmp_path, prepare=True)
+    button = window.buttons["prepare"]
+    assert "(E)" in button.text()
+    assert button.focusPolicy() == Qt.FocusPolicy.NoFocus
+    assert not window.shortcuts["prepare"].autoRepeat()
+    assert not button.isChecked()
+
+    _press(window, Qt.Key.Key_E)
+    assert window.state == "preparing"
+    assert button.isChecked()
+    _press(window, Qt.Key.Key_E)
+    assert window.state == "ready"
+    assert not button.isChecked()
+
+    button.click()
+    assert window.state == "preparing"
+    assert button.isChecked()
+    button.click()
+    assert window.state == "ready"
+    assert not button.isChecked()
+
+
+@pytest.mark.parametrize("mode", ["ik", "dynamics"])
+def test_a_grab_while_preparing_poses_the_arm_at_rest_and_logs_nothing(qapp, tmp_path: Path, mode: str) -> None:  # noqa: ANN001, ARG001
+    """In both modes a press near the tip grabs it and the drag poses the arm by IK, at rest, with no log or clock."""
+    window = _window(tmp_path, prepare=True, mode=mode, show_tip_trail=True, pose=_BENT)
+    window.toggle_prepare()
+    tip = window.skeleton.links[-1]
+    start = np.array([tip.xe, tip.ye])
+
+    _press_at(window, (start[0] + 0.07, start[1]))  # outside the grab radius: nothing is grabbed
+    assert window.canvas.drag_point is None
+    _press_at(window, (start[0] + 0.02, start[1]))
+    _mouse(window, "move", (start[0] - 0.03, start[1] - 0.02))
+    _tick(window, 3)
+    assert np.array([tip.xe, tip.ye]) == pytest.approx(start + np.array([-0.05, -0.02]), abs=1e-4)
+    assert np.array_equal(window.skeleton.dq, np.zeros(4))
+    assert len(window.log) == 0
+    assert window.time == 0.0
+    assert window.canvas.trails == []
+    assert not window.canvas.show_drag_arrow  # no force cue for the kinematic posing
+    assert window.state == "preparing"
+
+    _mouse(window, "release")
+    window.toggle_prepare()
+    assert window.canvas.show_drag_arrow == (mode == "dynamics")
+
+
+def test_leaving_the_preparation_makes_the_posed_arm_the_ready_posture(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """After E the posed arm is the ready posture: takes start there at t = 0, and R and Shift+S return to it."""
+    window = _window(tmp_path, prepare=True, pose=_BENT)
+    window.toggle_prepare()
+    _move(window, 20)
+    posed = window.skeleton.q.copy()
+    assert not np.allclose(posed, np.radians(_BENT))
+
+    window.toggle_prepare()
+    assert window.state == "ready"
+    assert np.array_equal(window.skeleton.q, posed)
+    assert np.array_equal(window.skeleton.dq, np.zeros(4))
+    assert window.canvas.drag_point is None
+    assert len(window.log) == 0
+    assert window.time == 0.0
+
+    _recorded_take(window)
+    assert np.array_equal(window.log.channel("q")[0], posed)
+    window.reset_take()  # R discards the take and returns to the posed posture
+    assert np.array_equal(window.skeleton.q, posed)
+    _recorded_take(window)
+    assert window.save_and_next()
+    assert np.array_equal(window.skeleton.q, posed)
+    saved = StateLog.load(_saved_path(window))
+    assert saved.times[0] == 0.0
+    assert np.array_equal(saved.channel("q")[0], posed)
+
+
+def test_r_while_preparing_cancels_it(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """R leaves the phase for the previous ready posture and target, as if E had not been pressed."""
+    from PyQt6.QtCore import Qt
+
+    window = _window(tmp_path, prepare=True, pose=_BENT, task=_targets_task())
+    window.toggle_prepare()
+    _move(window, 20)
+    window.select_target(1)
+    _press(window, Qt.Key.Key_R)
+    assert window.state == "ready"
+    assert window.skeleton.q == pytest.approx(np.radians(_BENT))
+    assert window.active_target == 0
+    assert window.canvas.target == pytest.approx(_TARGET_POSITIONS[0])
+    assert len(window.log) == 0
+
+
+def test_space_s_and_shift_s_do_nothing_while_preparing(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """While preparing nothing starts or saves: Space, S, and Shift+S leave the phase, the arm, and the files alone."""
+    from PyQt6.QtCore import Qt
+
+    window = _window(tmp_path, prepare=True, pose=_BENT)
+    _press(window, Qt.Key.Key_E)
+    _move(window, 10)
+    pose, status = window.skeleton.q.copy(), window.status_label.text()
+    for key, modifier in (
+        (Qt.Key.Key_Space, None),
+        (Qt.Key.Key_S, None),
+        (Qt.Key.Key_S, Qt.KeyboardModifier.ShiftModifier),
+    ):
+        _press(window, key, modifier)
+        assert window.state == "preparing"
+        assert np.array_equal(window.skeleton.q, pose)
+        assert window.status_label.text() == status
+    assert not window.save_take()
+    assert not window.save_and_next()
+    assert window.state == "preparing"
+    assert not any(window.buttons[name].isEnabled() for name in ("start", "save", "save_next"))
+    assert not list(tmp_path.glob("*.npz"))
+
+
+def test_e_is_refused_while_recording_or_with_an_unsaved_take(qapp, tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001, ARG001
+    """E during a take, or with a take not saved, changes nothing and says to save (S) or discard (R) first."""
+    from PyQt6.QtCore import Qt
+
+    window = _window(tmp_path, prepare=True)
+    _recorded_take(window, ticks=10)
+    assert not window.buttons["prepare"].isEnabled()
+    samples = len(window.log)
+    _press(window, Qt.Key.Key_E)
+    assert window.state == "recording"
+    assert len(window.log) == samples
+    _move(window, 4)  # the take goes on, and the readout keeps the refusal
+    assert len(window.log) == samples + 4
+    assert "save (S) or discard (R) first" in window.status_label.text()
+
+    monkeypatch.setattr(StateLog, "save", _disk_full)
+    assert not window.save_take()  # stopped, not saved
+    monkeypatch.undo()
+    pose = window.skeleton.q.copy()
+    _press(window, Qt.Key.Key_E)
+    assert window.state == "stopped"
+    assert not window.saved
+    assert len(window.log) == samples + 4
+    assert np.array_equal(window.skeleton.q, pose)
+    assert "save (S) or discard (R) first" in window.status_label.text()
+    assert not window.buttons["prepare"].isEnabled()
+
+    assert window.save_and_next()
+    window.start()  # the next take's readout no longer carries the refusal
+    assert "first" not in window.status_label.text()
+
+
+def test_e_after_a_saved_take_prepares_from_where_it_ended(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """From a saved take E keeps the arm where the take ended and drops its log; the file and its faint trail stay."""
+    from PyQt6.QtCore import Qt
+
+    window = _window(tmp_path, prepare=True, show_tip_trail=True, show_past_trails=True)
+    _recorded_take(window)
+    assert window.save_take()
+    end = window.skeleton.q.copy()
+    payload = _saved_path(window).read_bytes()
+    assert window.buttons["prepare"].isEnabled()
+
+    _press(window, Qt.Key.Key_E)
+    assert window.state == "preparing"
+    assert np.array_equal(window.skeleton.q, end)
+    assert np.array_equal(window.skeleton.dq, np.zeros(4))
+    assert window.canvas.drag_point is None
+    assert len(window.log) == 0
+    assert not window.saved
+    assert window.canvas.trails == []  # the saved take's trail is no longer the current one
+    assert len(window.canvas.static_trails) == 1  # but stays among the faint saved trails
+
+    _press(window, Qt.Key.Key_E)
+    assert window.state == "ready"
+    assert np.array_equal(window.skeleton.q, end)
+    assert window.output_path.name == "take_002.sklog.npz"
+    assert _saved_path(window).read_bytes() == payload
+    _recorded_take(window)
+    assert window.save_take()
+    assert np.array_equal(StateLog.load(tmp_path / "take_002.sklog.npz").channel("q")[0], end)
+
+
+def test_a_multi_target_task_draws_every_target_with_the_active_one_emphasized(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The configured active target is drawn filled and the others as rings, with or without --prepare."""
+    from PyQt6.QtGui import QColor
+
+    for prepare in (False, True):
+        window = _window(tmp_path, prepare=prepare, task=_targets_task(active=1))
+        assert window.active_target == 1
+        assert window.canvas.target == pytest.approx(_TARGET_POSITIONS[1])
+        assert window.canvas.target_color == QColor("teal")
+        assert window.canvas.target_tolerance == pytest.approx(0.03)
+        rings = window.canvas.secondary_targets
+        assert [pos.tolist() for pos, _ in rings] == [_TARGET_POSITIONS[0], _TARGET_POSITIONS[2]]
+        assert [color for _, color in rings] == [QColor("purple"), QColor("orange")]
+
+    single = Task.from_dict({"type": "reaching", "target": {"pos": [0.55, 0.21], "tolerance": 0.02}})
+    window = _window(tmp_path, task=single)
+    assert window.active_target is None
+    assert window.canvas.target == pytest.approx([0.55, 0.21])
+    assert window.canvas.secondary_targets == []
+    window = _window(tmp_path, prepare=True)
+    assert window.active_target is None
+    assert window.canvas.target is None
+    assert window.target_buttons == []
+
+
+def test_the_target_is_chosen_only_while_preparing(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Number keys and the target buttons pick the active target in the phase only, so a take's target never changes."""
+    from PyQt6.QtCore import Qt
+
+    window = _window(tmp_path, prepare=True, task=_targets_task())
+    buttons = window.target_buttons
+    assert [button.text() for button in buttons] == ["1: A", "2: B", "3"]
+    assert all(button.focusPolicy() == Qt.FocusPolicy.NoFocus for button in buttons)
+    assert not any(button.isEnabled() for button in buttons)
+    assert buttons[0].isChecked()
+    _press(window, Qt.Key.Key_2)  # ready: no change
+    assert window.active_target == 0
+
+    _press(window, Qt.Key.Key_E)
+    assert all(button.isEnabled() for button in buttons)
+    _press(window, Qt.Key.Key_3)
+    assert window.active_target == 2  # noqa: PLR2004
+    assert window.canvas.target == pytest.approx(_TARGET_POSITIONS[2])
+    assert buttons[2].isChecked()
+    buttons[1].click()
+    assert window.active_target == 1
+    assert window.canvas.target == pytest.approx(_TARGET_POSITIONS[1])
+
+    _press(window, Qt.Key.Key_E)
+    assert not any(button.isEnabled() for button in buttons)
+    _recorded_take(window, ticks=5)
+    _press(window, Qt.Key.Key_1)  # recording: no change
+    window.select_target(0)
+    assert window.active_target == 1
+    assert window.canvas.target == pytest.approx(_TARGET_POSITIONS[1])
+
+
+def test_each_saved_take_records_the_target_it_reaches_to(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Two takes of one session prepared for different targets each store their own target and start posture."""
+    from tools.player import _task_overlays_of
+
+    window = _window(tmp_path, prepare=True, pose=_BENT, task=_targets_task())
+    starts: list[NDArray[np.float64]] = []
+    for target in (2, 1):
+        window.toggle_prepare()
+        _move(window, 10)
+        window.select_target(target)
+        window.toggle_prepare()
+        starts.append(window.skeleton.q.copy())
+        _recorded_take(window)
+        assert window.save_and_next()
+
+    for number, target, start in zip((1, 2), (2, 1), starts, strict=True):
+        log = StateLog.load(tmp_path / f"take_{number:03d}.sklog.npz")
+        task = Task.from_dict(log.extra["playback"]["task"])
+        assert active_target_index(task) == target
+        assert [spec[0].tolist() for spec in multi_target_specs(task)] == list(_TARGET_POSITIONS)
+        assert log.times[0] == 0.0
+        assert np.array_equal(log.channel("q")[0], start)
+        markers, _ = _task_overlays_of(log, log.build_skeleton())
+        assert [active for *_, active in markers] == [index == target for index in range(3)]
+
+
+def test_a_multi_target_take_without_prepare_records_the_configured_target(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """Without --prepare a multi-target take stores the configuration's active target."""
+    window = _window(tmp_path, task=_targets_task(active=2))
+    _recorded_take(window)
+    assert window.save_take()
+    task = Task.from_dict(StateLog.load(_saved_path(window)).extra["playback"]["task"])
+    assert active_target_index(task) == 2  # noqa: PLR2004
+
+
+def test_the_readout_names_the_phase_and_the_active_target(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The status says what to do while preparing and names the active target: its label, else its number."""
+    window = _window(tmp_path, prepare=True, task=_targets_task(active=1))
+    assert "target B" in window.status_label.text()  # ready
+    window.toggle_prepare()
+    text = window.status_label.text()
+    assert "PREPARING" in text
+    assert "drag the tip" in text
+    assert "1-3" in text
+    assert "E finishes" in text
+    assert "target B" in text
+    window.select_target(2)
+    assert "target 3" in window.status_label.text()
+    window.toggle_prepare()
+    assert "READY" in window.status_label.text()
+    assert "target 3" in window.status_label.text()
+    _recorded_take(window, ticks=4)
+    assert "RECORDING" in window.status_label.text()
+    assert "target 3" in window.status_label.text()
+
+    plain = _window(tmp_path, prepare=True)
+    plain.toggle_prepare()
+    text = plain.status_label.text()
+    assert "PREPARING" in text
+    assert "drag the tip" in text
+    assert "target" not in text
+
+
+def test_closing_while_preparing_asks_nothing_and_writes_nothing(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """The preparation holds no samples, so the window closes without the unsaved-take warning."""
+    prompt = _Prompt(CloseChoice.CANCEL)
+    window = _window(tmp_path, prepare=True, unsaved_prompt=prompt)
+    window.toggle_prepare()
+    _move(window, 5)
+    assert window.close()
+    assert prompt.calls == 0
+    assert not list(tmp_path.glob("*.npz"))
+
+
+def test_load_setup_applies_the_active_target_and_the_pose_sets_the_first_ready_posture(qapp, tmp_path: Path) -> None:  # noqa: ANN001, ARG001
+    """A multi-target config loads with its active target applied; --pose is the ready posture until a preparation."""
+    config = _FOUR_DOF.parent / "multi_target.toml"
+    skeleton, task = load_setup(build_parser().parse_args([str(config), "--pose", "20,40", "--prepare"]))
+    assert task is not None
+    assert task.type == "multi_target_reaching"
+    assert task.target == pytest.approx([1.2, 0.4])
+    window = RecorderWindow(skeleton, task=task, prepare=True, output=tmp_path / "reach.sklog.npz", run_timer=False)
+    window.toggle_prepare()
+    skeleton.q = np.radians([50.0, 10.0])
+    window.reset_take()  # cancelled: back to --pose
+    assert skeleton.q == pytest.approx(np.radians([20.0, 40.0]))
+    window.toggle_prepare()
+    skeleton.q = np.radians([50.0, 10.0])
+    window.toggle_prepare()
+    window.reset_take()
+    assert skeleton.q == pytest.approx(np.radians([50.0, 10.0]))
+
+    bad = tmp_path / "bad.toml"
+    bad.write_text(config.read_text(encoding="utf-8").replace("active = 0", "active = 5"), encoding="utf-8")
+    with pytest.raises(ValueError, match="out of range"):
+        load_setup(build_parser().parse_args([str(bad)]))

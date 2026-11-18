@@ -33,11 +33,25 @@ Controls are window-wide keyboard shortcuts mirrored by buttons:
     arm returns to the reset posture at rest with a fresh log, waiting for Space.
     **S then R** is the same as **Shift+S**: both go through the one save and the one
     reset operation.
+  - **E** (with ``--prepare``) enters or leaves the preparation phase, described below.
+  - **1** to **9** (with ``--prepare`` and a ``multi_target_reaching`` task) choose the
+    active target, only while preparing; the target buttons in the side panel do the same.
   - **Q** (and the window's close button) closes; when unsaved samples exist a modal
     warning offers *Save and close*, *Discard and close*, and *Cancel* (the default;
     dismissing the dialog also cancels). Sampling pauses while the warning is open and
     Cancel resumes the take exactly where it was. An empty or already-saved take closes
     without a warning and without writing another file.
+
+Preparation (``--prepare``): E switches to a phase that sets the next take's start
+posture and target. It is entered from the ready state, or after the visible take is
+saved, in which case the arm stays where that take ended. While preparing, a grab within
+the grab radius poses the arm by inverse kinematics, in both modes and at rest; nothing
+is logged, the clock does not run, and Space, S, and Shift+S do nothing. With a
+``multi_target_reaching`` task the keys 1 to 9 choose the active target, which no other
+state can change. E again makes the posed arm the ready posture of the following takes,
+until the next preparation; R instead cancels, back to the previous ready posture and
+target. During a take, or while a take is not saved, E is refused until it is saved (S)
+or discarded (R).
 
 Acquisition clock: ``--sample-rate`` is a best-effort request. The recorder runs one
 timer tick per sample period (rounded to whole milliseconds), and every tick performs
@@ -75,7 +89,9 @@ name, and a failed write removes the partial file. A take with no samples beyond
 ``t = 0`` is never written and consumes no number. Saving opens no dialog and no plot;
 ``--plot`` plots the last visible take after the window closes. When the config (or
 ``--task``) has a ``[task]``, each take stores it under ``[extra.playback.task]``, so
-the player draws the target when replaying or exporting the take.
+the player draws the target when replaying or exporting the take. A
+``multi_target_reaching`` task draws every target, the active one emphasized, and each
+take stores the task with ``active`` set to the target that was active during it.
 
 Usage::
 
@@ -86,12 +102,14 @@ Usage::
     uv run python tools/trajectory_recorder.py robot.toml --multi-take --show-tip-trail --show-past-trails
     uv run python tools/trajectory_recorder.py robot.toml --multi-take --show-past-trails --past-trail-history last
     uv run python tools/trajectory_recorder.py robot.toml --duration 0 --plot   # no cap; plot afterward
+    uv run python tools/trajectory_recorder.py examples/multi_target.toml --prepare --multi-take
     uv run python tools/player.py reach_001.sklog.npz   # replay a recorded take
 """
 
 from __future__ import annotations
 
 import argparse
+import functools
 import glob
 import re
 import sys
@@ -107,7 +125,9 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QCloseEvent, QColor, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QApplication,
+    QButtonGroup,
     QCheckBox,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -121,11 +141,14 @@ from skelarm import (
     Skeleton,
     StateLog,
     Task,
+    active_target_index,
+    apply_active_target,
     bind_quit_key,
     compute_inverse_kinematics,
     compute_jacobian,
     integrate_with_limits,
     make_icon,
+    multi_target_specs,
 )
 from skelarm.canvas import TrailOverlay
 from skelarm.simulator import SimulatorCanvas
@@ -152,6 +175,9 @@ _CURRENT_TRAIL_WIDTH_PX = 2.0
 _PAST_TRAIL_COLOR = QColor(70, 90, 160, 55)  # faint, transparent slate blue behind the current take
 _PAST_TRAIL_WIDTH_PX = 2.0
 _PAST_TRAIL_HISTORIES = ("all", "last")  # draw every saved take of the session, or only the most recent one
+_MULTI_TARGET = "multi_target_reaching"  # the task type whose targets the preparation chooses from
+_NUMBER_KEYS = 9  # the keys 1 to 9 choose the first nine targets
+_TARGET_COLUMNS = 3  # target buttons per row of the side panel
 
 
 class CloseChoice(Enum):
@@ -202,6 +228,24 @@ def _highest_existing_take(output: Path) -> int:
     return highest
 
 
+def _targets_of(
+    task: Task | None,
+) -> tuple[list[tuple[NDArray[np.float64], str | None, str, float | None]], int | None]:
+    """Return a multi-target task's targets and active index, after applying that target to the task.
+
+    Another task, or none, has no targets and no active index.
+
+    Raises
+    ------
+    ValueError
+        If the task has no targets or its active index is out of range.
+    """
+    if task is None or task.type != _MULTI_TARGET:
+        return [], None
+    apply_active_target(task)  # as the scenario tools take it: the task's target is the active one
+    return multi_target_specs(task), active_target_index(task)
+
+
 def tick_period_ms(sample_rate: float) -> int:
     """Return the timer period for ``sample_rate`` rounded to whole milliseconds (at least 1 ms).
 
@@ -225,6 +269,8 @@ class RecorderWindow(QMainWindow):
     Space), ``recording`` (one sample per timer tick), and ``stopped`` (a take is
     visible, saved or not). :meth:`save_take` and :meth:`reset_take` are the only save
     and reset operations; Shift+S, the duration cap, and *Save and close* reuse them.
+    With ``prepare`` a fourth state, ``preparing``, poses the next take's start and
+    chooses its target; :meth:`toggle_prepare` enters and leaves it.
 
     Parameters
     ----------
@@ -250,6 +296,11 @@ class RecorderWindow(QMainWindow):
         Which saved takes the faint overlay draws: every take saved in this session
         (``"all"``) or only the most recently saved one (``"last"``). The session
         history, the saved files, and the logged samples are the same either way.
+    prepare : bool, optional
+        Add the preparation phase (E and a Prepare button): the tip is dragged to pose
+        the next take's start and, with a ``multi_target_reaching`` task, the keys 1 to 9
+        and the target buttons choose its target. Leaving it makes the posed arm the
+        ready posture.
     unsaved_prompt : callable, optional
         Replaces the modal unsaved-take warning (tests inject a stub); it must return
         a :class:`CloseChoice`.
@@ -280,6 +331,7 @@ class RecorderWindow(QMainWindow):
         task: Task | None = None,
         show_com: bool = False,
         enforce_limits: bool = True,
+        prepare: bool = False,
         unsaved_prompt: Callable[[], CloseChoice] | None = None,
         run_timer: bool = True,
         clock: Callable[[], float] = wall_clock.perf_counter,
@@ -309,6 +361,10 @@ class RecorderWindow(QMainWindow):
         self._stiffness = stiffness
         self._friction = friction
         self._task = task
+        self._targets, self._active = _targets_of(task)  # a multi-target task's targets, the active one applied
+        self._ready_target = self._active  # the ready state's target, to which R returns from the preparation
+        self._prepare = prepare
+        self._notice = ""  # a refused E, shown with the take's readout until the next take starts
         self._unsaved_prompt: Callable[[], CloseChoice] = unsaved_prompt or self._ask_unsaved
         self._run_timer = run_timer
         self._clock = clock
@@ -346,6 +402,7 @@ class RecorderWindow(QMainWindow):
             self.canvas.target = np.asarray(task.target, dtype=np.float64)
             self.canvas.target_color = QColor(task.color)
             self.canvas.target_tolerance = task.tolerance
+        self._draw_targets()  # a multi-target task draws every target, the active one emphasized
 
         self.setWindowTitle("Skelarm Trajectory Recorder")
         self.resize(1024, 768)
@@ -386,6 +443,8 @@ class RecorderWindow(QMainWindow):
             ("save_next", "Save and next take", "Shift+S", "mdi6.content-save-move", self.save_and_next),
             ("reset", "Reset", "R", "mdi6.restart", self.reset_take),
         )
+        if prepare:  # an option: without it there is no such button and no E key
+            actions += (("prepare", "Prepare", "E", "mdi6.cursor-move", self.toggle_prepare),)
         for name, label, key, icon, slot in actions:
             button = QPushButton(f"{label} ({key})")
             button.setIcon(make_icon(icon))
@@ -401,6 +460,8 @@ class RecorderWindow(QMainWindow):
             shortcut.setAutoRepeat(False)  # holding a key must not repeat the action
             shortcut.activated.connect(slot)
             self.shortcuts[name] = shortcut
+        self.target_buttons: list[QPushButton] = []
+        self._add_preparation_controls(controls, hint)
         self.checkboxes: dict[str, QCheckBox] = {}
         for name, label, checked in (
             ("tip_trail", "Current tip trail", show_tip_trail),
@@ -428,8 +489,13 @@ class RecorderWindow(QMainWindow):
 
     @property
     def state(self) -> str:
-        """``"ready"``, ``"recording"``, or ``"stopped"`` (a take is visible, saved or not)."""
+        """``"ready"``, ``"recording"``, ``"stopped"`` (a take is visible, saved or not), or ``"preparing"``."""
         return self._state
+
+    @property
+    def active_target(self) -> int | None:
+        """The index of the active target of a multi-target task, ``None`` with another task or none."""
+        return self._active
 
     @property
     def saved(self) -> bool:
@@ -528,6 +594,7 @@ class RecorderWindow(QMainWindow):
         now = self._clock()
         self._state = "recording"
         self._saved = False
+        self._notice = ""
         self.time = 0.0
         self._ticks = 0
         self._t0 = now
@@ -540,6 +607,9 @@ class RecorderWindow(QMainWindow):
 
     def tick(self) -> None:
         """Advance one tick: one pose update, one sample, and a throttled repaint."""
+        if self._state == "preparing":
+            self._pose()
+            return
         if self._state != "recording":
             if self._start_on_grab and self._state == "ready" and self.canvas.drag_point is not None:
                 self.start()  # this tick only logs t = 0; the first pose update and sample are the next tick's
@@ -629,6 +699,8 @@ class RecorderWindow(QMainWindow):
         file already present under the output name included, leaves the take unsaved
         and intact for a retry and never touches the existing bytes.
         """
+        if self._state == "preparing":  # nothing to save while posing
+            return False
         if self._take_is_empty():
             self._set_status("nothing to save: no take recorded (press Space to start one)")
             return False
@@ -688,6 +760,8 @@ class RecorderWindow(QMainWindow):
         An empty take is not written and just resets; an already-saved take advances
         without being written again. Returns whether the take was saved.
         """
+        if self._state == "preparing":  # nothing to save while posing, and no reset either
+            return False
         if self._take_is_empty():
             self.reset_take()
             return False
@@ -700,10 +774,13 @@ class RecorderWindow(QMainWindow):
         """Return to the reset posture at rest with a fresh log and clock; the one reset operation.
 
         An unsaved take is discarded (no file, no take number consumed); a saved take keeps
-        its file. Pressing R while already ready changes nothing but the readout.
+        its file. Pressing R while already ready changes nothing but the readout. While
+        preparing, R cancels the preparation: the target returns to the ready state's too.
         """
         if self._has_unsaved_take():
             print(f"discarded unsaved take {self._take_number:03d} ({len(self.log)} samples)")
+        if self._state == "preparing" and self._ready_target is not None:
+            self._activate(self._ready_target)
         self.skeleton.q = self._reset_q.copy()
         self.skeleton.dq = np.zeros(self.skeleton.num_joints, dtype=np.float64)
         self.canvas.drag_point = None
@@ -719,6 +796,111 @@ class RecorderWindow(QMainWindow):
     def _report_save_failure(self, message: str) -> None:
         print(message, file=sys.stderr)
         self._set_status(message)
+
+    # ----------------------------------------------------------- preparation ---
+
+    def toggle_prepare(self) -> None:
+        """Enter the preparation phase, or leave it with the posed arm as the ready posture of the following takes.
+
+        Entering is allowed when ready, or when the visible take is saved: that take's log
+        is dropped as a reset drops it, but the arm stays where it is, at rest. During a
+        take or with a take not saved, E is refused and nothing changes. Leaving keeps the
+        posture and the chosen target for every take until the next preparation.
+        """
+        if self._state == "preparing":
+            self._reset_q = self.skeleton.q.copy()
+            self._ready_target = self._active
+            target = "" if self._active is None else f", target {self._target_name(self._active)}"
+            print(f"take {self._take_number:03d}: prepared at q = {np.rad2deg(self._reset_q).round(1)} deg{target}")
+            self.reset_take()
+            return
+        if not self._can_prepare():
+            self._notice = " — to prepare, save (S) or discard (R) first"
+            self._set_status(self._status_text())
+            return
+        posture = self.skeleton.q.copy()
+        self.reset_take()  # a fresh log and clock at rest, the drag let go ...
+        self.skeleton.q = posture  # ... with the arm where it is
+        self._state = "preparing"
+        self._refresh()
+
+    def select_target(self, index: int) -> None:
+        """Make target ``index`` (from 0) the active one; only while preparing, so a take's target never changes."""
+        if self._state != "preparing" or not 0 <= index < len(self._targets):
+            return
+        self._activate(index)
+        self._refresh()
+
+    def _can_prepare(self) -> bool:
+        return self._state == "ready" or (self._state == "stopped" and self._saved)
+
+    def _activate(self, index: int) -> None:
+        """Make target ``index`` the task's active one (its ``active`` and its target) and draw it emphasized."""
+        if self._task is None:
+            return
+        self._task.params["active"] = index  # saved with each take under [extra.playback.task]
+        apply_active_target(self._task)
+        self._active = index
+        self._draw_targets()
+
+    def _draw_targets(self) -> None:
+        """Draw a multi-target task's active target filled and the others as dashed rings."""
+        if self._active is None:
+            return
+        pos, _, color, tolerance = self._targets[self._active]
+        self.canvas.target = np.asarray(pos, dtype=np.float64)
+        self.canvas.target_color = QColor(color)
+        self.canvas.target_tolerance = tolerance
+        self.canvas.secondary_targets = [
+            (np.asarray(other, dtype=np.float64), QColor(other_color))
+            for i, (other, _, other_color, _) in enumerate(self._targets)
+            if i != self._active
+        ]
+        self.canvas.update()
+
+    def _target_name(self, index: int) -> str:
+        """Return the target's label, or its number (from 1) when it has none."""
+        label = self._targets[index][1]
+        return str(index + 1) if label is None else label
+
+    def _add_preparation_controls(self, controls: QVBoxLayout, hint: QLabel) -> None:
+        """With ``prepare``: explain E in the hint, and add a button per target with the keys 1 to 9 to choose it.
+
+        The Prepare button is checked while preparing; the target buttons and keys act only then.
+        """
+        if not self._prepare:
+            return
+        keys = min(len(self._targets), _NUMBER_KEYS)
+        choose = f", 1-{keys} choose its target," if self._targets else ""
+        hint.setText(f"{hint.text()} E prepares a take: drag the tip to pose its start{choose} and E again to finish.")
+        self.buttons["prepare"].setCheckable(True)
+        if not self._targets:
+            return
+        controls.addWidget(QLabel("Target, chosen while preparing:"))
+        grid = QGridLayout()
+        group = QButtonGroup(self)  # exclusive: the checked button is the active target
+        for index, (_, label, _, _) in enumerate(self._targets):
+            button = QPushButton(str(index + 1) if label is None else f"{index + 1}: {label}")
+            button.setCheckable(True)
+            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)  # Space must never click a target
+            group.addButton(button, index)
+            grid.addWidget(button, index // _TARGET_COLUMNS, index % _TARGET_COLUMNS)
+            self.target_buttons.append(button)
+            if index < _NUMBER_KEYS:
+                shortcut = QShortcut(QKeySequence(str(index + 1)), self)
+                shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+                shortcut.setAutoRepeat(False)
+                shortcut.activated.connect(functools.partial(self.select_target, index))
+                self.shortcuts[f"target_{index + 1}"] = shortcut
+        group.idClicked.connect(self.select_target)
+        controls.addLayout(grid)
+
+    def _pose(self) -> None:
+        """Pose the arm toward the cursor by IK in either mode, at rest; nothing is logged and the clock stands."""
+        self._step_ik()
+        self._ticks += 1
+        if self._ticks % self._display_every == 0:
+            self.canvas.update_skeleton()
 
     # ----------------------------------------------------------------- close ---
 
@@ -789,6 +971,7 @@ class RecorderWindow(QMainWindow):
     def _refresh(self) -> None:
         """Repaint the arm with its overlays and update the status readout and button states."""
         self._refresh_trails()
+        self.canvas.show_drag_arrow = self._mode == "dynamics" and self._state != "preparing"  # posing is kinematic
         self.canvas.update_skeleton()
         self._set_status(self._status_text())
 
@@ -798,17 +981,38 @@ class RecorderWindow(QMainWindow):
         self.buttons["start"].setEnabled(self._state == "ready")
         self.buttons["save"].setEnabled(not empty and not self._saved)
         self.buttons["save_next"].setEnabled(not empty)
+        if self._prepare:
+            self.buttons["prepare"].setEnabled(self._state == "preparing" or self._can_prepare())
+            self.buttons["prepare"].setChecked(self._state == "preparing")
+            for button in self.target_buttons:
+                button.setEnabled(self._state == "preparing")
+            if self.target_buttons and self._active is not None:
+                self.target_buttons[self._active].setChecked(True)
 
     def _status_text(self) -> str:
+        target = "" if self._active is None else f"; target {self._target_name(self._active)}"
+        if self._state == "preparing":
+            keys = min(len(self._targets), _NUMBER_KEYS)
+            choose = f"1-{keys} choose the target, " if self._targets else ""
+            return (
+                f"PREPARING take {self._take_number:03d} — drag the tip to pose the start; "
+                f"{choose}E finishes, R cancels{target}"
+            )
         if self._state == "ready":
             how = "grab the tip" if self._start_on_grab else "press Space"
-            return f"READY — take {self._take_number:03d} → {self.output_path.name}; {how} to start"
+            return f"READY — take {self._take_number:03d} → {self.output_path.name}; {how} to start{target}"
         if self._state == "recording":
             cap = "" if self._duration is None else f" / {self._duration:.1f}"
-            return f"RECORDING take {self._take_number:03d}  t = {self.time:.2f}{cap} s,  {len(self.log)} samples"
+            return (
+                f"RECORDING take {self._take_number:03d}  t = {self.time:.2f}{cap} s,  {len(self.log)} samples"
+                f"{target}{self._notice}"
+            )
         if self._saved:
             return f"SAVED take {self._saved_take_number():03d} → {self._last_saved_path}"
-        return f"STOPPED (unsaved) take {self._take_number:03d}, {len(self.log)} samples — S saves, R discards"
+        return (
+            f"STOPPED (unsaved) take {self._take_number:03d}, {len(self.log)} samples — S saves, R discards"
+            f"{self._notice}"
+        )
 
     def show_plot(self) -> None:
         """Plot the taught tip path, final pose, and joint angles (blocking)."""
@@ -892,6 +1096,12 @@ def build_parser() -> argparse.ArgumentParser:
         "saved one; the saved files and the history are the same either way (default: all)",
     )
     parser.add_argument(
+        "--prepare",
+        action="store_true",
+        help="add a preparation phase, toggled by E, to pose each take's start by dragging the tip and, "
+        "with a multi_target_reaching task, to choose its target with 1-9",
+    )
+    parser.add_argument(
         "--sample-rate",
         type=_sample_rate_argument,
         default=_SAMPLE_RATE,
@@ -940,7 +1150,8 @@ def load_setup(args: argparse.Namespace) -> tuple[Skeleton, Task | None]:
     FileNotFoundError
         If the config, ``--initial``, or ``--task`` file does not exist.
     ValueError
-        If ``--pose`` length mismatches the DOF or a ``--task`` file lacks ``[task]``.
+        If ``--pose`` length mismatches the DOF, a ``--task`` file lacks ``[task]``, or a
+        multi-target task's ``active`` index is out of range.
     """
     config: Path = args.config
     if not config.exists():
@@ -976,6 +1187,7 @@ def load_setup(args: argparse.Namespace) -> tuple[Skeleton, Task | None]:
             data = tomllib.load(f)
         if "task" in data:
             task = Task.from_dict(data["task"])
+    _targets_of(task)  # applies a multi-target task's active target here, so a bad index is a usage error
     return skeleton, task
 
 
@@ -1007,6 +1219,7 @@ def main() -> None:
         task=task,
         show_com=args.show_com,
         enforce_limits=not args.no_joint_limits,
+        prepare=args.prepare,
     )
     window.show()
     window.canvas.setFocus()
