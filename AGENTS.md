@@ -12,7 +12,7 @@ Tooling runs through `uv` and the `Makefile`:
 - `make format` — ruff auto-format and fixable-lint (use this, not bare `ruff`)
 - `make lint` / `make type-check` — ruff check (no fix) / basedpyright + mypy
 - `make test` — full pytest suite; `make test-fast` skips slow tests; `make test-cov` adds coverage
-- `make nox` — run tests across Python 3.12 / 3.13 / 3.14
+- `make nox` — run tests across Python 3.12 / 3.13 / 3.14 / 3.15
 - Single test: `uv run pytest tests/test_dynamics.py -k 'name'`
 - `make docs-serve` — preview MkDocs site locally
 
